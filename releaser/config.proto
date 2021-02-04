@@ -1,0 +1,27 @@
+syntax = "proto2";
+
+message UpdateVersion {
+    optional string path = 1;
+    optional string match = 2;
+    optional string new_line = 3;
+};
+
+message Project {
+    optional string name = 1;
+
+    optional string tag_format = 2;
+
+    optional string news_file = 3;
+
+    repeated string tarball_location = 4;
+
+    optional string pypi = 5;
+
+    optional int32 timeout_days = 6;
+
+    repeated UpdateVersion update_version = 7;
+};
+
+message Config {
+    repeated string url = 1;
+};
