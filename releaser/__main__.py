@@ -59,6 +59,7 @@ def update_version_in_file(tree, update_cfg, new_version):
         lines[i] = update_cfg.new_line.encode().replace(
             b'$VERSION', new_version.encode()).replace(
             b'$TUPLED_VERSION', tupled_version.encode())
+    tree.put_file_bytes_non_atomic(update_cfg.path, b''.join(lines))
 
 
 def release_project(repo_url):
@@ -66,6 +67,10 @@ def release_project(repo_url):
     branch = Branch.open(repo_url)
     with Workspace(branch) as ws:
         cfg = read_project(ws.local_tree.get_file('releaser.conf'))
+        if cfg.verify_command:
+            subprocess.check_call(
+                cfg.verify_command, cwd=ws.local_tree.abspath('.'),
+                shell=True)
         new_version = find_pending_version(ws.local_tree, cfg)
         logging.info('%s: releasing %s', cfg.name, new_version)
         if cfg.news_file:
@@ -74,17 +79,20 @@ def release_project(repo_url):
         for update in cfg.update_version:
             update_version_in_file(ws.local_tree, update, new_version)
         ws.local_tree.commit('Release %s.' % new_version)
-        tag_name = cfg.tag_format % new_version
+        tag_name = cfg.tag_name.replace('$VERSION', new_version)
         subprocess.check_call(
             ['git', 'tag', '-as', tag_name, '-m', 'Release %s' % new_version],
             cwd=ws.local_tree.abspath('.'))
-        # * Tag && sign tag
+        # At this point, it's official - so let's push.
+        ws.push()
         if ws.local_tree.has_filename('setup.py'):
             subprocess.check_call(
-                ['./setup.py', 'dist'], cwd=ws.local_tree.abspath('.'))
+                ['./setup.py', 'sdist'], cwd=ws.local_tree.abspath('.'))
+            from distutils.core import run_setup
+            result = run_setup(
+                ws.local_tree.abspath('setup.py'), stop_after="init")
             pypi_path = os.path.join(
-                'dist', '%s-%s.tar.gz' % (cfg.pypi_name, new_version))
-        if cfg.pypi_name:
+                'dist', '%s-%s.tar.gz' % (result.get_name(), new_version))
             subprocess.check_call(
                 ['twine', 'upload', '--sign', pypi_path],
                 cwd=ws.local_tree.abspath('.'))
@@ -94,7 +102,6 @@ def release_project(repo_url):
         # TODO(jelmer): Mark any news bugs in NEWS as fixed [later]
         # * Commit:
         #  * Update NEWS and version strings for next version
-        ws.push()
 
 
 

@@ -9,7 +9,7 @@ message UpdateVersion {
 message Project {
     optional string name = 1;
 
-    optional string tag_format = 2;
+    optional string tag_name = 2;
 
     optional string news_file = 3;
 
@@ -18,6 +18,8 @@ message Project {
     optional string pypi = 5;
 
     optional int32 timeout_days = 6;
+
+    optional string verify_command = 8;
 
     repeated UpdateVersion update_version = 7;
 };
