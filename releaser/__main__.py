@@ -15,6 +15,17 @@ class NoUnreleasedChanges(Exception):
     """No unreleased changes."""
 
 
+class RecentCommits(Exception):
+    """Indicates there are too recent commits for a package."""
+
+    def __init__(self, commit_age, min_commit_age):
+        self.commit_age = commit_age
+        self.min_commit_age = min_commit_age
+        super(RecentCommits, self).__init__(
+            "Last commit is only %d days old (< %d)" % (
+                self.commit_age, self.min_commit_age))
+
+
 def check_ready(project):
     pass
     # TODO(jelmer): Check if CI state is green
@@ -58,15 +69,32 @@ def update_version_in_file(tree, update_cfg, new_version):
             '(%s)' % ', '.join(new_version.split('.')))
         lines[i] = update_cfg.new_line.encode().replace(
             b'$VERSION', new_version.encode()).replace(
-            b'$TUPLED_VERSION', tupled_version.encode())
+            b'$TUPLED_VERSION', tupled_version.encode()) + b'\n'
     tree.put_file_bytes_non_atomic(update_cfg.path, b''.join(lines))
 
 
-def release_project(repo_url):
+def check_release_age(branch, cfg):
+    rev = branch.repository.get_revision(branch.last_revision())
+    if cfg.timeout_days is not None:
+        commit_time = datetime.fromtimestamp(rev.timestamp)
+        time_delta = datetime.now() - commit_time
+        if time_delta.days < cfg.timeout_days:
+            raise RecentCommits(time_delta.days, cfg.timeout_days)
+
+
+def release_project(repo_url, force=False):
     from .config import read_project
     branch = Branch.open(repo_url)
     with Workspace(branch) as ws:
         cfg = read_project(ws.local_tree.get_file('releaser.conf'))
+        try:
+            check_release_age(ws.local_tree.branch, cfg)
+        except RecentCommits as e:
+            logging.info(
+                'Recent commits exist (%d < %d)', e.min_commit_age,
+                e.commit_age)
+            if not force:
+                raise
         if cfg.verify_command:
             subprocess.check_call(
                 cfg.verify_command, cwd=ws.local_tree.abspath('.'),
@@ -109,12 +137,13 @@ def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser('releaser')
     parser.add_argument('url', nargs='?', type=str)
+    parser.add_argument('--force', action='store_true')
     args = parser.parse_args()
 
     if args.url:
-        release_project(args.url)
+        release_project(args.url, force=args.force)
     else:
-        release_project('.')
+        release_project('.', force=args.force)
 
 
 if __name__ == '__main__':
