@@ -158,6 +158,8 @@ def main(argv=None):
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.INFO)
+
     try:
         release_project(args.url or ".", force=args.force, new_version=args.new_version)
     except RecentCommits as e:
