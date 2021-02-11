@@ -1,5 +1,4 @@
 name: "dulwich"
-pypi: "dulwich"
 repository_url: "https://github.com/dulwich/dulwich"
 tag_format: "dulwich-%(release)s"
 news_path: "NEWS"
