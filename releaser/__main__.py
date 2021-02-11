@@ -33,6 +33,13 @@ def check_ready(project):
     # TODO(jelmer): Check timeout
 
 
+def increase_version(version, idx=-1):
+    parts = [int(x) for x in version.split('.')]
+    parts[idx] += 1
+    return '.'.join(map(str, parts))
+
+
+
 def find_pending_version(tree, cfg):
     if cfg.news_file:
         with tree.get_file(cfg.news_file) as f:
@@ -41,16 +48,6 @@ def find_pending_version(tree, cfg):
             if date != b"UNRELEASED":
                 raise NoUnreleasedChanges()
             return version.decode()
-    elif cfg.update_version:
-        for update_cfg in cfg.update_version:
-            with tree.get_file(update_cfg.path) as f:
-                lines = list(f.readlines())
-            r = re.compile(update_cfg.match.encode())
-            for i, line in enumerate(lines):
-                m = r.match(line)
-                if m:
-                    return m.group(1).decode()
-        raise KeyError
     else:
         raise NotImplementedError
 
@@ -99,6 +96,21 @@ def check_release_age(branch, cfg):
             raise RecentCommits(time_delta.days, cfg.timeout_days)
 
 
+def find_last_version(tree, cfg):
+    if cfg.update_version:
+        for update_cfg in cfg.update_version:
+            with tree.get_file(update_cfg.path) as f:
+                lines = list(f.readlines())
+            r = re.compile(update_cfg.match.encode())
+            for i, line in enumerate(lines):
+                m = r.match(line)
+                if m:
+                    return m.group(1).decode()
+        raise KeyError
+    else:
+        raise NotImplementedError
+
+
 def release_project(repo_url, force=False, new_version=None):
     from .config import read_project
 
@@ -110,12 +122,23 @@ def release_project(repo_url, force=False, new_version=None):
         except RecentCommits:
             if not force:
                 raise
+        if new_version is None:
+            try:
+                new_version = find_pending_version(ws.local_tree, cfg)
+            except NotImplementedError:
+                last_version = find_last_version(ws.local_tree, cfg)
+                last_version_tag_name = cfg.tag_name.replace("$VERSION", last_version)
+                if ws.local_tree.branch.tags.has_tag(last_version_tag_name):
+                    new_version = increase_version(last_version)
+                else:
+                    new_version = last_version
+            logging.info('Using new version: %s', new_version)
+
         if cfg.verify_command:
             subprocess.check_call(
                 cfg.verify_command, cwd=ws.local_tree.abspath("."), shell=True
             )
-        if new_version is None:
-            new_version = find_pending_version(ws.local_tree, cfg)
+
         logging.info("%s: releasing %s", cfg.name, new_version)
         if cfg.news_file:
             news_mark_released(ws.local_tree, cfg.news_file, new_version)
