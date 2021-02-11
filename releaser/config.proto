@@ -15,11 +15,9 @@ message Project {
 
     repeated string tarball_location = 4;
 
-    optional string pypi = 5;
+    optional int32 timeout_days = 5;
 
-    optional int32 timeout_days = 6;
-
-    optional string verify_command = 8;
+    optional string verify_command = 6;
 
     repeated UpdateVersion update_version = 7;
 };
