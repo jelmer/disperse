@@ -27,10 +27,11 @@ class RecentCommits(Exception):
         )
 
 
-def check_ready(project):
-    pass
-    # TODO(jelmer): Check if CI state is green
-    # TODO(jelmer): Check timeout
+class VerifyCommandFailed(Exception):
+
+    def __init__(self, command, retcode):
+        self.command = command
+        self.retcode = retcode
 
 
 def increase_version(version, idx=-1):
@@ -143,9 +144,12 @@ def release_project(repo_url, force=False, new_version=None):
             logging.info('Using new version: %s', new_version)
 
         if cfg.verify_command:
-            subprocess.check_call(
-                cfg.verify_command, cwd=ws.local_tree.abspath("."), shell=True
-            )
+            try:
+                subprocess.check_call(
+                    cfg.verify_command, cwd=ws.local_tree.abspath("."), shell=True
+                )
+            except subprocess.CalledProcessError as e:
+                raise VerifyCommandFailed(cfg.verify_command, e.returncode)
 
         logging.info("%s: releasing %s", cfg.name, new_version)
         if cfg.news_file:
@@ -197,7 +201,10 @@ def main(argv=None):
     try:
         release_project(args.url or ".", force=args.force, new_version=args.new_version)
     except RecentCommits as e:
-        logging.info("Recent commits exist (%d < %d)", e.min_commit_age, e.commit_age)
+        logging.error("Recent commits exist (%d < %d)", e.min_commit_age, e.commit_age)
+        return 1
+    except VerifyCommandFailed as e:
+        logging.error('Verify command (%s) failed to run.', e.command)
         return 1
 
     return 0
