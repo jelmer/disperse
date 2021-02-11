@@ -66,6 +66,14 @@ def news_mark_released(tree, path, expected_version):
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
 
 
+def news_add_pending(tree, path, new_version):
+    with tree.get_file(path) as f:
+        lines = list(f.readlines())
+    lines.insert(0, b'\n')
+    lines.insert(0, b"%s\t%s\n" % (new_version, 'UNRELEASED'))
+    tree.put_file_bytes_non_atomic(path, b"".join(lines))
+
+
 def update_version_in_file(tree, update_cfg, new_version):
     with tree.get_file(update_cfg.path) as f:
         lines = list(f.readlines())
@@ -170,6 +178,9 @@ def release_project(repo_url, force=False, new_version=None):
         # TODO(jelmer): Mark any news bugs in NEWS as fixed [later]
         # * Commit:
         #  * Update NEWS and version strings for next version
+        new_pending_version = increase_version(new_version, -1)
+        if cfg.news_file:
+            news_add_pending(ws.local_tree, cfg.news_file, new_pending_version)
 
 
 def main(argv=None):
