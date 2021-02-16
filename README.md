@@ -22,3 +22,4 @@ In the future, I would like it to:
 
  * support more languages than just python
  * check that the CI passes for the main branch on e.g. GitHub
+ * create "release" entries on GitHub

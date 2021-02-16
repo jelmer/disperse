@@ -16,11 +16,13 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 from datetime import datetime
+from github import Github  # type: ignore
 import logging
 import os
 import re
 import subprocess
 import sys
+from urllib.parse import urlparse
 
 import breezy.git
 import breezy.bzr  # noqa: F401
@@ -80,8 +82,15 @@ def news_mark_released(tree, path, expected_version):
         raise AssertionError(
             "unexpected version: %s != %s" % (version, expected_version)
         )
+    change_lines = []
+    for line in lines[1:]:
+        if line.startswith(' ') or line.startswith('\t'):
+            change_lines.append(line.decode())
+        else:
+            break
     lines[0] = b"%s\t%s\n" % (version, datetime.now().strftime("%Y-%m-%d").encode())
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
+    return ''.join(change_lines)
 
 
 def news_add_pending(tree, path, new_version):
@@ -170,7 +179,9 @@ def release_project(repo_url, force=False, new_version=None):
 
         logging.info("%s: releasing %s", cfg.name, new_version)
         if cfg.news_file:
-            news_mark_released(ws.local_tree, cfg.news_file, new_version)
+            release_changes = news_mark_released(ws.local_tree, cfg.news_file, new_version)
+        else:
+            release_changes = None
         for update in cfg.update_version:
             update_version_in_file(ws.local_tree, update, new_version)
         ws.local_tree.commit("Release %s." % new_version)
@@ -180,7 +191,7 @@ def release_project(repo_url, force=False, new_version=None):
             cwd=ws.local_tree.abspath("."),
         )
         # At this point, it's official - so let's push.
-        ws.push()
+        ws.push(tags=[tag_name])
         if ws.local_tree.has_filename("setup.py"):
             subprocess.check_call(
                 ["./setup.py", "sdist"], cwd=ws.local_tree.abspath(".")
@@ -196,12 +207,24 @@ def release_project(repo_url, force=False, new_version=None):
             )
         for loc in cfg.tarball_location:
             subprocess.check_call(["scp", ws.local_tree.abspath(pypi_path), loc])
+        if urlparse(repo_url).hostname == 'github.com':
+            create_github_release(repo_url, tag_name, new_version, release_changes)
         # TODO(jelmer): Mark any news bugs in NEWS as fixed [later]
         # * Commit:
         #  * Update NEWS and version strings for next version
         new_pending_version = increase_version(new_version, -1)
         if cfg.news_file:
             news_add_pending(ws.local_tree, cfg.news_file, new_pending_version)
+
+
+def create_github_release(repo_url, tag_name, version, description):
+    parsed_url = urlparse(repo_url)
+    fullname = '/'.join(parsed_url.path.strip('/').split('/')[:2])
+    gh = Github()
+    repo = gh.get_repo(fullname)
+    repo.create_git_release(
+        tag=tag_name, name=version, draft=False, prerelease=False,
+        message=description or ('Release %s.' % version))
 
 
 def main(argv=None):
