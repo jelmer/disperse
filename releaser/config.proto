@@ -7,19 +7,17 @@ message UpdateVersion {
 };
 
 message Project {
-    optional string name = 1;
+    optional string tag_name = 1;
 
-    optional string tag_name = 2;
+    optional string news_file = 2;
 
-    optional string news_file = 3;
+    repeated string tarball_location = 3;
 
-    repeated string tarball_location = 4;
+    optional int32 timeout_days = 4;
 
-    optional int32 timeout_days = 5;
+    optional string verify_command = 5;
 
-    optional string verify_command = 6;
-
-    repeated UpdateVersion update_version = 7;
+    repeated UpdateVersion update_version = 6;
 };
 
 message Config {

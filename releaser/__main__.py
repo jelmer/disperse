@@ -84,7 +84,7 @@ def news_mark_released(tree, path, expected_version):
         )
     change_lines = []
     for line in lines[1:]:
-        if line.startswith(' ') or line.startswith('\t'):
+        if line.startswith(b' ') or line.startswith(b'\t'):
             change_lines.append(line.decode())
         else:
             break
@@ -177,7 +177,7 @@ def release_project(repo_url, force=False, new_version=None):
             except subprocess.CalledProcessError as e:
                 raise VerifyCommandFailed(cfg.verify_command, e.returncode)
 
-        logging.info("%s: releasing %s", cfg.name, new_version)
+        logging.info("releasing %s", new_version)
         if cfg.news_file:
             release_changes = news_mark_released(ws.local_tree, cfg.news_file, new_version)
         else:
@@ -186,6 +186,7 @@ def release_project(repo_url, force=False, new_version=None):
             update_version_in_file(ws.local_tree, update, new_version)
         ws.local_tree.commit("Release %s." % new_version)
         tag_name = cfg.tag_name.replace("$VERSION", new_version)
+        logging.info('Creating tag %s', tag_name)
         subprocess.check_call(
             ["git", "tag", "-as", tag_name, "-m", "Release %s" % new_version],
             cwd=ws.local_tree.abspath("."),
@@ -213,6 +214,7 @@ def release_project(repo_url, force=False, new_version=None):
         # * Commit:
         #  * Update NEWS and version strings for next version
         new_pending_version = increase_version(new_version, -1)
+        logging.info('Using new version %s', new_pending_version)
         if cfg.news_file:
             news_add_pending(ws.local_tree, cfg.news_file, new_pending_version)
 
