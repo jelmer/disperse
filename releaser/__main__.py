@@ -248,6 +248,9 @@ def main(argv=None):
     except VerifyCommandFailed as e:
         logging.error('Verify command (%s) failed to run.', e.command)
         return 1
+    except NoUnreleasedChanges:
+        logging.error('No unreleased changes')
+        return 1
 
     return 0
 
