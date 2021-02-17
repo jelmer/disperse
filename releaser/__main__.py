@@ -26,6 +26,7 @@ from urllib.parse import urlparse
 
 import breezy.git
 import breezy.bzr  # noqa: F401
+from breezy.plugins.github.hoster import retrieve_github_token
 from breezy.branch import Branch
 from silver_platter.workspace import Workspace
 
@@ -222,7 +223,8 @@ def release_project(repo_url, force=False, new_version=None):
 def create_github_release(repo_url, tag_name, version, description):
     parsed_url = urlparse(repo_url)
     fullname = '/'.join(parsed_url.path.strip('/').split('/')[:2])
-    gh = Github()
+    token = retrieve_github_token(parsed_url.scheme, parsed_url.hostname)
+    gh = Github(token)
     repo = gh.get_repo(fullname)
     repo.create_git_release(
         tag=tag_name, name=version, draft=False, prerelease=False,
