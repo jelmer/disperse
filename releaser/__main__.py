@@ -218,6 +218,8 @@ def release_project(repo_url, force=False, new_version=None):
         logging.info('Using new version %s', new_pending_version)
         if cfg.news_file:
             news_add_pending(ws.local_tree, cfg.news_file, new_pending_version)
+            ws.local_tree.commit('Start on %s' % new_pending_version)
+            ws.push()
 
 
 def create_github_release(repo_url, tag_name, version, description):
