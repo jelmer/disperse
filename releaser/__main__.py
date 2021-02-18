@@ -17,15 +17,18 @@
 
 from datetime import datetime
 from github import Github  # type: ignore
+import json
 import logging
 import os
 import re
 import subprocess
 import sys
+from urllib.request import urlopen
 from urllib.parse import urlparse
 
 import breezy.git
 import breezy.bzr  # noqa: F401
+from breezy.errors import NoSuchFile
 from breezy.plugins.github.hoster import retrieve_github_token
 from breezy.branch import Branch
 from silver_platter.workspace import Workspace
@@ -52,6 +55,10 @@ class VerifyCommandFailed(Exception):
     def __init__(self, command, retcode):
         self.command = command
         self.retcode = retcode
+
+
+class NoReleaserConfig(Exception):
+    """No releaser config present"""
 
 
 def increase_version(version, idx=-1):
@@ -148,11 +155,15 @@ def find_last_version(tree, cfg):
 
 
 def release_project(repo_url, force=False, new_version=None):
-    from .config import read_project
+    from .config import read_project, Project
 
     branch = Branch.open(repo_url)
     with Workspace(branch) as ws:
-        cfg = read_project(ws.local_tree.get_file("releaser.conf"))
+        try:
+            with ws.local_tree.get_file("releaser.conf") as f:
+                cfg = read_project(f)
+        except NoSuchFile:
+            raise NoReleaserConfig()
         try:
             check_release_age(ws.local_tree.branch, cfg)
         except RecentCommits:
@@ -233,30 +244,66 @@ def create_github_release(repo_url, tag_name, version, description):
         message=description or ('Release %s.' % version))
 
 
+def pypi_discover_urls():
+    import xmlrpc.client
+    from configparser import RawConfigParser
+    client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
+    cp = RawConfigParser()
+    cp.read(os.path.expanduser('~/.pypirc'))
+    username = cp.get('pypi', 'username')
+    ret = []
+    for relation, package in client.user_packages(username):
+        with urlopen('https://pypi.org/pypi/%s/json' % package) as f:
+            data = json.load(f)
+        for key, url in data['info']['project_urls'].items():
+            if key == 'Repository':
+                ret.append(url)
+                break
+            parsed_url = urlparse(url)
+            if (parsed_url.hostname == 'github.com' and
+                    parsed_url.path.strip('/').count('/') == 1):
+                ret.append(url)
+                break
+    return ret
+
+
 def main(argv=None):
     import argparse
 
     parser = argparse.ArgumentParser("releaser")
     parser.add_argument("url", nargs="?", type=str)
     parser.add_argument("--new-version", type=str)
+    parser.add_argument("--discover", action='store_true')
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
 
-    try:
-        release_project(args.url or ".", force=args.force, new_version=args.new_version)
-    except RecentCommits as e:
-        logging.error("Recent commits exist (%d < %d)", e.min_commit_age, e.commit_age)
-        return 1
-    except VerifyCommandFailed as e:
-        logging.error('Verify command (%s) failed to run.', e.command)
-        return 1
-    except NoUnreleasedChanges:
-        logging.error('No unreleased changes')
-        return 1
+    if not args.discover:
+        urls = [args.url or "."]
+    else:
+        urls = pypi_discover_urls()
 
-    return 0
+    ret = 0
+    for url in urls:
+        if url != ".":
+            logging.info('Processing %s', url)
+        try:
+            release_project(url, force=args.force, new_version=args.new_version)
+        except RecentCommits as e:
+            logging.error("Recent commits exist (%d < %d)", e.min_commit_age, e.commit_age)
+            ret = 1
+        except VerifyCommandFailed as e:
+            logging.error('Verify command (%s) failed to run.', e.command)
+            ret = 1
+        except NoUnreleasedChanges:
+            logging.error('No unreleased changes')
+            ret = 1
+        except NoReleaserConfig:
+            logging.error('No configuration for releaser')
+            ret = 1
+
+    return ret
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 from google.protobuf import text_format
 
 from . import config_pb2
+Project = config_pb2.Project
 
 
 def read_config(f):
