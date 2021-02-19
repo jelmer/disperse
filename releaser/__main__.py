@@ -181,10 +181,16 @@ def release_project(repo_url, force=False, new_version=None):
                     new_version = last_version
             logging.info('Using new version: %s', new_version)
 
+        if cfg.pre_dist_command:
+            subprocess.check_call(
+                cfg.pre_dist_command, cwd=ws.local_tree.abspath('.'),
+                shell=True)
+
         if cfg.verify_command:
             try:
                 subprocess.check_call(
-                    cfg.verify_command, cwd=ws.local_tree.abspath("."), shell=True
+                    cfg.verify_command, cwd=ws.local_tree.abspath("."),
+                    shell=True
                 )
             except subprocess.CalledProcessError as e:
                 raise VerifyCommandFailed(cfg.verify_command, e.returncode)
@@ -272,9 +278,14 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser("releaser")
     parser.add_argument("url", nargs="?", type=str)
-    parser.add_argument("--new-version", type=str)
-    parser.add_argument("--discover", action='store_true')
-    parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--new-version", type=str, help='New version to release.')
+    parser.add_argument(
+        "--discover", action='store_true',
+        help='Discover relevant projects to release')
+    parser.add_argument(
+        "--force", action="store_true",
+        help='Force a new release, even if timeout is not reached.')
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
@@ -282,6 +293,9 @@ def main(argv=None):
     if not args.discover:
         urls = [args.url or "."]
     else:
+        if args.new_version:
+            parser.print_usage()
+            return 1
         urls = pypi_discover_urls()
 
     ret = 0

@@ -20,6 +20,8 @@ message Project {
     optional string verify_command = 6;
 
     repeated UpdateVersion update_version = 7;
+
+    optional string pre_dist_command = 8;
 };
 
 message Config {
