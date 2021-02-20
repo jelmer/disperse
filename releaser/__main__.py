@@ -16,7 +16,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 from datetime import datetime
-from github import Github  # type: ignore
+from glob import glob
 import json
 import logging
 import os
@@ -25,6 +25,8 @@ import subprocess
 import sys
 from urllib.request import urlopen
 from urllib.parse import urlparse
+
+from github import Github  # type: ignore
 
 import breezy.git
 import breezy.bzr  # noqa: F401
@@ -72,20 +74,26 @@ def find_pending_version(tree, cfg):
     if cfg.news_file:
         with tree.get_file(cfg.news_file) as f:
             line = f.readline()
-            (version, date) = line.strip().split(None, 1)
-            if date != b"UNRELEASED":
-                raise NoUnreleasedChanges()
+            if b'\t' in line.strip():
+                (version, date) = line.strip().split(None, 1)
+                if date != b"UNRELEASED":
+                    raise NoUnreleasedChanges()
+            else:
+                version = line.strip()
             return version.decode()
     else:
         raise NotImplementedError
 
 
-def news_mark_released(tree, path, expected_version):
+def news_mark_released(tree, path, expected_version, release_date):
     with tree.get_file(path) as f:
         lines = list(f.readlines())
-    (version, date) = lines[0].strip().split(None, 1)
-    if date != b"UNRELEASED":
-        raise NoUnreleasedChanges()
+    if b'\t' in lines[0].strip():
+        (version, date) = lines[0].strip().split(None, 1)
+        if date != b"UNRELEASED":
+            raise NoUnreleasedChanges()
+    else:
+        version = lines[0].strip()
     if expected_version != version.decode():
         raise AssertionError(
             "unexpected version: %s != %s" % (version, expected_version)
@@ -96,7 +104,8 @@ def news_mark_released(tree, path, expected_version):
             change_lines.append(line.decode())
         else:
             break
-    lines[0] = b"%s\t%s\n" % (version, datetime.now().strftime("%Y-%m-%d").encode())
+    lines[0] = b"%s\t%s\n" % (
+        version, release_date.strftime("%Y-%m-%d").encode())
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
     return ''.join(change_lines)
 
@@ -104,8 +113,12 @@ def news_mark_released(tree, path, expected_version):
 def news_add_pending(tree, path, new_version):
     with tree.get_file(path) as f:
         lines = list(f.readlines())
-    lines.insert(0, b'\n')
-    lines.insert(0, b"%s\t%s\n" % (new_version, 'UNRELEASED'))
+    if b' ' in lines[0] or b'\t' in lines[0]:
+        lines.insert(0, b'\n')
+        lines.insert(0, b"%s\t%s\n" % (new_version, 'UNRELEASED'))
+    else:
+        lines.insert(0, b'\n')
+        lines.insert(0, b"%s\n" % (new_version, ))
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
 
 
@@ -130,11 +143,42 @@ def update_version_in_file(tree, update_cfg, new_version):
     tree.put_file_bytes_non_atomic(update_cfg.path, b"".join(lines))
 
 
-def check_release_age(branch, cfg):
+def update_version_in_manpage(tree, path, new_version, release_date):
+    with tree.get_file(path) as f:
+        lines = list(f.readlines())
+    matches = 0
+    r = re.compile(
+        b'^\\.TH ([^ ]+) ([0-9]) (20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]) ')
+    for i, line in enumerate(lines):
+        m = r.match(line)
+        if not m:
+            continue
+        lines[i] = b'.TH %s %s %s ' % (
+            m.group(1), m.group(2),
+            release_date.strftime("%Y-%m-%d").encode())
+        matches += 1
+    if matches == 0:
+        raise Exception("No matches for date or version in %s" % (path, ))
+    tree.put_file_bytes_non_atomic(path, b"".join(lines))
+
+
+def update_version_in_cargo(tree, new_version):
+    from toml.decoder import load, TomlPreserveCommentDecoder
+    from toml.encoder import dumps, TomlPreserveCommentEncoder
+    with open(tree.abspath('Cargo.toml'), 'r') as f:
+        d = load(f, dict, TomlPreserveCommentDecoder())
+    d['package']['version'] = new_version
+    tree.put_file_bytes_non_atomic(
+        'Cargo.toml',
+        dumps(d, TomlPreserveCommentEncoder()).encode())
+    subprocess.check_call(['cargo', 'update'], cwd=tree.abspath('.'))
+
+
+def check_release_age(branch, cfg, now):
     rev = branch.repository.get_revision(branch.last_revision())
     if cfg.timeout_days is not None:
         commit_time = datetime.fromtimestamp(rev.timestamp)
-        time_delta = datetime.now() - commit_time
+        time_delta = now - commit_time
         if time_delta.days < cfg.timeout_days:
             raise RecentCommits(time_delta.days, cfg.timeout_days)
 
@@ -157,6 +201,7 @@ def find_last_version(tree, cfg):
 def release_project(repo_url, force=False, new_version=None):
     from .config import read_project, Project
 
+    now = datetime.now()
     branch = Branch.open(repo_url)
     with Workspace(branch) as ws:
         try:
@@ -165,7 +210,7 @@ def release_project(repo_url, force=False, new_version=None):
         except NoSuchFile:
             raise NoReleaserConfig()
         try:
-            check_release_age(ws.local_tree.branch, cfg)
+            check_release_age(ws.local_tree.branch, cfg, now)
         except RecentCommits:
             if not force:
                 raise
@@ -197,11 +242,19 @@ def release_project(repo_url, force=False, new_version=None):
 
         logging.info("releasing %s", new_version)
         if cfg.news_file:
-            release_changes = news_mark_released(ws.local_tree, cfg.news_file, new_version)
+            release_changes = news_mark_released(
+                ws.local_tree, cfg.news_file, new_version, now)
         else:
             release_changes = None
         for update in cfg.update_version:
             update_version_in_file(ws.local_tree, update, new_version)
+        for update in cfg.update_manpages:
+            for path in glob(ws.local_tree.abspath(update)):
+                update_version_in_manpage(
+                    ws.local_tree, ws.local_tree.relpath(path), new_version,
+                    now)
+        if ws.local_tree.has_filename("Cargo.toml"):
+            update_version_in_cargo(ws.local_tree, new_version)
         ws.local_tree.commit("Release %s." % new_version)
         tag_name = cfg.tag_name.replace("$VERSION", new_version)
         logging.info('Creating tag %s', tag_name)
@@ -224,6 +277,9 @@ def release_project(repo_url, force=False, new_version=None):
             subprocess.check_call(
                 ["twine", "upload", "--sign", pypi_path], cwd=ws.local_tree.abspath(".")
             )
+        if ws.local_tree.has_filename("Cargo.toml"):
+            subprocess.check_call(
+                ["cargo", "upload"], cwd=ws.local_tree.abspath("."))
         for loc in cfg.tarball_location:
             subprocess.check_call(["scp", ws.local_tree.abspath(pypi_path), loc])
         if urlparse(repo_url).hostname == 'github.com':

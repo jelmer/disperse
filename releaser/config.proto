@@ -21,7 +21,9 @@ message Project {
 
     repeated UpdateVersion update_version = 7;
 
-    optional string pre_dist_command = 8;
+    repeated string update_manpages = 8;
+
+    optional string pre_dist_command = 9;
 };
 
 message Config {
