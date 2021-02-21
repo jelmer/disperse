@@ -1,0 +1,21 @@
+Some of the settings in releaser.conf could be autodetected:
+
+news_file
+---------
+
+Probe for the existence of any of a number of files: ['NEWS', 'CHANGES.md', 'CHANGES']
+
+tag_name
+--------
+
+Query upstream_ontologist for the version tag convention that upstream uses.
+
+verify_command
+--------------
+
+Default to 'ogni test'
+
+update_manages
+--------------
+
+Check for the existence of a man/ or manpages/ directory.

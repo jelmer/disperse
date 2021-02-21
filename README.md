@@ -15,11 +15,33 @@ It can do one or more of the following:
  * verify that the testsuite runs successfully
  * optionally only create a release if there were no changes to the repository
    in the last X days (useful for running in a cronjob)
- * upload to pypi, if the project is a Python project
+ * upload to a repository site:
+  + pypi, if the project is a Python project
+  + crates.io, if the project is a rust project
  * create a git tag for the new release
+ * create "release" entries on GitHub
+
+Configuration
+-------------
+
+To a large extent, releaser will automatically figure out what needs to happen.
+It can discover the projects you maintain on pypi by reading ~/.pypirc for your
+username and enumerating them.
+
+It can parse and modify setup.py and Cargo.toml files.
+
+It uses a configuration file (releaser.conf) for anything that can not be
+autodetected, and which lives in the repository root.
+
+For example::
+
+   tag_format: "dulwich-%(release)s"
+   news_path: "NEWS"
+
+Future
+------
 
 In the future, I would like it to:
 
- * support more languages than just python
+ * support more languages than just python and rust
  * check that the CI passes for the main branch on e.g. GitHub
- * create "release" entries on GitHub
