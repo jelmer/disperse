@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+from typing import Optional
 from urllib.request import urlopen
 from urllib.parse import urlparse
 
@@ -198,7 +199,9 @@ def find_last_version(tree, cfg):
         raise NotImplementedError
 
 
-def release_project(repo_url, force=False, new_version=None):
+def release_project(
+        repo_url: str, force: bool = False,
+        new_version: Optional[str] = None):
     from .config import read_project, Project
 
     now = datetime.now()
