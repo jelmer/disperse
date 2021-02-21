@@ -1,0 +1,7 @@
+Rather than having one gigantic function that has all of the things to execute
+in order, we should probably have some sort of infrastructure that allows
+actions to be scheduled - with dependencies.
+
+As the first step, we would figure out what needed to be done - based on
+releaser.conf and any buildsystem-specific files. We'd add the tasks
+to a queue and then report on their progress - until one fails.

@@ -20,5 +20,5 @@ setup(
             ('releaser=releaser.__main__:main'),
         ],
     },
-    install_requires=['breezy', 'github'],
+    install_requires=['breezy', 'github', 'silver_platter'],
 )
