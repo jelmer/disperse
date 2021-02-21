@@ -199,10 +199,10 @@ def find_last_version(tree, cfg):
         raise NotImplementedError
 
 
-def release_project(
+def release_project(   # noqa: C901
         repo_url: str, force: bool = False,
         new_version: Optional[str] = None):
-    from .config import read_project, Project
+    from .config import read_project
 
     now = datetime.now()
     branch = Branch.open(repo_url)
