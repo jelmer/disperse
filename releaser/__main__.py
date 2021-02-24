@@ -193,7 +193,11 @@ def find_last_version(tree, cfg):
             for i, line in enumerate(lines):
                 m = r.match(line)
                 if m:
-                    return m.group(1).decode()
+                    try:
+                        return m.group(1).decode()
+                    except IndexError:
+                        # No groups specified :(
+                        break
         raise KeyError
     else:
         raise NotImplementedError
