@@ -38,7 +38,11 @@ from silver_platter.workspace import Workspace
 
 
 from . import NoUnreleasedChanges
-from .news_file import news_mark_released, news_add_pending
+from .news_file import (
+    news_mark_released,
+    news_add_pending,
+    news_find_pending,
+    )
 
 
 class RecentCommits(Exception):
@@ -73,15 +77,7 @@ def increase_version(version, idx=-1):
 
 def find_pending_version(tree, cfg):
     if cfg.news_file:
-        with tree.get_file(cfg.news_file) as f:
-            line = f.readline()
-            if b'\t' in line.strip():
-                (version, date) = line.strip().split(None, 1)
-                if date != b"UNRELEASED":
-                    raise NoUnreleasedChanges()
-            else:
-                version = line.strip()
-            return version.decode()
+        return news_find_pending(tree, cfg.news_file)
     else:
         raise NotImplementedError
 
@@ -242,7 +238,7 @@ def release_project(   # noqa: C901
 
             result = run_setup(ws.local_tree.abspath("setup.py"), stop_after="init")
             pypi_path = os.path.join(
-                "dist", "%s-%s.tar.gz" % (result.get_name(), new_version)
+                "dist", "%s-%s.tar.gz" % (result.get_name(), new_version)  # type: ignore
             )
             subprocess.check_call(
                 ["twine", "upload", "--sign", pypi_path], cwd=ws.local_tree.abspath(".")

@@ -55,3 +55,15 @@ def news_add_pending(tree, path, new_version):
         lines.insert(0, b'\n')
         lines.insert(0, b"%s\n" % (new_version, ))
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
+
+
+def news_find_pending(tree, path):
+    with tree.get_file(path) as f:
+        line = f.readline()
+        if b'\t' in line.strip():
+            (version, date) = line.strip().split(None, 1)
+            if date != b"UNRELEASED":
+                raise NoUnreleasedChanges()
+        else:
+            version = line.strip()
+        return version.decode()
