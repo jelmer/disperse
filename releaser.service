@@ -1,0 +1,12 @@
+[Unit]
+Description=Release new versions of my projects
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=python3 -m releaser --discover
+RemainAfterExit=true
+StandardOutput=journal
+
+[Install]
+WantedBy=multi-user.target
