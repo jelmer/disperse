@@ -39,8 +39,7 @@ from silver_platter.workspace import Workspace
 
 from . import NoUnreleasedChanges
 from .news_file import (
-    news_mark_released,
-    news_add_pending,
+    NewsFile,
     news_find_pending,
     )
 
@@ -208,9 +207,10 @@ def release_project(   # noqa: C901
 
         logging.info("releasing %s", new_version)
         if cfg.news_file:
-            release_changes = news_mark_released(
-                ws.local_tree, cfg.news_file, new_version, now)
+            news_file = NewsFile(ws.local_tree, cfg.news_file)
+            release_changes = news_file.mark_released(new_version, now)
         else:
+            news_file = None
             release_changes = None
         for update in cfg.update_version:
             update_version_in_file(ws.local_tree, update, new_version)
@@ -256,8 +256,8 @@ def release_project(   # noqa: C901
         #  * Update NEWS and version strings for next version
         new_pending_version = increase_version(new_version, -1)
         logging.info('Using new version %s', new_pending_version)
-        if cfg.news_file:
-            news_add_pending(ws.local_tree, cfg.news_file, new_pending_version)
+        if news_file:
+            news_file.add_pending(new_pending_version)
             ws.local_tree.commit('Start on %s' % new_pending_version)
             ws.push()
 
