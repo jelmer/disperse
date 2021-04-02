@@ -56,7 +56,7 @@ def news_mark_released(
             change_lines.append(line.decode())
         else:
             break
-    lines[i] = line_format.format({
+    lines[i] = (line_format % {
         'version': version,
         'date': release_date.strftime("%Y-%m-%d")}).encode() + b'\n'
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
@@ -68,7 +68,7 @@ def news_add_pending(tree, path, new_version):
     i = skip_header(lines)
     unused_version, unused_date, line_format = parse_version_line(lines[i])
     lines.insert(i, b'\n')
-    lines.insert(i, line_format.format({
+    lines.insert(i, (line_format % {
         'version': new_version,
         'date': 'UNRELEASED'}).encode() + b"\n")
     tree.put_file_bytes_non_atomic(path, b"".join(lines))

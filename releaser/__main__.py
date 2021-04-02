@@ -105,18 +105,33 @@ def update_version_in_file(tree, update_cfg, new_version):
 def update_version_in_manpage(tree, path, new_version, release_date):
     with tree.get_file(path) as f:
         lines = list(f.readlines())
-    matches = 0
-    r = re.compile(
-        b'^\\.TH ([^ ]+) ([0-9]) (20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]) ')
+    DATE_OPTIONS = [
+        ('20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]', "%Y-%m-%d"),
+        ('[A-Za-z]+ ([0-9]{4})', '%B %Y'),
+    ]
+    VERSION_OPTIONS = [
+        ('([^ ]+) ([0-9a-z.]+)', r'\1 $VERSION'),
+    ]
+    import shlex
     for i, line in enumerate(lines):
-        m = r.match(line)
-        if not m:
+        if not line.startswith(b'.TH '):
             continue
-        lines[i] = b'.TH %s %s %s ' % (
-            m.group(1), m.group(2),
-            release_date.strftime("%Y-%m-%d").encode())
-        matches += 1
-    if matches == 0:
+        args = shlex.split(line.decode())
+        for r, f in DATE_OPTIONS:
+            m = re.fullmatch(r, args[3])
+            if m:
+                args[3] = release_date.strftime(f)
+                break
+        else:
+            raise Exception('Unable to find format for date %s' % args[3])
+        for r, f in VERSION_OPTIONS:
+            m = re.fullmatch(r, args[4])
+            if m:
+                args[4] = re.sub(r, f.replace('$VERSION', new_version), args[4])
+                break
+        lines[i] = b' '.join([('"' + arg.replace('"', '"\'"\'"') + "'").encode() for arg in args]) + b'\n'
+        break
+    else:
         raise Exception("No matches for date or version in %s" % (path, ))
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
 
