@@ -129,7 +129,7 @@ def update_version_in_manpage(tree, path, new_version, release_date):
             if m:
                 args[4] = re.sub(r, f.replace('$VERSION', new_version), args[4])
                 break
-        lines[i] = b' '.join([('"' + arg.replace('"', '"\'"\'"') + "'").encode() for arg in args]) + b'\n'
+        lines[i] = shlex.join(args).encode() + b'\n'
         break
     else:
         raise Exception("No matches for date or version in %s" % (path, ))
@@ -221,6 +221,7 @@ def release_project(   # noqa: C901
                 raise VerifyCommandFailed(cfg.verify_command, e.returncode)
 
         logging.info("releasing %s", new_version)
+        news_file: Optional[NewsFile]
         if cfg.news_file:
             news_file = NewsFile(ws.local_tree, cfg.news_file)
             release_changes = news_file.mark_released(new_version, now)
