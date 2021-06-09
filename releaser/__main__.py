@@ -63,6 +63,13 @@ class VerifyCommandFailed(Exception):
         self.retcode = retcode
 
 
+class UploadCommandFailed(Exception):
+
+    def __init__(self, command, retcode):
+        self.command = command
+        self.retcode = retcode
+
+
 class NoReleaserConfig(Exception):
     """No releaser config present"""
 
@@ -256,9 +263,11 @@ def release_project(   # noqa: C901
             pypi_path = os.path.join(
                 "dist", "%s-%s.tar.gz" % (result.get_name(), new_version)  # type: ignore
             )
-            subprocess.check_call(
-                ["twine", "upload", "--sign", pypi_path], cwd=ws.local_tree.abspath(".")
-            )
+            command = ["twine", "upload", "--sign", pypi_path]
+            try:
+                subprocess.check_call(command, cwd=ws.local_tree.abspath("."))
+            except subprocess.CalledProcessError as e:
+                raise UploadCommandFailed(command, e.returncode)
         if ws.local_tree.has_filename("Cargo.toml"):
             subprocess.check_call(
                 ["cargo", "upload"], cwd=ws.local_tree.abspath("."))
@@ -349,6 +358,9 @@ def main(argv=None):
             ret = 1
         except VerifyCommandFailed as e:
             logging.error('Verify command (%s) failed to run.', e.command)
+            ret = 1
+        except UploadCommandFailed as e:
+            logging.error('Upload command (%s) failed to run.', e.command)
             ret = 1
         except NoUnreleasedChanges:
             logging.error('No unreleased changes')
