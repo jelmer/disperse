@@ -34,6 +34,8 @@ import breezy.bzr  # noqa: F401
 from breezy.errors import NoSuchFile
 from breezy.plugins.github.hoster import retrieve_github_token
 from breezy.branch import Branch
+from breezy.tree import InterTree
+from breezy.revision import NULL_REVISION
 from silver_platter.workspace import Workspace
 
 
@@ -183,6 +185,27 @@ def find_last_version(tree, cfg):
         raise NotImplementedError
 
 
+def check_new_revisions(branch, news_file_path=None):
+    tags = branch.tags.get_reverse_tag_dict()
+    graph = branch.repository.get_graph()
+    from_tree = None
+    for revid in graph.iter_lefthand_ancestry(branch.last_revision()):
+        if tags.get(revid):
+            from_tree = branch.repository.revision_tree(revid)
+            break
+    else:
+        from_tree = branch.repository.revision_tree(NULL_REVISION)
+    last_tree = branch.basis_tree()
+    delta = InterTree.get(from_tree, last_tree).compare()
+    if news_file_path:
+        for i in range(len(delta.modified)):
+            if delta.modified[i].path == (news_file_path, news_file_path):
+                del delta.modified[i]
+                break
+    if not delta.has_changed():
+        raise NoUnreleasedChanges()
+
+
 def release_project(   # noqa: C901
         repo_url: str, force: bool = False,
         new_version: Optional[str] = None):
@@ -196,6 +219,7 @@ def release_project(   # noqa: C901
                 cfg = read_project(f)
         except NoSuchFile:
             raise NoReleaserConfig()
+        check_new_revisions(ws.local_tree.branch, cfg.news_file)
         try:
             check_release_age(ws.local_tree.branch, cfg, now)
         except RecentCommits:
