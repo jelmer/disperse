@@ -7,7 +7,7 @@ setup(
     packages=[
         "releaser",
     ],
-     version="0.0.1",
+    version="0.0.1",
     author="Jelmer Vernooij",
     author_email="jelmer@jelmer.uk",
     url="https://github.com/jelmer/releaser",
