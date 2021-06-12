@@ -2,3 +2,4 @@
 *_pb2.py
 __pycache__
 .mypy_cache/
+*.pyi

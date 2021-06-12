@@ -361,7 +361,7 @@ def main(argv=None):
         help='Force a new release, even if timeout is not reached.')
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO, format='%(message)s')
 
     if not args.discover:
         urls = [args.url or "."]
