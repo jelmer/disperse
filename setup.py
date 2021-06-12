@@ -6,6 +6,7 @@ setup(
     name="releaser",
     packages=[
         "releaser",
+        "releaser.tests",
     ],
     version="0.0.1",
     author="Jelmer Vernooij",
