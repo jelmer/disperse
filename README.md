@@ -16,8 +16,8 @@ It can do one or more of the following:
  * optionally only create a release if there were no changes to the repository
    in the last X days (useful for running in a cronjob)
  * upload to a repository site:
-  + pypi, if the project is a Python project
-  + crates.io, if the project is a rust project
+    * pypi, if the project is a Python project
+    * crates.io, if the project is a rust project
  * create a git tag for the new release
  * create "release" entries on GitHub
 
