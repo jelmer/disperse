@@ -20,8 +20,8 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
-        sudo apt install protobuf-compiler mypy-protobuf
-        python -m pip install --upgrade pip flake8 cython
+        sudo apt install protobuf-compiler
+        python -m pip install --upgrade pip flake8 cython mypy-protobuf
         python setup.py develop
         protoc --python_out=. --mypy_out=. releaser/config.proto
     - name: Style checks
