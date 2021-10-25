@@ -334,7 +334,11 @@ def pypi_discover_urls():
     for relation, package in client.user_packages(username):
         with urlopen('https://pypi.org/pypi/%s/json' % package) as f:
             data = json.load(f)
-        for key, url in data['info']['project_urls'].items():
+        project_urls = data['info']['project_urls']
+        if project_urls is None:
+            logging.warning('Project %s does not have project URLs', package)
+            continue
+        for key, url in project_urls.items():
             if key == 'Repository':
                 ret.append(url)
                 break
