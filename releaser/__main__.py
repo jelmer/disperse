@@ -210,10 +210,26 @@ def release_project(   # noqa: C901
         repo_url: str, force: bool = False,
         new_version: Optional[str] = None):
     from .config import read_project
+    from breezy.transport.local import LocalTransport
+    from breezy.git.branch import GitBranch
 
     now = datetime.now()
     branch = Branch.open(repo_url)
-    with Workspace(branch) as ws:
+
+    if not isinstance(branch.user_transport, LocalTransport):
+        public_repo_url = repo_url
+        public_branch = branch
+        local_branch = None
+    elif branch.get_public_branch():
+        public_repo_url = branch.get_public_branch()
+        public_branch = Branch.open(public_repo_url)
+        local_branch = branch
+    else:
+        public_repo_url = branch.get_push_location()
+        public_branch = Branch.open(public_repo_url)
+        local_branch = branch
+
+    with Workspace(public_branch) as ws:
         try:
             with ws.local_tree.get_file("releaser.conf") as f:
                 cfg = read_project(f)
@@ -297,9 +313,9 @@ def release_project(   # noqa: C901
                 ["cargo", "upload"], cwd=ws.local_tree.abspath("."))
         for loc in cfg.tarball_location:
             subprocess.check_call(["scp", ws.local_tree.abspath(pypi_path), loc])
-        if urlparse(repo_url).hostname == 'github.com':
+        if public_repo_url is not None and urlparse(public_repo_url).hostname == 'github.com':
             create_github_release(
-                repo_url, tag_name, new_version, release_changes)
+                public_repo_url, tag_name, new_version, release_changes)
         # TODO(jelmer): Mark any news bugs in NEWS as fixed [later]
         # * Commit:
         #  * Update NEWS and version strings for next version
@@ -309,6 +325,8 @@ def release_project(   # noqa: C901
             news_file.add_pending(new_pending_version)
             ws.local_tree.commit('Start on %s' % new_pending_version)
             ws.push()
+    if local_branch is not None:
+        local_branch.pull(public_branch)
 
 
 def create_github_release(repo_url, tag_name, version, description):
@@ -316,6 +334,7 @@ def create_github_release(repo_url, tag_name, version, description):
     fullname = '/'.join(parsed_url.path.strip('/').split('/')[:2])
     token = retrieve_github_token(parsed_url.scheme, parsed_url.hostname)
     gh = Github(token)
+    logging.info('Finding project %s on GitHub', fullname)
     repo = gh.get_repo(fullname)
     logging.info('Creating release on GitHub')
     repo.create_git_release(
