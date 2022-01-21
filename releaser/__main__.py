@@ -225,8 +225,8 @@ def release_project(   # noqa: C901
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
     elif branch.get_submit_branch():
-        submit_repo_url = branch.get_submit_branch()
-        public_branch = Branch.open(submit_repo_url)
+        public_repo_url = branch.get_submit_branch()
+        public_branch = Branch.open(public_repo_url)
         local_branch = branch
     else:
         public_repo_url = branch.get_push_location()
