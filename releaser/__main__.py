@@ -224,12 +224,16 @@ def release_project(   # noqa: C901
         public_repo_url = branch.get_public_branch()
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
+    elif branch.get_submit_branch():
+        submit_repo_url = branch.get_submit_branch()
+        public_branch = Branch.open(submit_repo_url)
+        local_branch = branch
     else:
         public_repo_url = branch.get_push_location()
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
 
-    with Workspace(public_branch) as ws:
+    with Workspace(public_branch, resume_branch=local_branch) as ws:
         try:
             with ws.local_tree.get_file("releaser.conf") as f:
                 cfg = read_project(f)
