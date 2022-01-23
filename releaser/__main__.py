@@ -211,7 +211,6 @@ def release_project(   # noqa: C901
         new_version: Optional[str] = None):
     from .config import read_project
     from breezy.transport.local import LocalTransport
-    from breezy.git.branch import GitBranch
 
     now = datetime.now()
     branch = Branch.open(repo_url)
