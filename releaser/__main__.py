@@ -189,21 +189,22 @@ def check_new_revisions(branch, news_file_path=None):
     tags = branch.tags.get_reverse_tag_dict()
     graph = branch.repository.get_graph()
     from_tree = None
-    for revid in graph.iter_lefthand_ancestry(branch.last_revision()):
-        if tags.get(revid):
-            from_tree = branch.repository.revision_tree(revid)
-            break
-    else:
-        from_tree = branch.repository.revision_tree(NULL_REVISION)
-    last_tree = branch.basis_tree()
-    delta = InterTree.get(from_tree, last_tree).compare()
-    if news_file_path:
-        for i in range(len(delta.modified)):
-            if delta.modified[i].path == (news_file_path, news_file_path):
-                del delta.modified[i]
+    with branch.lock_read():
+        for revid in graph.iter_lefthand_ancestry(branch.last_revision()):
+            if tags.get(revid):
+                from_tree = branch.repository.revision_tree(revid)
                 break
-    if not delta.has_changed():
-        raise NoUnreleasedChanges()
+        else:
+            from_tree = branch.repository.revision_tree(NULL_REVISION)
+        last_tree = branch.basis_tree()
+        delta = InterTree.get(from_tree, last_tree).compare()
+        if news_file_path:
+            for i in range(len(delta.modified)):
+                if delta.modified[i].path == (news_file_path, news_file_path):
+                    del delta.modified[i]
+                    break
+        if not delta.has_changed():
+            raise NoUnreleasedChanges()
 
 
 def release_project(   # noqa: C901
@@ -290,10 +291,13 @@ def release_project(   # noqa: C901
         ws.local_tree.commit("Release %s." % new_version)
         tag_name = cfg.tag_name.replace("$VERSION", new_version)
         logging.info('Creating tag %s', tag_name)
-        subprocess.check_call(
-            ["git", "tag", "-as", tag_name, "-m", "Release %s" % new_version],
-            cwd=ws.local_tree.abspath("."),
-        )
+        if hasattr(ws.local_tree.branch.repository, '_git'):
+            subprocess.check_call(
+                ["git", "tag", "-as", tag_name, "-m", "Release %s" % new_version],
+                cwd=ws.local_tree.abspath("."),
+            )
+        else:
+            ws.local_tree.branch.tags.set_tag(tag_name, ws.local_tree.last_revision())
         # At this point, it's official - so let's push.
         ws.push(tags=[tag_name])
         if ws.local_tree.has_filename("setup.py"):
