@@ -426,7 +426,8 @@ def main(argv=None):
             release_project(url, force=args.force, new_version=args.new_version)
         except RecentCommits as e:
             logging.error("Recent commits exist (%d < %d)", e.min_commit_age, e.commit_age)
-            ret = 1
+            if not args.discover:
+                ret = 1
         except VerifyCommandFailed as e:
             logging.error('Verify command (%s) failed to run.', e.command)
             ret = 1
@@ -435,10 +436,12 @@ def main(argv=None):
             ret = 1
         except NoUnreleasedChanges:
             logging.error('No unreleased changes')
-            ret = 1
+            if not args.discover:
+                ret = 1
         except NoReleaserConfig:
             logging.error('No configuration for releaser')
-            ret = 1
+            if not args.discover:
+                ret = 1
 
     return ret
 
