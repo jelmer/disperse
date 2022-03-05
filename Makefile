@@ -9,3 +9,7 @@ clean:
 check:
 	flake8
 	PYTHONPATH=. python3 -m unittest releaser.tests.test_suite
+
+docker:
+	docker build -t ghcr.io/jelmer/releaser .
+	docker push ghcr.io/jelmer/releaser

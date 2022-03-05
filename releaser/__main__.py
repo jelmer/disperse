@@ -318,7 +318,7 @@ def release_project(   # noqa: C901
             pypi_path = os.path.join(
                 "dist", "%s-%s.tar.gz" % (result.get_name(), new_version)  # type: ignore
             )
-            command = ["twine", "upload", "--sign", pypi_path]
+            command = ["twine", "upload", "--non-interactive", "--sign", pypi_path]
             try:
                 subprocess.check_call(command, cwd=ws.local_tree.abspath("."))
             except subprocess.CalledProcessError as e:
@@ -364,7 +364,9 @@ def pypi_discover_urls():
     from configparser import RawConfigParser
     client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
     cp = RawConfigParser()
-    cp.read(os.path.expanduser('~/.pypirc'))
+    config_file_path = os.environ.get(
+        'TWINE_CONFIG_FILE', os.path.expanduser('~/.pypirc'))
+    cp.read(config_file_path)
     username = cp.get('pypi', 'username')
     ret = []
     for relation, package in client.user_packages(username):
