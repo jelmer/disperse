@@ -211,10 +211,11 @@ def release_project(   # noqa: C901
         repo_url: str, force: bool = False,
         new_version: Optional[str] = None):
     from .config import read_project
+    from breezy.controldir import ControlDir
     from breezy.transport.local import LocalTransport
 
     now = datetime.now()
-    branch = Branch.open(repo_url)
+    local_wt, branch = ControlDir.open_tree_or_branch(repo_url)
 
     if not isinstance(branch.user_transport, LocalTransport):
         public_repo_url = repo_url
@@ -224,14 +225,17 @@ def release_project(   # noqa: C901
         public_repo_url = branch.get_public_branch()
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
+        logging.info('Using public branch %s', public_repo_url)
     elif branch.get_submit_branch():
         public_repo_url = branch.get_submit_branch()
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
+        logging.info('Using public branch %s', public_repo_url)
     else:
         public_repo_url = branch.get_push_location()
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
+        logging.info('Using public branch %s', public_repo_url)
 
     with Workspace(public_branch, resume_branch=local_branch) as ws:
         try:
@@ -332,7 +336,9 @@ def release_project(   # noqa: C901
             news_file.add_pending(new_pending_version)
             ws.local_tree.commit('Start on %s' % new_pending_version)
             ws.push()
-    if local_branch is not None:
+    if local_wt is not None:
+        local_wt.pull(public_branch)
+    elif local_branch is not None:
         local_branch.pull(public_branch)
 
 
@@ -342,6 +348,7 @@ def create_github_release(repo_url, tag_name, version, description):
     token = retrieve_github_token(parsed_url.scheme, parsed_url.hostname)
     gh = Github(token)
     logging.info('Finding project %s on GitHub', fullname)
+    import pdb; pdb.set_trace()
     repo = gh.get_repo(fullname)
     logging.info('Creating release on GitHub')
     repo.create_git_release(
