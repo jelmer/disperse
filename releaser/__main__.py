@@ -227,7 +227,8 @@ def release_project(   # noqa: C901
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
         logging.info('Using public branch %s', public_repo_url)
-    elif branch.get_submit_branch():
+    elif (branch.get_submit_branch() and
+            not branch.get_submit_branch().startswith('file:')):
         public_repo_url = branch.get_submit_branch()
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
