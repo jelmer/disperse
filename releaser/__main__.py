@@ -363,13 +363,18 @@ def pypi_discover_urls():
     import xmlrpc.client
     from configparser import RawConfigParser
     client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
-    cp = RawConfigParser()
-    config_file_path = os.environ.get(
-        'TWINE_CONFIG_FILE', os.path.expanduser('~/.pypirc'))
-    cp.read(config_file_path)
-    username = cp.get('pypi', 'username')
+    pypi_username = os.environ.get('TWINE_USERNAME')
+    if pypi_username is None:
+        cp = RawConfigParser()
+        config_file_path = os.environ.get(
+            'TWINE_CONFIG_FILE', os.path.expanduser('~/.pypirc'))
+        cp.read(config_file_path)
+        pypi_username = cp.get('pypi', 'username')
+    if pypi_username == '__token__':
+        logging.warning('Unable to determine pypi username')
+        return []
     ret = []
-    for relation, package in client.user_packages(username):
+    for relation, package in client.user_packages(pypi_username):
         with urlopen('https://pypi.org/pypi/%s/json' % package) as f:
             data = json.load(f)
         project_urls = data['info']['project_urls']
