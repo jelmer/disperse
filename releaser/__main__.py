@@ -29,6 +29,7 @@ from urllib.parse import urlparse
 
 from github import Github  # type: ignore
 
+from breezy.urlutils import split_segment_parameters
 import breezy.git
 import breezy.bzr  # noqa: F401
 from breezy.errors import NoSuchFile
@@ -237,6 +238,8 @@ def release_project(   # noqa: C901
         local_branch = branch
         logging.info('Using public branch %s', public_repo_url)
 
+    public_repo_url = split_segment_parameters(public_repo_url)[0]
+
     with Workspace(public_branch, resume_branch=local_branch) as ws:
         try:
             with ws.local_tree.get_file("releaser.conf") as f:
@@ -348,7 +351,6 @@ def create_github_release(repo_url, tag_name, version, description):
     token = retrieve_github_token(parsed_url.scheme, parsed_url.hostname)
     gh = Github(token)
     logging.info('Finding project %s on GitHub', fullname)
-    import pdb; pdb.set_trace()
     repo = gh.get_repo(fullname)
     logging.info('Creating release on GitHub')
     repo.create_git_release(
