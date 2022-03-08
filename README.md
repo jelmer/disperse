@@ -42,6 +42,15 @@ For example:
 
 ```
 
+Running from docker
+-------------------
+
+The easiest way to run releaser is to use the docker image at
+``ghcr.io/jelmer/releaser``. You'll need to make sure that appropriate SSH
+and PGP keys are available.
+
+The author regularly runs releaser inside of a Kubernetes cronjob.
+
 Future
 ------
 
