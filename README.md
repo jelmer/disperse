@@ -33,10 +33,14 @@ It can parse and modify setup.py and Cargo.toml files.
 It uses a configuration file (releaser.conf) for anything that can not be
 autodetected, and which lives in the repository root.
 
-For example::
+For example:
+
+```
 
    tag_format: "dulwich-%(release)s"
    news_path: "NEWS"
+
+```
 
 Future
 ------
