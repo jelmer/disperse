@@ -241,6 +241,15 @@ def release_project(   # noqa: C901
 
     public_repo_url = split_segment_parameters(public_repo_url)[0]
 
+    if public_repo_url:
+        logging.info('Found public repository URL: %s', public_repo_url)
+
+    if public_repo_url is not None and urlparse(public_repo_url).hostname == 'github.com':
+        gh_repo = get_github_repo(public_repo_url)
+        check_gh_repo_action_status(gh_repo, public_branch.name)
+    else:
+        gh_repo = None
+
     with Workspace(public_branch, resume_branch=local_branch) as ws:
         try:
             with ws.local_tree.get_file("releaser.conf") as f:
@@ -328,9 +337,9 @@ def release_project(   # noqa: C901
                 ["cargo", "upload"], cwd=ws.local_tree.abspath("."))
         for loc in cfg.tarball_location:
             subprocess.check_call(["scp", ws.local_tree.abspath(pypi_path), loc])
-        if public_repo_url is not None and urlparse(public_repo_url).hostname == 'github.com':
+        if gh_repo:
             create_github_release(
-                public_repo_url, tag_name, new_version, release_changes)
+                gh_repo, tag_name, new_version, release_changes)
         # TODO(jelmer): Mark any news bugs in NEWS as fixed [later]
         # * Commit:
         #  * Update NEWS and version strings for next version
@@ -346,13 +355,37 @@ def release_project(   # noqa: C901
         local_branch.pull(public_branch)
 
 
-def create_github_release(repo_url, tag_name, version, description):
+def get_github_repo(repo_url):
     parsed_url = urlparse(repo_url)
     fullname = '/'.join(parsed_url.path.strip('/').split('/')[:2])
     token = retrieve_github_token(parsed_url.scheme, parsed_url.hostname)
     gh = Github(token)
     logging.info('Finding project %s on GitHub', fullname)
-    repo = gh.get_repo(fullname)
+    return gh.get_repo(fullname)
+
+
+class GitHubCheckRunFailed(Exception):
+    """A check run failed."""
+
+    def __init__(self, name, sha, branch, html_url):
+        self.name = name
+        self.sha = sha
+        self.branch = branch
+        self.html_url = html_url
+
+
+def check_gh_repo_action_status(repo, branch):
+    if not branch:
+        branch = 'HEAD'
+    commit = repo.get_commit(branch)
+    for check_run in commit.get_check_runs():
+        if check_run.conclusion != 'success':
+            raise GitHubCheckRunFailed(
+                check_run.name, commit.sha, branch,
+                check_run.html_url)
+
+
+def create_github_release(repo, tag_name, version, description):
     logging.info('Creating release on GitHub')
     repo.create_git_release(
         tag=tag_name, name=version, draft=False, prerelease=False,
@@ -440,6 +473,12 @@ def main(argv=None):
                 ret = 1
         except NoReleaserConfig:
             logging.error('No configuration for releaser')
+            if not args.discover:
+                ret = 1
+        except GitHubCheckRunFailed as e:
+            logging.error(
+                'GitHub check %s for commit %s (branch: %s) failed. See %s',
+                e.name, e.sha, e.branch, e.html_url)
             if not args.discover:
                 ret = 1
 
