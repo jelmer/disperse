@@ -8,6 +8,7 @@ likelihood of a brown-bag release.
 
 It can do one or more of the following:
 
+ * check if CI is currently passing (for supported platforms, like GitHub)
  * derive the intended new version by checking existing releases and
    version strings specified in project files
  * update NEWS files with the release date
@@ -19,7 +20,7 @@ It can do one or more of the following:
     * pypi, if the project is a Python project
     * crates.io, if the project is a rust project
  * create a git tag for the new release
- * create "release" entries on GitHub
+ * create "release" entries (on supported platforms, like GitHub)
 
 Configuration
 -------------
