@@ -91,7 +91,7 @@ def find_pending_version(tree, cfg):
         raise NotImplementedError
 
 
-def update_version_in_file(tree, update_cfg, new_version):
+def update_version_in_file(tree, update_cfg, new_version, status):
     with tree.get_file(update_cfg.path) as f:
         lines = list(f.readlines())
     matches = 0
@@ -100,10 +100,12 @@ def update_version_in_file(tree, update_cfg, new_version):
         if not r.match(line):
             continue
         tupled_version = "(%s)" % ", ".join(new_version.split("."))
+        status_tupled_version = "(%s)" % ", ".join(new_version.split(".") + [status, '0'])
         lines[i] = (
             update_cfg.new_line.encode()
             .replace(b"$VERSION", new_version.encode())
             .replace(b"$TUPLED_VERSION", tupled_version.encode())
+            .replace(b"$STATUS_TUPLED_VERSION", status_tupled_version.encode())
             + b"\n"
         )
         matches += 1
@@ -210,7 +212,8 @@ def check_new_revisions(branch, news_file_path=None):
 
 def release_project(   # noqa: C901
         repo_url: str, force: bool = False,
-        new_version: Optional[str] = None):
+        new_version: Optional[str] = None,
+        dry_run: bool = False):
     from .config import read_project
     from breezy.controldir import ControlDir
     from breezy.transport.local import LocalTransport
@@ -239,16 +242,13 @@ def release_project(   # noqa: C901
         local_branch = branch
         logging.info('Using public branch %s', public_repo_url)
 
-    public_repo_url = split_segment_parameters(public_repo_url)[0]
+    if public_repo_url:
+        public_repo_url = split_segment_parameters(public_repo_url)[0]
+    else:
+        public_repo_url = None
 
     if public_repo_url:
         logging.info('Found public repository URL: %s', public_repo_url)
-
-    if public_repo_url is not None and urlparse(public_repo_url).hostname == 'github.com':
-        gh_repo = get_github_repo(public_repo_url)
-        check_gh_repo_action_status(gh_repo, public_branch.name)
-    else:
-        gh_repo = None
 
     with Workspace(public_branch, resume_branch=local_branch) as ws:
         try:
@@ -256,6 +256,16 @@ def release_project(   # noqa: C901
                 cfg = read_project(f)
         except NoSuchFile:
             raise NoReleaserConfig()
+
+        if cfg.github_url:
+            gh_repo = get_github_repo(cfg.github_url)
+            check_gh_repo_action_status(gh_repo, cfg.github_branch or 'HEAD')
+        elif public_repo_url is not None and urlparse(public_repo_url).hostname == 'github.com':
+            gh_repo = get_github_repo(public_repo_url)
+            check_gh_repo_action_status(gh_repo, public_branch.name)
+        else:
+            gh_repo = None
+
         check_new_revisions(ws.local_tree.branch, cfg.news_file)
         try:
             check_release_age(ws.local_tree.branch, cfg, now)
@@ -297,7 +307,7 @@ def release_project(   # noqa: C901
             news_file = None
             release_changes = None
         for update in cfg.update_version:
-            update_version_in_file(ws.local_tree, update, new_version)
+            update_version_in_file(ws.local_tree, update, new_version, "final")
         for update in cfg.update_manpages:
             for path in glob(ws.local_tree.abspath(update)):
                 update_version_in_manpage(
@@ -316,7 +326,7 @@ def release_project(   # noqa: C901
         else:
             ws.local_tree.branch.tags.set_tag(tag_name, ws.local_tree.last_revision())
         # At this point, it's official - so let's push.
-        ws.push(tags=[tag_name])
+        ws.push(tags=[tag_name], dry_run=dry_run)
         if ws.local_tree.has_filename("setup.py"):
             subprocess.check_call(
                 ["./setup.py", "sdist"], cwd=ws.local_tree.abspath(".")
@@ -328,18 +338,30 @@ def release_project(   # noqa: C901
                 "dist", "%s-%s.tar.gz" % (result.get_name(), new_version)  # type: ignore
             )
             command = ["twine", "upload", "--non-interactive", "--sign", pypi_path]
-            try:
-                subprocess.check_call(command, cwd=ws.local_tree.abspath("."))
-            except subprocess.CalledProcessError as e:
-                raise UploadCommandFailed(command, e.returncode)
+            if dry_run:
+                logging.info("skipping twine upload due to dry run mode")
+            else:
+                try:
+                    subprocess.check_call(command, cwd=ws.local_tree.abspath("."))
+                except subprocess.CalledProcessError as e:
+                    raise UploadCommandFailed(command, e.returncode)
         if ws.local_tree.has_filename("Cargo.toml"):
-            subprocess.check_call(
-                ["cargo", "upload"], cwd=ws.local_tree.abspath("."))
+            if dry_run:
+                logging.info("skipping cargo upload due to dry run mode")
+            else:
+                subprocess.check_call(
+                    ["cargo", "upload"], cwd=ws.local_tree.abspath("."))
         for loc in cfg.tarball_location:
-            subprocess.check_call(["scp", ws.local_tree.abspath(pypi_path), loc])
+            if dry_run:
+                logging.info("skipping scp to %s due to dry run mode", loc)
+            else:
+                subprocess.check_call(["scp", ws.local_tree.abspath(pypi_path), loc])
         if gh_repo:
-            create_github_release(
-                gh_repo, tag_name, new_version, release_changes)
+            if dry_run:
+                logging.info("skipping creation of github release due to dry run mode")
+            else:
+                create_github_release(
+                    gh_repo, tag_name, new_version, release_changes)
         # TODO(jelmer): Mark any news bugs in NEWS as fixed [later]
         # * Commit:
         #  * Update NEWS and version strings for next version
@@ -348,14 +370,16 @@ def release_project(   # noqa: C901
         if news_file:
             news_file.add_pending(new_pending_version)
             ws.local_tree.commit('Start on %s' % new_pending_version)
-            ws.push()
-    if local_wt is not None:
-        local_wt.pull(public_branch)
-    elif local_branch is not None:
-        local_branch.pull(public_branch)
+            if not dry_run:
+                ws.push()
+    if not dry_run:
+        if local_wt is not None:
+            local_wt.pull(public_branch)
+        elif local_branch is not None:
+            local_branch.pull(public_branch)
 
 
-def get_github_repo(repo_url):
+def get_github_repo(repo_url: str):
     parsed_url = urlparse(repo_url)
     fullname = '/'.join(parsed_url.path.strip('/').split('/')[:2])
     token = retrieve_github_token(parsed_url.scheme, parsed_url.hostname)
@@ -437,6 +461,9 @@ def main(argv=None):
         "--discover", action='store_true',
         help='Discover relevant projects to release')
     parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Dry run, don't actually create a release.")
+    parser.add_argument(
         "--force", action="store_true",
         help='Force a new release, even if timeout is not reached.')
     args = parser.parse_args()
@@ -456,7 +483,9 @@ def main(argv=None):
         if url != ".":
             logging.info('Processing %s', url)
         try:
-            release_project(url, force=args.force, new_version=args.new_version)
+            release_project(
+                url, force=args.force, new_version=args.new_version,
+                dry_run=args.dry_run)
         except RecentCommits as e:
             logging.error("Recent commits exist (%d < %d)", e.min_commit_age, e.commit_age)
             if not args.discover:

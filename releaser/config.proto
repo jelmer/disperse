@@ -24,6 +24,10 @@ message Project {
     repeated string update_manpages = 8;
 
     optional string pre_dist_command = 9;
+
+    optional string github_url = 10;
+
+    optional string github_branch = 11;
 };
 
 message Config {
