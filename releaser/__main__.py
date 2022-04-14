@@ -380,6 +380,8 @@ def release_project(   # noqa: C901
 
 
 def get_github_repo(repo_url: str):
+    if repo_url.endswith('.git'):
+        repo_url = repo_rul[:-4]
     parsed_url = urlparse(repo_url)
     fullname = '/'.join(parsed_url.path.strip('/').split('/')[:2])
     token = retrieve_github_token(parsed_url.scheme, parsed_url.hostname)
