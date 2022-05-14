@@ -228,6 +228,8 @@ def release_project(   # noqa: C901
     now = datetime.now()
     local_wt, branch = ControlDir.open_tree_or_branch(repo_url)
 
+    public_repo_url: Optional[str]
+
     if not isinstance(branch.user_transport, LocalTransport):
         public_repo_url = repo_url
         public_branch = branch
