@@ -73,6 +73,13 @@ class UploadCommandFailed(Exception):
         self.retcode = retcode
 
 
+class DistCommandFailed(Exception):
+
+    def __init__(self, command, retcode):
+        self.command = command
+        self.retcode = retcode
+
+
 class NoReleaserConfig(Exception):
     """No releaser config present"""
 
@@ -328,9 +335,12 @@ def release_project(   # noqa: C901
         # At this point, it's official - so let's push.
         ws.push(tags=[tag_name], dry_run=dry_run)
         if ws.local_tree.has_filename("setup.py"):
-            subprocess.check_call(
-                ["./setup.py", "sdist"], cwd=ws.local_tree.abspath(".")
-            )
+            try:
+                subprocess.check_call(
+                    ["./setup.py", "sdist"], cwd=ws.local_tree.abspath(".")
+                )
+            except subprocess.CalledProcessError as e:
+                raise DistCommandFailed("setup.py sdist", e.returncode)
             from distutils.core import run_setup
 
             result = run_setup(ws.local_tree.abspath("setup.py"), stop_after="init")
@@ -497,6 +507,9 @@ def main(argv=None):
             ret = 1
         except UploadCommandFailed as e:
             logging.error('Upload command (%s) failed to run.', e.command)
+            ret = 1
+        except DistCommandFailed as e:
+            logging.error('Dist command (%s) failed to run.', e.command)
             ret = 1
         except NoUnreleasedChanges:
             logging.error('No unreleased changes')
