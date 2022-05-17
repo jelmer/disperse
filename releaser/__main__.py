@@ -405,8 +405,9 @@ def get_github_repo(repo_url: str):
 class GitHubCheckRunFailed(Exception):
     """A check run failed."""
 
-    def __init__(self, name, sha, branch, html_url):
+    def __init__(self, name, conclusion, sha, branch, html_url):
         self.name = name
+        self.conclusion = conclusion
         self.sha = sha
         self.branch = branch
         self.html_url = html_url
@@ -417,9 +418,9 @@ def check_gh_repo_action_status(repo, branch):
         branch = 'HEAD'
     commit = repo.get_commit(branch)
     for check_run in commit.get_check_runs():
-        if check_run.conclusion != 'success':
+        if check_run.conclusion not in ('success', 'skipped'):
             raise GitHubCheckRunFailed(
-                check_run.name, commit.sha, branch,
+                check_run.name, check_run.conclusion, commit.sha, branch,
                 check_run.html_url)
 
 
@@ -523,8 +524,8 @@ def main(argv=None):
                 ret = 1
         except GitHubCheckRunFailed as e:
             logging.error(
-                'GitHub check %s for commit %s (branch: %s) failed. See %s',
-                e.name, e.sha, e.branch, e.html_url)
+                'GitHub check %s (%s) for commit %s (branch: %s) failed. See %s',
+                e.name, e.conclusion, e.sha, e.branch, e.html_url)
             if not args.discover:
                 ret = 1
 
