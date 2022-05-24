@@ -493,6 +493,9 @@ def main(argv=None):
             return 1
         urls = pypi_discover_urls()
 
+    failed = []
+    skipped = []
+    success = []
     ret = 0
     for url in urls:
         if url != ".":
@@ -503,32 +506,43 @@ def main(argv=None):
                 dry_run=args.dry_run)
         except RecentCommits as e:
             logging.error("Recent commits exist (%d < %d)", e.min_commit_age, e.commit_age)
+            skipped.append((url, e))
             if not args.discover:
                 ret = 1
         except VerifyCommandFailed as e:
             logging.error('Verify command (%s) failed to run.', e.command)
+            failed.append((url, e))
             ret = 1
         except UploadCommandFailed as e:
             logging.error('Upload command (%s) failed to run.', e.command)
+            failed.append((url, e))
             ret = 1
         except DistCommandFailed as e:
             logging.error('Dist command (%s) failed to run.', e.command)
+            failed.append((url, e))
             ret = 1
-        except NoUnreleasedChanges:
+        except NoUnreleasedChanges as e:
             logging.error('No unreleased changes')
+            skipped.append((url, e))
             if not args.discover:
                 ret = 1
-        except NoReleaserConfig:
+        except NoReleaserConfig as e:
             logging.error('No configuration for releaser')
+            skipped.append((url, e))
             if not args.discover:
                 ret = 1
         except GitHubCheckRunFailed as e:
             logging.error(
                 'GitHub check %s (%s) for commit %s (branch: %s) failed. See %s',
                 e.name, e.conclusion, e.sha, e.branch, e.html_url)
-            if not args.discover:
-                ret = 1
+            failed.append((url, e))
+            ret = 1
+        else:
+            success.append(url)
 
+    if args.discover:
+        logging.info('%s successfully released, %s skipped, %s failed',
+                     len(success), len(skipped), len(failed))
     return ret
 
 
