@@ -334,8 +334,6 @@ def release_project(   # noqa: C901
             )
         else:
             ws.local_tree.branch.tags.set_tag(tag_name, ws.local_tree.last_revision())
-        # At this point, it's official - so let's push.
-        ws.push(tags=[tag_name], dry_run=dry_run)
         if ws.local_tree.has_filename("setup.py"):
             try:
                 subprocess.check_call(
@@ -368,6 +366,8 @@ def release_project(   # noqa: C901
                 logging.info("skipping scp to %s due to dry run mode", loc)
             else:
                 subprocess.check_call(["scp", ws.local_tree.abspath(pypi_path), loc])
+        # At this point, it's official - so let's push.
+        ws.push(tags=[tag_name], dry_run=dry_run)
         if gh_repo:
             if dry_run:
                 logging.info("skipping creation of github release due to dry run mode")
