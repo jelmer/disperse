@@ -435,7 +435,7 @@ def pypi_discover_urls():
     import xmlrpc.client
     from configparser import RawConfigParser
     client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
-    pypi_username = os.environ.get('TWINE_USERNAME')
+    pypi_username = os.environ.get('PYPI_USERNAME')
     if pypi_username is None:
         cp = RawConfigParser()
         config_file_path = os.environ.get(
