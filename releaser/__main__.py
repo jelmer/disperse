@@ -532,9 +532,16 @@ def main(argv=None):
             if not args.discover:
                 ret = 1
         except GitHubCheckRunFailed as e:
-            logging.error(
-                'GitHub check %s (%s) for commit %s (branch: %s) failed. See %s',
-                e.name, e.conclusion, e.sha, e.branch, e.html_url)
+            if e.conclusion is None:
+                logging.error(
+                    'GitHub check %s for commit %s (branch: %s) '
+                    'not finished yet. See %s', e.name, e.sha, e.branch,
+                    e.html_url)
+            else:
+                logging.error(
+                    'GitHub check %s (%s) for commit %s (branch: %s) failed. '
+                    'See %s', e.name, e.conclusion, e.sha, e.branch,
+                    e.html_url)
             failed.append((url, e))
             ret = 1
         else:
