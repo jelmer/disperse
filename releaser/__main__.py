@@ -501,6 +501,9 @@ def main(argv=None):
     parser.add_argument(
         "--force", action="store_true",
         help='Force a new release, even if timeout is not reached.')
+    parser.add_argument(
+        "--try", action="store_true",
+        help="Do not exit with non-zero if projects failed to be released.")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -570,6 +573,8 @@ def main(argv=None):
     if args.discover:
         logging.info('%s successfully released, %s skipped, %s failed',
                      len(success), len(skipped), len(failed))
+    if getattr(args, 'try', False):
+        return 0
     return ret
 
 
