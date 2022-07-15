@@ -376,12 +376,15 @@ def release_project(   # noqa: C901
         try:
             ws.push(tags=[tag_name], dry_run=dry_run)
         except RemoteGitError as e:
-            if e.msg == "protected branch hook declined":
-                ws.propose(
+            if str(e) == "protected branch hook declined":
+                logging.info('branch %s is protected; proposing merge instead',
+                             ws.local_tree.branch.name)
+                (mp, is_new) = ws.propose(
                     description="Merge release of %s" % new_version,
                     tags=[tag_name],
                     name='release-%s' % new_version, labels=['release'],
                     dry_run=dry_run, commit_message="Merge release of %s" % new_version)
+                logging.info('Created merge proposal: %s', mp.url)
             else:
                 raise
 
