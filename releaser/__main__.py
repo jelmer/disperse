@@ -30,10 +30,11 @@ from urllib.parse import urlparse
 from github import Github  # type: ignore
 
 from breezy.urlutils import split_segment_parameters
-import breezy.git
+import breezy.git  # noqa: F401
 import breezy.bzr  # noqa: F401
 from breezy.errors import NoSuchFile
 from breezy.plugins.github.hoster import retrieve_github_token
+from breezy.git.remote import RemoteGitError 
 from breezy.branch import Branch
 from breezy.tree import InterTree
 from breezy.revision import NULL_REVISION
@@ -367,7 +368,18 @@ def release_project(   # noqa: C901
             else:
                 subprocess.check_call(["scp", ws.local_tree.abspath(pypi_path), loc])
         # At this point, it's official - so let's push.
-        ws.push(tags=[tag_name], dry_run=dry_run)
+        try:
+            ws.push(tags=[tag_name], dry_run=dry_run)
+        except RemoteGitError as e:
+            if e.msg == "protected branch hook declined":
+                ws.propose(
+                    description="Merge release of %s" % new_version,
+                    tags=[tag_name],
+                    name='release-%s' % new_version, labels=['release'],
+                    dry_run=dry_run, commit_message="Merge release of %s" % new_version)
+            else:
+                raise
+
         if gh_repo:
             if dry_run:
                 logging.info("skipping creation of github release due to dry run mode")
