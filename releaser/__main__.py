@@ -33,8 +33,11 @@ from breezy.urlutils import split_segment_parameters
 import breezy.git  # noqa: F401
 import breezy.bzr  # noqa: F401
 from breezy.errors import NoSuchFile
-from breezy.plugins.github.hoster import retrieve_github_token
-from breezy.git.remote import RemoteGitError 
+try:
+    from breezy.plugins.github.forge import retrieve_github_token
+except ModuleNotFoundError:
+    from breezy.plugins.github.hoster import retrieve_github_token
+from breezy.git.remote import RemoteGitError
 from breezy.branch import Branch
 from breezy.tree import InterTree
 from breezy.revision import NULL_REVISION
