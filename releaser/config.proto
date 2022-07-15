@@ -28,6 +28,8 @@ message Project {
     optional string github_url = 10;
 
     optional string github_branch = 11;
+
+    optional bool skip_twine_upload = 12 [ default = false ];
 };
 
 message Config {
