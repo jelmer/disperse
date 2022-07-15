@@ -354,6 +354,8 @@ def release_project(   # noqa: C901
             command = ["twine", "upload", "--non-interactive", "--sign", pypi_path]
             if dry_run:
                 logging.info("skipping twine upload due to dry run mode")
+            elif cfg.skip_twine_upload:
+                logging.info("skipping twine upload; disabled in config")
             else:
                 try:
                     subprocess.check_call(command, cwd=ws.local_tree.abspath("."))
