@@ -39,7 +39,7 @@ except ModuleNotFoundError:
     from breezy.plugins.github.hoster import retrieve_github_token
 from breezy.git.remote import RemoteGitError
 from breezy.branch import Branch
-from breezy.tree import InterTree
+from breezy.tree import InterTree, Tree
 from breezy.revision import NULL_REVISION
 from silver_platter.workspace import Workspace
 
@@ -88,21 +88,21 @@ class NoReleaserConfig(Exception):
     """No releaser config present"""
 
 
-def increase_version(version, idx=-1):
+def increase_version(version: str, idx: int =-1) -> str:
     parts = [int(x) for x in version.split('.')]
     parts[idx] += 1
     return '.'.join(map(str, parts))
 
 
-
-def find_pending_version(tree, cfg):
+def find_pending_version(tree: Tree, cfg) -> str:
     if cfg.news_file:
         return news_find_pending(tree, cfg.news_file)
     else:
         raise NotImplementedError
 
 
-def update_version_in_file(tree, update_cfg, new_version, status):
+def update_version_in_file(
+        tree: Tree, update_cfg, new_version: str, status: str) -> None:
     with tree.get_file(update_cfg.path) as f:
         lines = list(f.readlines())
     matches = 0
@@ -111,7 +111,8 @@ def update_version_in_file(tree, update_cfg, new_version, status):
         if not r.match(line):
             continue
         tupled_version = "(%s)" % ", ".join(new_version.split("."))
-        status_tupled_version = "(%s)" % ", ".join(new_version.split(".") + [status, '0'])
+        status_tupled_version = "(%s)" % ", ".join(
+            new_version.split(".") + [status, '0'])
         lines[i] = (
             update_cfg.new_line.encode()
             .replace(b"$VERSION", new_version.encode())
@@ -121,11 +122,13 @@ def update_version_in_file(tree, update_cfg, new_version, status):
         )
         matches += 1
     if matches == 0:
-        raise Exception("No matches for %s in %s" % (update_cfg.match, update_cfg.path))
+        raise Exception(
+            "No matches for %s in %s" % (update_cfg.match, update_cfg.path))
     tree.put_file_bytes_non_atomic(update_cfg.path, b"".join(lines))
 
 
-def update_version_in_manpage(tree, path, new_version, release_date):
+def update_version_in_manpage(
+        tree: Tree, path, new_version: str, release_date: datetime) -> None:
     with tree.get_file(path) as f:
         lines = list(f.readlines())
     DATE_OPTIONS = [
@@ -150,7 +153,8 @@ def update_version_in_manpage(tree, path, new_version, release_date):
         for r, f in VERSION_OPTIONS:
             m = re.fullmatch(r, args[4])
             if m:
-                args[4] = re.sub(r, f.replace('$VERSION', new_version), args[4])
+                args[4] = re.sub(
+                    r, f.replace('$VERSION', new_version), args[4])
                 break
         lines[i] = shlex.join(args).encode() + b'\n'
         break
@@ -159,7 +163,7 @@ def update_version_in_manpage(tree, path, new_version, release_date):
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
 
 
-def update_version_in_cargo(tree, new_version):
+def update_version_in_cargo(tree: Tree, new_version: str) -> None:
     from toml.decoder import load, TomlPreserveCommentDecoder
     from toml.encoder import dumps, TomlPreserveCommentEncoder
     with open(tree.abspath('Cargo.toml'), 'r') as f:
@@ -167,11 +171,11 @@ def update_version_in_cargo(tree, new_version):
     d['package']['version'] = new_version
     tree.put_file_bytes_non_atomic(
         'Cargo.toml',
-        dumps(d, TomlPreserveCommentEncoder()).encode())
+        dumps(d, TomlPreserveCommentEncoder()).encode())  # type: ignore
     subprocess.check_call(['cargo', 'update'], cwd=tree.abspath('.'))
 
 
-def check_release_age(branch, cfg, now):
+def check_release_age(branch: Branch, cfg, now: datetime) -> None:
     rev = branch.repository.get_revision(branch.last_revision())
     if cfg.timeout_days is not None:
         commit_time = datetime.fromtimestamp(rev.timestamp)
@@ -180,7 +184,7 @@ def check_release_age(branch, cfg, now):
             raise RecentCommits(time_delta.days, cfg.timeout_days)
 
 
-def find_last_version(tree, cfg):
+def find_last_version(tree: Tree, cfg) -> str:
     if cfg.update_version:
         for update_cfg in cfg.update_version:
             with tree.get_file(update_cfg.path) as f:
@@ -199,7 +203,8 @@ def find_last_version(tree, cfg):
         raise NotImplementedError
 
 
-def check_new_revisions(branch, news_file_path=None):
+def check_new_revisions(
+        branch: Branch, news_file_path: Optional[str] = None) -> None:
     tags = branch.tags.get_reverse_tag_dict()
     graph = branch.repository.get_graph()
     from_tree = None
@@ -273,7 +278,8 @@ def release_project(   # noqa: C901
         if cfg.github_url:
             gh_repo = get_github_repo(cfg.github_url)
             check_gh_repo_action_status(gh_repo, cfg.github_branch or 'HEAD')
-        elif public_repo_url is not None and urlparse(public_repo_url).hostname == 'github.com':
+        elif (public_repo_url is not None and
+              urlparse(public_repo_url).hostname == 'github.com'):
             gh_repo = get_github_repo(public_repo_url)
             check_gh_repo_action_status(gh_repo, public_branch.name)
         else:
@@ -290,14 +296,15 @@ def release_project(   # noqa: C901
                 new_version = find_pending_version(ws.local_tree, cfg)
             except NotImplementedError:
                 last_version = find_last_version(ws.local_tree, cfg)
-                last_version_tag_name = cfg.tag_name.replace("$VERSION", last_version)
+                last_version_tag_name = cfg.tag_name.replace(
+                    "$VERSION", last_version)
                 if ws.local_tree.branch.tags.has_tag(last_version_tag_name):
                     new_version = increase_version(last_version)
                 else:
                     new_version = last_version
             logging.info('Using new version: %s', new_version)
 
-        assert " " not in new_version, "Invalid version %r" % new_version
+        assert " " not in str(new_version), "Invalid version %r" % new_version
 
         if cfg.pre_dist_command:
             subprocess.check_call(
@@ -335,11 +342,13 @@ def release_project(   # noqa: C901
         logging.info('Creating tag %s', tag_name)
         if hasattr(ws.local_tree.branch.repository, '_git'):
             subprocess.check_call(
-                ["git", "tag", "-as", tag_name, "-m", "Release %s" % new_version],
+                ["git", "tag", "-as", tag_name,
+                 "-m", "Release %s" % new_version],
                 cwd=ws.local_tree.abspath("."),
             )
         else:
-            ws.local_tree.branch.tags.set_tag(tag_name, ws.local_tree.last_revision())
+            ws.local_tree.branch.tags.set_tag(
+                tag_name, ws.local_tree.last_revision())
         if ws.local_tree.has_filename("setup.py"):
             try:
                 subprocess.check_call(
@@ -349,18 +358,22 @@ def release_project(   # noqa: C901
                 raise DistCommandFailed("setup.py sdist", e.returncode)
             from distutils.core import run_setup
 
-            result = run_setup(ws.local_tree.abspath("setup.py"), stop_after="init")
+            result = run_setup(
+                ws.local_tree.abspath("setup.py"), stop_after="init")
             pypi_path = os.path.join(
-                "dist", "%s-%s.tar.gz" % (result.get_name(), new_version)  # type: ignore
+                "dist", "%s-%s.tar.gz" % (
+                    result.get_name(), new_version)  # type: ignore
             )
-            command = ["twine", "upload", "--non-interactive", "--sign", pypi_path]
+            command = [
+                "twine", "upload", "--non-interactive", "--sign", pypi_path]
             if dry_run:
                 logging.info("skipping twine upload due to dry run mode")
             elif cfg.skip_twine_upload:
                 logging.info("skipping twine upload; disabled in config")
             else:
                 try:
-                    subprocess.check_call(command, cwd=ws.local_tree.abspath("."))
+                    subprocess.check_call(
+                        command, cwd=ws.local_tree.abspath("."))
                 except subprocess.CalledProcessError as e:
                     raise UploadCommandFailed(command, e.returncode)
         if ws.local_tree.has_filename("Cargo.toml"):
@@ -373,7 +386,8 @@ def release_project(   # noqa: C901
             if dry_run:
                 logging.info("skipping scp to %s due to dry run mode", loc)
             else:
-                subprocess.check_call(["scp", ws.local_tree.abspath(pypi_path), loc])
+                subprocess.check_call(
+                    ["scp", ws.local_tree.abspath(pypi_path), loc])
         # At this point, it's official - so let's push.
         try:
             ws.push(tags=[tag_name], dry_run=dry_run)
@@ -385,14 +399,16 @@ def release_project(   # noqa: C901
                     description="Merge release of %s" % new_version,
                     tags=[tag_name],
                     name='release-%s' % new_version, labels=['release'],
-                    dry_run=dry_run, commit_message="Merge release of %s" % new_version)
+                    dry_run=dry_run,
+                    commit_message="Merge release of %s" % new_version)
                 logging.info('Created merge proposal: %s', mp.url)
             else:
                 raise
 
         if gh_repo:
             if dry_run:
-                logging.info("skipping creation of github release due to dry run mode")
+                logging.info(
+                    "skipping creation of github release due to dry run mode")
             else:
                 create_github_release(
                     gh_repo, tag_name, new_version, release_changes)
@@ -487,7 +503,7 @@ def pypi_discover_urls():
     return ret
 
 
-def main(argv=None):
+def main(argv=None):  # noqa: C901
     import argparse
 
     parser = argparse.ArgumentParser("releaser")
@@ -530,7 +546,9 @@ def main(argv=None):
                 url, force=args.force, new_version=args.new_version,
                 dry_run=args.dry_run)
         except RecentCommits as e:
-            logging.error("Recent commits exist (%d < %d)", e.min_commit_age, e.commit_age)
+            logging.error(
+                "Recent commits exist (%d < %d)", e.min_commit_age,
+                e.commit_age)
             skipped.append((url, e))
             if not args.discover:
                 ret = 1
