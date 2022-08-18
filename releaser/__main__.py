@@ -297,6 +297,8 @@ def release_project(   # noqa: C901
                     new_version = last_version
             logging.info('Using new version: %s', new_version)
 
+        assert " " not in new_version, "Invalid version %r" % new_version
+
         if cfg.pre_dist_command:
             subprocess.check_call(
                 cfg.pre_dist_command, cwd=ws.local_tree.abspath('.'),
