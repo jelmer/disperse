@@ -382,7 +382,7 @@ def release_project(   # noqa: C901
             from distutils.core import run_setup
 
             result = run_setup(
-                ws.local_tree.abspath("setup.py"), stop_after="init")
+                ws.local_tree.abspath("setup.py"), stop_after="config")
             pypi_path = os.path.join(
                 "dist", "%s-%s.tar.gz" % (
                     result.get_name(), new_version)  # type: ignore
