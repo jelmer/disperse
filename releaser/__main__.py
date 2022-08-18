@@ -23,7 +23,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import Optional
+from typing import Optional, List
 from urllib.request import urlopen
 from urllib.parse import urlparse
 
@@ -184,20 +184,43 @@ def check_release_age(branch: Branch, cfg, now: datetime) -> None:
             raise RecentCommits(time_delta.days, cfg.timeout_days)
 
 
+def reverse_version(update_cfg, lines: List[bytes]) -> Optional[str]:
+    ps = []
+    for p in re.split(
+            r'(\$TUPLED_VERSION|\$VERSION|\$STATUS_TUPLED_VERSION)',
+            update_cfg.new_line):
+        if p in ('$TUPLED_VERSION', '$VERSION', '$STATUS_TUPLED_VERSION'):
+            ps.append('(?P<' + p[1:].lower() + '>.*)')
+        else:
+            ps.append(re.escape(p))
+
+    r = re.compile(''.join(ps).encode())
+    for line in lines:
+        m = r.match(line)
+        if not m:
+            continue
+        try:
+            return m.group('version').decode()
+        except IndexError:
+            pass
+        try:
+            return '.'.join(map(str, eval(m.group('tupled_version').decode())))
+        except IndexError:
+            pass
+        try:
+            return '.'.join(map(str, eval(m.group('status_tupled_version').decode())))
+        except IndexError:
+            pass
+
+
 def find_last_version(tree: Tree, cfg) -> str:
     if cfg.update_version:
         for update_cfg in cfg.update_version:
             with tree.get_file(update_cfg.path) as f:
                 lines = list(f.readlines())
-            r = re.compile(update_cfg.match.encode())
-            for i, line in enumerate(lines):
-                m = r.match(line)
-                if m:
-                    try:
-                        return m.group(1).decode()
-                    except IndexError:
-                        # No groups specified :(
-                        break
+            v = reverse_version(update_cfg, lines)
+            if v:
+                return v
         raise KeyError
     else:
         raise NotImplementedError
