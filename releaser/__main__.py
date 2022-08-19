@@ -101,12 +101,28 @@ def find_pending_version(tree: Tree, cfg) -> str:
         raise NotImplementedError
 
 
+def _version_line_re(new_line: str) -> re.Match:
+    ps = []
+    for p in re.split(
+            r'(\$TUPLED_VERSION|\$VERSION|\$STATUS_TUPLED_VERSION)',
+            new_line):
+        if p in ('$TUPLED_VERSION', '$VERSION', '$STATUS_TUPLED_VERSION'):
+            ps.append('(?P<' + p[1:].lower() + '>.*)')
+        else:
+            ps.append(re.escape(p))
+
+    return re.compile(''.join(ps).encode())
+
+
 def update_version_in_file(
         tree: Tree, update_cfg, new_version: str, status: str) -> None:
     with tree.get_file(update_cfg.path) as f:
         lines = list(f.readlines())
     matches = 0
-    r = re.compile(update_cfg.match.encode())
+    if not update_cfg.match:
+        r = _version_line_re(update_cfg.new_line)
+    else:
+        r = re.compile(update_cfg.match.encode())
     for i, line in enumerate(lines):
         if not r.match(line):
             continue
@@ -185,16 +201,7 @@ def check_release_age(branch: Branch, cfg, now: datetime) -> None:
 
 
 def reverse_version(update_cfg, lines: List[bytes]) -> Optional[str]:
-    ps = []
-    for p in re.split(
-            r'(\$TUPLED_VERSION|\$VERSION|\$STATUS_TUPLED_VERSION)',
-            update_cfg.new_line):
-        if p in ('$TUPLED_VERSION', '$VERSION', '$STATUS_TUPLED_VERSION'):
-            ps.append('(?P<' + p[1:].lower() + '>.*)')
-        else:
-            ps.append(re.escape(p))
-
-    r = re.compile(''.join(ps).encode())
+    r = _version_line_re(update_cfg.new_line)
     for line in lines:
         m = r.match(line)
         if not m:
