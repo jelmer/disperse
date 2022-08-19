@@ -101,7 +101,7 @@ def find_pending_version(tree: Tree, cfg) -> str:
         raise NotImplementedError
 
 
-def _version_line_re(new_line: str) -> re.Match:
+def _version_line_re(new_line: str) -> re.Pattern:
     ps = []
     for p in re.split(
             r'(\$TUPLED_VERSION|\$VERSION|\$STATUS_TUPLED_VERSION)',
