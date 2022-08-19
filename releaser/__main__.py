@@ -212,6 +212,7 @@ def reverse_version(update_cfg, lines: List[bytes]) -> Optional[str]:
                 map(str, eval(m.group('status_tupled_version').decode())))
         except IndexError:
             pass
+    return None
 
 
 def find_last_version(tree: Tree, cfg) -> str:
