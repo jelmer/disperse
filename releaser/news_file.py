@@ -93,7 +93,9 @@ def parse_version_line(line) -> Tuple[str, Optional[str], str]:
     if b' ' in line.strip():
         (version, date) = line.strip().split(b' ', 1)
         if date.startswith(b'(') and date.endswith(b')'):
-            return version.decode(), date[1:-1].decode(), '%(version)s (%(date)s)'
+            return (
+                version.decode(), date[1:-1].decode(),
+                '%(version)s (%(date)s)')
         else:
             return version.decode(), date.decode(), '%(version)s %(date)s'
     else:
