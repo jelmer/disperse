@@ -200,7 +200,8 @@ def check_release_age(branch: Branch, cfg, now: datetime) -> None:
             raise RecentCommits(time_delta.days, cfg.timeout_days)
 
 
-def reverse_version(update_cfg, lines: List[bytes]) -> Tuple[Optional[str], Optional[str]]:
+def reverse_version(
+        update_cfg, lines: List[bytes]) -> Tuple[Optional[str], Optional[str]]:
     r = _version_line_re(update_cfg.new_line)
     for line in lines:
         m = r.match(line)
@@ -211,7 +212,9 @@ def reverse_version(update_cfg, lines: List[bytes]) -> Tuple[Optional[str], Opti
         except IndexError:
             pass
         try:
-            return '.'.join(map(str, eval(m.group('tupled_version').decode()))), None
+            return (
+                '.'.join(map(str, eval(m.group('tupled_version').decode()))),
+                None)
         except IndexError:
             pass
         try:
@@ -327,7 +330,8 @@ def release_project(   # noqa: C901
             try:
                 new_version = find_pending_version(ws.local_tree, cfg)
             except NotImplementedError:
-                last_version, last_version_status = find_last_version(ws.local_tree, cfg)
+                last_version, last_version_status = find_last_version(
+                    ws.local_tree, cfg)
                 last_version_tag_name = cfg.tag_name.replace(
                     "$VERSION", last_version)
                 if ws.local_tree.branch.tags.has_tag(last_version_tag_name):
