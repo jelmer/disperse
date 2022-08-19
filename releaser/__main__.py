@@ -88,7 +88,7 @@ class NoReleaserConfig(Exception):
     """No releaser config present"""
 
 
-def increase_version(version: str, idx: int =-1) -> str:
+def increase_version(version: str, idx: int = -1) -> str:
     parts = [int(x) for x in version.split('.')]
     parts[idx] += 1
     return '.'.join(map(str, parts))
@@ -208,7 +208,8 @@ def reverse_version(update_cfg, lines: List[bytes]) -> Optional[str]:
         except IndexError:
             pass
         try:
-            return '.'.join(map(str, eval(m.group('status_tupled_version').decode())))
+            return '.'.join(
+                map(str, eval(m.group('status_tupled_version').decode())))
         except IndexError:
             pass
 
