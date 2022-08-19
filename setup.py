@@ -8,7 +8,7 @@ setup(
         "releaser",
         "releaser.tests",
     ],
-    version="0.0.3",
+    version="0.0.4",
     author="Jelmer Vernooij",
     author_email="jelmer@jelmer.uk",
     url="https://github.com/jelmer/releaser",
