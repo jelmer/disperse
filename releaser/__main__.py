@@ -23,7 +23,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from urllib.request import urlopen
 from urllib.parse import urlparse
 
@@ -128,7 +128,7 @@ def update_version_in_file(
             continue
         tupled_version = "(%s)" % ", ".join(new_version.split("."))
         status_tupled_version = "(%s)" % ", ".join(
-            new_version.split(".") + [status, '0'])
+            new_version.split(".") + [repr(status), '0'])
         lines[i] = (
             update_cfg.new_line.encode()
             .replace(b"$VERSION", new_version.encode())
@@ -200,36 +200,39 @@ def check_release_age(branch: Branch, cfg, now: datetime) -> None:
             raise RecentCommits(time_delta.days, cfg.timeout_days)
 
 
-def reverse_version(update_cfg, lines: List[bytes]) -> Optional[str]:
+def reverse_version(
+        update_cfg, lines: List[bytes]) -> Tuple[Optional[str], Optional[str]]:
     r = _version_line_re(update_cfg.new_line)
     for line in lines:
         m = r.match(line)
         if not m:
             continue
         try:
-            return m.group('version').decode()
+            return m.group('version').decode(), None
         except IndexError:
             pass
         try:
-            return '.'.join(map(str, eval(m.group('tupled_version').decode())))
+            return (
+                '.'.join(map(str, eval(m.group('tupled_version').decode()))),
+                None)
         except IndexError:
             pass
         try:
-            return '.'.join(
-                map(str, eval(m.group('status_tupled_version').decode())))
+            val = eval(m.group('status_tupled_version').decode())
+            return '.'.join(map(str, val[:-2])), val[-2]
         except IndexError:
             pass
-    return None
+    return None, None
 
 
-def find_last_version(tree: Tree, cfg) -> str:
+def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
     if cfg.update_version:
         for update_cfg in cfg.update_version:
             with tree.get_file(update_cfg.path) as f:
                 lines = list(f.readlines())
-            v = reverse_version(update_cfg, lines)
+            v, s = reverse_version(update_cfg, lines)
             if v:
-                return v
+                return v, s
         raise KeyError
     else:
         raise NotImplementedError
@@ -327,7 +330,8 @@ def release_project(   # noqa: C901
             try:
                 new_version = find_pending_version(ws.local_tree, cfg)
             except NotImplementedError:
-                last_version = find_last_version(ws.local_tree, cfg)
+                last_version, last_version_status = find_last_version(
+                    ws.local_tree, cfg)
                 last_version_tag_name = cfg.tag_name.replace(
                     "$VERSION", last_version)
                 if ws.local_tree.branch.tags.has_tag(last_version_tag_name):
@@ -399,7 +403,7 @@ def release_project(   # noqa: C901
                 os.chdir(orig_dir)
             pypi_path = os.path.join(
                 "dist", "%s-%s.tar.gz" % (
-                    result.get_name(), new_version)  # type: ignore
+                    result.get_name(), result.get_version())  # type: ignore
             )
             command = [
                 "twine", "upload", "--non-interactive", "--sign", pypi_path]
