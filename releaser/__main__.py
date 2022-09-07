@@ -548,7 +548,7 @@ def main(argv=None):  # noqa: C901
     import argparse
 
     parser = argparse.ArgumentParser("releaser")
-    parser.add_argument("url", nargs="?", type=str)
+    parser.add_argument("url", nargs="*", type=str)
     parser.add_argument(
         "--new-version", type=str, help='New version to release.')
     parser.add_argument(
@@ -568,7 +568,10 @@ def main(argv=None):  # noqa: C901
     logging.basicConfig(level=logging.INFO, format='%(message)s')
 
     if not args.discover:
-        urls = [args.url or "."]
+        if args.url:
+            urls = args.url
+        else:
+            urls = ["."]
     else:
         if args.new_version:
             parser.print_usage()
