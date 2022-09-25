@@ -393,7 +393,7 @@ def release_project(   # noqa: C901
             except subprocess.CalledProcessError as e:
                 raise DistCommandFailed("setup.py sdist", e.returncode)
             # Import setuptools, just in case it tries to replace distutils
-            import setuptools
+            import setuptools  # noqa: F401
             from distutils.core import run_setup
 
             orig_dir = os.getcwd()
