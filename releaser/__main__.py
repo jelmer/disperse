@@ -313,8 +313,8 @@ def release_project(   # noqa: C901
         if cfg.github_url:
             gh_repo = get_github_repo(cfg.github_url)
             check_gh_repo_action_status(gh_repo, cfg.github_branch or 'HEAD')
-        elif (public_repo_url is not None and
-              urlparse(public_repo_url).hostname == 'github.com'):
+        elif (public_repo_url is not None
+              and urlparse(public_repo_url).hostname == 'github.com'):
             gh_repo = get_github_repo(public_repo_url)
             check_gh_repo_action_status(gh_repo, public_branch.name)
         else:
@@ -565,6 +565,9 @@ def main(argv=None):  # noqa: C901
     parser.add_argument(
         "--try", action="store_true",
         help="Do not exit with non-zero if projects failed to be released.")
+    parser.add_argument(
+        "--validate", action="store_true",
+        help="Don't release, just validate releaser.conf")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -588,9 +591,12 @@ def main(argv=None):  # noqa: C901
         if url != ".":
             logging.info('Processing %s', url)
         try:
-            release_project(
-                url, force=args.force, new_version=args.new_version,
-                dry_run=args.dry_run)
+            if args.validate:
+                pass
+            else:
+                release_project(
+                    url, force=args.force, new_version=args.new_version,
+                    dry_run=args.dry_run)
         except RecentCommits as e:
             logging.error(
                 "Recent commits exist (%d < %d)", e.min_commit_age,
