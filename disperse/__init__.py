@@ -17,6 +17,7 @@
 
 
 __version__ = (0, 0, 4)
+version_string = '.'.join(map(str, __version__))
 
 
 class NoUnreleasedChanges(Exception):
