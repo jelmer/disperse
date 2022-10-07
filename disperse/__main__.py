@@ -320,12 +320,30 @@ def release_project(   # noqa: C901
         if cfg.github_url:
             gh_repo = get_github_repo(cfg.github_url)
             check_gh_repo_action_status(gh_repo, cfg.github_branch or 'HEAD')
-        elif (public_repo_url is not None
-              and urlparse(public_repo_url).hostname == 'github.com'):
-            gh_repo = get_github_repo(public_repo_url)
-            check_gh_repo_action_status(gh_repo, public_branch.name)
         else:
-            gh_repo = None
+            possible_urls = []
+            if ws.local_tree.has_filename('setup.cfg'):
+                import setuptools.config.setupcfg
+                config = setuptools.config.setupcfg.read_configuration(
+                    'setup.cfg')
+                metadata = config.get('metadata', {})
+                project_urls = metadata.get('project_urls', {})
+                for key in ['GitHub', 'Source Code']:
+                    try:
+                        possible_urls.append(
+                            (project_urls[key], cfg.github_branch or 'HEAD'))
+                    except KeyError:
+                        pass
+            if public_repo_url is not None:
+                possible_urls.append((public_repo_url, public_branch.name))
+
+            for url, branch_name in possible_urls:
+                if urlparse(url).hostname == 'github.com':
+                    gh_repo = get_github_repo(url)
+                    check_gh_repo_action_status(gh_repo, branch_name)
+                    break
+            else:
+                gh_repo = None
 
         check_new_revisions(ws.local_tree.branch, cfg.news_file)
         try:
