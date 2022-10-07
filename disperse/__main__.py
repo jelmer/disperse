@@ -325,7 +325,7 @@ def release_project(   # noqa: C901
             if ws.local_tree.has_filename('setup.cfg'):
                 import setuptools.config.setupcfg
                 config = setuptools.config.setupcfg.read_configuration(
-                    'setup.cfg')
+                    ws.local_tree.abspath('setup.cfg'))
                 metadata = config.get('metadata', {})
                 project_urls = metadata.get('project_urls', {})
                 for key in ['GitHub', 'Source Code', 'Repository']:
