@@ -24,7 +24,7 @@ import re
 import subprocess
 import sys
 from typing import Optional, List, Tuple
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 from urllib.parse import urlparse
 
 from github import Github  # type: ignore
@@ -47,7 +47,7 @@ from breezy.revision import NULL_REVISION
 from silver_platter.workspace import Workspace
 
 
-from . import NoUnreleasedChanges
+from . import NoUnreleasedChanges, version_string
 from .news_file import (
     NewsFile,
     news_find_pending,
@@ -523,23 +523,16 @@ def create_github_release(repo, tag_name, version, description):
         message=description or ('Release %s.' % version))
 
 
-def pypi_discover_urls():
+def pypi_discover_urls(pypi_user):
     import xmlrpc.client
     from configparser import RawConfigParser
     client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
-    pypi_username = os.environ.get('PYPI_USERNAME')
-    if pypi_username is None:
-        cp = RawConfigParser()
-        config_file_path = os.environ.get(
-            'TWINE_CONFIG_FILE', os.path.expanduser('~/.pypirc'))
-        cp.read(config_file_path)
-        pypi_username = cp.get('pypi', 'username')
-    if pypi_username == '__token__':
-        logging.warning('Unable to determine pypi username')
-        return []
     ret = []
-    for relation, package in client.user_packages(pypi_username):
-        with urlopen('https://pypi.org/pypi/%s/json' % package) as f:
+    for relation, package in client.user_packages(pypi_user):
+        req = Request(
+            'https://pypi.org/pypi/%s/json' % package,
+            headers={'Content-Type': 'disperse/%s' % version_string})
+        with urlopen(req) as f:
             data = json.load(f)
         project_urls = data['info']['project_urls']
         if project_urls is None:
@@ -674,6 +667,10 @@ def main(argv=None):  # noqa: C901
         "--new-version", type=str, help='New version to release.')
     discover_parser = subparsers.add_parser("discover")
     discover_parser.add_argument(
+        "--pypi-user", type=str, action="append",
+        help="Pypi users to upload for",
+        default=os.environ.get('PYPI_USERNAME', '').split(','))
+    discover_parser.add_argument(
         "--force", action="store_true",
         help='Force a new release, even if timeout is not reached.')
     discover_parser.add_argument(
@@ -693,7 +690,10 @@ def main(argv=None):  # noqa: C901
         return release_many(urls, force=True, dry_run=args.dry_run,
                             discover=False, new_version=args.new_version)
     elif args.command == "discover":
-        urls = pypi_discover_urls()
+        pypi_username = os.environ.get('PYPI_USERNAME')
+        urls = []
+        for pypi_username in args.pypi_user:
+            urls.extend(pypi_discover_urls(pypi_username))
         ret = release_many(urls, force=args.force, dry_run=args.dry_run,
                            discover=True)
         if getattr(args, 'try'):
