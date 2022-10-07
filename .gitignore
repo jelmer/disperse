@@ -4,3 +4,5 @@ __pycache__
 .mypy_cache/
 *.pyi
 build
+releaser.egg-info
+dist
