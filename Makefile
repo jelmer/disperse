@@ -14,4 +14,4 @@ check:
 
 docker: proto
 	buildah build -t ghcr.io/jelmer/disperse:latest .
-	build push ghcr.io/jelmer/disperse:latest
+	buildah push ghcr.io/jelmer/disperse:latest
