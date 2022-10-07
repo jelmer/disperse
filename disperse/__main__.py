@@ -87,8 +87,8 @@ class DistCommandFailed(Exception):
         self.retcode = retcode
 
 
-class NoReleaserConfig(Exception):
-    """No releaser config present"""
+class NodisperseConfig(Exception):
+    """No disperse config present"""
 
 
 def increase_version(version: str, idx: int = -1) -> str:
@@ -308,10 +308,14 @@ def release_project(   # noqa: C901
 
     with Workspace(public_branch, resume_branch=local_branch) as ws:
         try:
-            with ws.local_tree.get_file("releaser.conf") as f:
+            with ws.local_tree.get_file("disperse.conf") as f:
                 cfg = read_project(f)
-        except NoSuchFile:
-            raise NoReleaserConfig()
+        except NoSuchFile as exc:
+            try:
+                with ws.local_tree.get_file("releaser.conf") as f:
+                    cfg = read_project(f)
+            except NoSuchFile:
+                raise NodisperseConfig() from exc
 
         if cfg.github_url:
             gh_repo = get_github_repo(cfg.github_url)
@@ -559,10 +563,14 @@ def validate_config(path):
 
     from .config import read_project
     try:
-        with wt.get_file("releaser.conf") as f:
+        with wt.get_file("disperse.conf") as f:
             cfg = read_project(f)
-    except NoSuchFile:
-        raise NoReleaserConfig()
+    except NoSuchFile as exc:
+        try:
+            with wt.get_file("releaser.conf") as f:
+                cfg = read_project(f)
+        except NoSuchFile:
+            raise NodisperseConfig() from exc
 
     if cfg.news_file:
         news_file = NewsFile(wt, cfg.news_file)
@@ -625,8 +633,8 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,
             skipped.append((url, e))
             if not discover:
                 ret = 1
-        except NoReleaserConfig as e:
-            logging.error('No configuration for releaser')
+        except NodisperseConfig as e:
+            logging.error('No configuration for disperse')
             skipped.append((url, e))
             if not discover:
                 ret = 1
@@ -655,7 +663,7 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,
 def main(argv=None):  # noqa: C901
     import argparse
 
-    parser = argparse.ArgumentParser("releaser")
+    parser = argparse.ArgumentParser("disperse")
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Dry run, don't actually create a release.")

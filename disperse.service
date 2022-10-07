@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=python3 -m releaser --discover
+ExecStart=python3 -m disperse discover
 RemainAfterExit=true
 StandardOutput=journal
 

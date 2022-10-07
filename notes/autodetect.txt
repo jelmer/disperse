@@ -1,4 +1,4 @@
-Some of the settings in releaser.conf could be autodetected:
+Some of the settings in disperse.conf could be autodetected:
 
 news_file
 ---------
