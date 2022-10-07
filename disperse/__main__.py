@@ -328,7 +328,7 @@ def release_project(   # noqa: C901
                     'setup.cfg')
                 metadata = config.get('metadata', {})
                 project_urls = metadata.get('project_urls', {})
-                for key in ['GitHub', 'Source Code']:
+                for key in ['GitHub', 'Source Code', 'Repository']:
                     try:
                         possible_urls.append(
                             (project_urls[key], cfg.github_branch or 'HEAD'))
