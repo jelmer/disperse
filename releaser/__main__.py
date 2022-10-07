@@ -661,7 +661,6 @@ def main(argv=None):  # noqa: C901
         help="Dry run, don't actually create a release.")
     subparsers = parser.add_subparsers(dest="command")
     release_parser = subparsers.add_parser("release")
-    release_parser.add_argument("location", type=str)
     release_parser.add_argument("url", nargs="*", type=str)
     release_parser.add_argument(
         "--new-version", type=str, help='New version to release.')
