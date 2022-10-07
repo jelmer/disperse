@@ -32,7 +32,10 @@ from github import Github  # type: ignore
 from breezy.urlutils import split_segment_parameters
 import breezy.git  # noqa: F401
 import breezy.bzr  # noqa: F401
-from breezy.errors import NoSuchFile
+try:
+    from breezy.transport import NoSuchFile
+except ImportError:
+    from breezy.errors import NoSuchFile
 try:
     from breezy.plugins.github.forge import retrieve_github_token
 except ModuleNotFoundError:
@@ -550,43 +553,24 @@ def pypi_discover_urls():
     return ret
 
 
-def main(argv=None):  # noqa: C901
-    import argparse
+def validate_config(path):
+    from breezy.workingtree import WorkingTree
+    wt = WorkingTree.open(path)
 
-    parser = argparse.ArgumentParser("releaser")
-    parser.add_argument("url", nargs="*", type=str)
-    parser.add_argument(
-        "--new-version", type=str, help='New version to release.')
-    parser.add_argument(
-        "--discover", action='store_true',
-        help='Discover relevant projects to release')
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="Dry run, don't actually create a release.")
-    parser.add_argument(
-        "--force", action="store_true",
-        help='Force a new release, even if timeout is not reached.')
-    parser.add_argument(
-        "--try", action="store_true",
-        help="Do not exit with non-zero if projects failed to be released.")
-    parser.add_argument(
-        "--validate", action="store_true",
-        help="Don't release, just validate releaser.conf")
-    args = parser.parse_args()
+    from .config import read_project
+    try:
+        with wt.get_file("releaser.conf") as f:
+            cfg = read_project(f)
+    except NoSuchFile:
+        raise NoReleaserConfig()
 
-    logging.basicConfig(level=logging.INFO, format='%(message)s')
+    if cfg.news_file:
+        news_file = NewsFile(wt, cfg.news_file)
+        news_file.validate()
 
-    if not args.discover:
-        if args.url:
-            urls = args.url
-        else:
-            urls = ["."]
-    else:
-        if args.new_version:
-            parser.print_usage()
-            return 1
-        urls = pypi_discover_urls()
 
+def release_many(urls, *, force=False, dry_run=False, discover=False,
+                 new_version=None):
     failed = []
     skipped = []
     success = []
@@ -595,18 +579,15 @@ def main(argv=None):  # noqa: C901
         if url != ".":
             logging.info('Processing %s', url)
         try:
-            if args.validate:
-                pass
-            else:
-                release_project(
-                    url, force=args.force, new_version=args.new_version,
-                    dry_run=args.dry_run)
+            release_project(
+                url, force=force, new_version=new_version,
+                dry_run=dry_run)
         except RecentCommits as e:
             logging.error(
                 "Recent commits exist (%d < %d)", e.min_commit_age,
                 e.commit_age)
             skipped.append((url, e))
-            if not args.discover:
+            if not discover:
                 ret = 1
         except VerifyCommandFailed as e:
             logging.error('Verify command (%s) failed to run.', e.command)
@@ -623,12 +604,12 @@ def main(argv=None):  # noqa: C901
         except NoUnreleasedChanges as e:
             logging.error('No unreleased changes')
             skipped.append((url, e))
-            if not args.discover:
+            if not discover:
                 ret = 1
         except NoReleaserConfig as e:
             logging.error('No configuration for releaser')
             skipped.append((url, e))
-            if not args.discover:
+            if not discover:
                 ret = 1
         except GitHubCheckRunFailed as e:
             if e.conclusion is None:
@@ -646,12 +627,56 @@ def main(argv=None):  # noqa: C901
         else:
             success.append(url)
 
-    if args.discover:
+    if discover:
         logging.info('%s successfully released, %s skipped, %s failed',
                      len(success), len(skipped), len(failed))
-    if getattr(args, 'try', False):
-        return 0
     return ret
+
+
+def main(argv=None):  # noqa: C901
+    import argparse
+
+    parser = argparse.ArgumentParser("releaser")
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Dry run, don't actually create a release.")
+    subparsers = parser.add_subparsers(dest="command")
+    release_parser = subparsers.add_parser("release")
+    release_parser.add_argument("location", type=str)
+    release_parser.add_argument("url", nargs="*", type=str)
+    release_parser.add_argument(
+        "--new-version", type=str, help='New version to release.')
+    discover_parser = subparsers.add_parser("discover")
+    discover_parser.add_argument(
+        "--force", action="store_true",
+        help='Force a new release, even if timeout is not reached.')
+    discover_parser.add_argument(
+        "--try", action="store_true",
+        help="Do not exit with non-zero if projects failed to be released.")
+    validate_parser = subparsers.add_parser("validate")
+    validate_parser.add_argument("path", type=str, nargs="?", default=".")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format='%(message)s')
+
+    if args.command == "release":
+        if args.url:
+            urls = args.url
+        else:
+            urls = ["."]
+        return release_many(urls, force=True, dry_run=args.dry_run,
+                            discover=False, new_version=args.new_version)
+    elif args.command == "discover":
+        urls = pypi_discover_urls()
+        ret = release_many(urls, force=args.force, dry_run=args.dry_run,
+                           discover=True)
+        if getattr(args, 'try'):
+            return 0
+        return ret
+    elif args.command == "validate":
+        return validate_config(args.path)
+    else:
+        parser.print_usage()
 
 
 if __name__ == "__main__":

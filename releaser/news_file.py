@@ -37,6 +37,12 @@ class NewsFile(object):
     def find_pending(self):
         return news_find_pending(self.tree, self.path)
 
+    def validate(self):
+        try:
+            self.find_pending()
+        except NoUnreleasedChanges:
+            pass
+
 
 def news_mark_released(
         tree, path: str, expected_version: str, release_date: datetime):
