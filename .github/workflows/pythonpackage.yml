@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt install protobuf-compiler
-          python -m pip install --upgrade pip cython mypy-protobuf
+          python -m pip install --upgrade pip cython mypy-protobuf setuptools
           python setup.py develop
           protoc --python_out=. --mypy_out=. releaser/config.proto
       - name: Style checks (flake8)
