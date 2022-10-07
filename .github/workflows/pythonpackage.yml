@@ -42,3 +42,8 @@ jobs:
       - name: Tests
         run: |
           python -m unittest disperse.tests.test_suite
+      - name: Validate disperse.conf
+        run: |
+          disperse validate .
+        env:
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
