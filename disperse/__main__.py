@@ -525,7 +525,6 @@ def create_github_release(repo, tag_name, version, description):
 
 def pypi_discover_urls(pypi_user):
     import xmlrpc.client
-    from configparser import RawConfigParser
     client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
     ret = []
     for relation, package in client.user_packages(pypi_user):
