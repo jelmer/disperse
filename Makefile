@@ -13,5 +13,5 @@ check:
 	PYTHONPATH=. python3 -m unittest disperse.tests.test_suite
 
 docker: proto
-	docker build -t ghcr.io/jelmer/disperse .
-	docker push ghcr.io/jelmer/disperse
+	buildah build -t ghcr.io/jelmer/disperse:latest .
+	build push ghcr.io/jelmer/disperse:latest
