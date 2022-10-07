@@ -477,7 +477,11 @@ def get_github_repo(repo_url: str):
         repo_url = repo_url[:-4]
     parsed_url = urlparse(repo_url)
     fullname = '/'.join(parsed_url.path.strip('/').split('/')[:2])
-    token = retrieve_github_token(parsed_url.scheme, parsed_url.hostname)
+    try:
+        token = retrieve_github_token(parsed_url.scheme, parsed_url.hostname)
+    except TypeError:
+        # Newer versions of retrieve_github_token don't take any arguments
+        token = retrieve_github_token()
     gh = Github(token)
     logging.info('Finding project %s on GitHub', fullname)
     return gh.get_repo(fullname)
