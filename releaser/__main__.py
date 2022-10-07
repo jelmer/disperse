@@ -568,6 +568,25 @@ def validate_config(path):
         news_file = NewsFile(wt, cfg.news_file)
         news_file.validate()
 
+    if cfg.update_version:
+        for update_cfg in cfg.update_version:
+            if not update_cfg.match:
+                r = _version_line_re(update_cfg.new_line)
+            else:
+                r = re.compile(update_cfg.match.encode())
+            with wt.get_file(update_cfg.path) as f:
+                for line in f:
+                    if r.match(line):
+                        break
+                else:
+                    raise Exception(
+                        "No matches for %s in %s" % (
+                            r.pattern, update_cfg.path))
+
+    for update in cfg.update_manpages:
+        if not glob(wt.abspath(update)):
+            raise Exception("no matches for %s" % update)
+
 
 def release_many(urls, *, force=False, dry_run=False, discover=False,
                  new_version=None):
