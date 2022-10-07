@@ -1,6 +1,7 @@
+---
 name: Python package
 
-on: [push, pull_request]
+"on": [push, pull_request]
 
 jobs:
   build:
@@ -13,25 +14,31 @@ jobs:
       fail-fast: false
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        sudo apt install protobuf-compiler
-        python -m pip install --upgrade pip flake8 cython mypy-protobuf
-        python setup.py develop
-        protoc --python_out=. --mypy_out=. releaser/config.proto
-    - name: Style checks
-      run: |
-        python -m flake8
-    - name: Typing checks
-      run: |
-        pip install -U mypy types-toml
-        python -m mypy releaser
-      if: "matrix.python-version != 'pypy3'"
-    - name: Tests
-      run: |
-        python -m unittest releaser.tests.test_suite
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          sudo apt install protobuf-compiler
+          python -m pip install --upgrade pip cython mypy-protobuf setuptools \
+            protobuf-setuptools
+          python setup.py develop
+          protoc --python_out=. --mypy_out=. releaser/config.proto
+      - name: Style checks (flake8)
+        run: |
+          python -m pip install --upgrade flake8
+          python -m flake8
+      - name: Style checks (yaml)
+        run: |
+          python -m pip install --upgrade yamllint
+          yamllint .
+      - name: Typing checks
+        run: |
+          pip install -U mypy types-toml
+          python -m mypy releaser
+        if: "matrix.python-version != 'pypy3'"
+      - name: Tests
+        run: |
+          python -m unittest releaser.tests.test_suite
