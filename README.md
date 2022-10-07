@@ -1,7 +1,7 @@
-Releaser
+disperse
 ========
 
-Releaser is a simple script that I use to create releases for some of the free
+disperse is a simple script that I use to create releases for some of the free
 software packages I maintain. It's meant to streamline the releasing process,
 reducing the human effort involved in creating a release as well as the
 likelihood of a brown-bag release.
@@ -22,16 +22,18 @@ It can do one or more of the following:
  * create a git tag for the new release
  * create "release" entries (on supported platforms, like GitHub)
 
+Disperse was previously known as "releaser".
+
 Configuration
 -------------
 
-To a large extent, releaser will automatically figure out what needs to happen.
+To a large extent, disperse will automatically figure out what needs to happen.
 It can discover the projects you maintain on pypi by reading ~/.pypirc for your
 username and enumerating them.
 
 It can parse and modify setup.py and Cargo.toml files.
 
-It uses a configuration file (releaser.conf) for anything that can not be
+It uses a configuration file (disperse.conf) for anything that can not be
 autodetected, and which lives in the repository root.
 
 For example:
@@ -46,11 +48,11 @@ For example:
 Running from docker
 -------------------
 
-The easiest way to run releaser is to use the docker image at
-``ghcr.io/jelmer/releaser``. You'll need to make sure that appropriate SSH
+The easiest way to run disperse is to use the docker image at
+``ghcr.io/jelmer/disperse``. You'll need to make sure that appropriate SSH
 and PGP keys are available.
 
-The author regularly runs releaser inside of a Kubernetes cronjob.
+The author regularly runs disperse inside of a Kubernetes cronjob.
 
 Future
 ------

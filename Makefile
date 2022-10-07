@@ -1,17 +1,17 @@
 all: proto
 
-proto: releaser/config_pb2.py
+proto: disperse/config_pb2.py
 
 %_pb2.py: %.proto
 	protoc --python_out=. --mypy_out=. $<
 
 clean:
-	rm releaser/*_pb2.py
+	rm disperse/*_pb2.py
 
 check:
 	flake8
-	PYTHONPATH=. python3 -m unittest releaser.tests.test_suite
+	PYTHONPATH=. python3 -m unittest disperse.tests.test_suite
 
 docker: proto
-	docker build -t ghcr.io/jelmer/releaser .
-	docker push ghcr.io/jelmer/releaser
+	docker build -t ghcr.io/jelmer/disperse .
+	docker push ghcr.io/jelmer/disperse

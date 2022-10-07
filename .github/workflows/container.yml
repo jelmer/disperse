@@ -37,6 +37,6 @@ jobs:
         with:
           file: "Dockerfile"
           tags: |
-            ghcr.io/jelmer/releaser:latest
+            ghcr.io/jelmer/disperse:latest
           # build on feature branches, push only on main branch
           push: ${{ github.ref == 'refs/heads/main' }}

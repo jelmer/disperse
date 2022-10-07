@@ -4,5 +4,5 @@ __pycache__
 .mypy_cache/
 *.pyi
 build
-releaser.egg-info
+disperse.egg-info
 dist

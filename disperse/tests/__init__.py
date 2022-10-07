@@ -12,7 +12,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-"""Tests for releaser."""
+"""Tests for disperse."""
 
 import unittest
 
@@ -20,7 +20,7 @@ import unittest
 def test_suite():
     names = [
         ]
-    module_names = ['releaser.tests.' + name for name in names]
+    module_names = ['disperse.tests.' + name for name in names]
     result = unittest.TestSuite()
     loader = unittest.TestLoader()
     suite = loader.loadTestsFromNames(module_names)
