@@ -61,8 +61,8 @@ class RecentCommits(Exception):
         self.commit_age = commit_age
         self.min_commit_age = min_commit_age
         super(RecentCommits, self).__init__(
-            "Last commit is only %d days old (< %d)"
-            % (self.commit_age, self.min_commit_age)
+            f"Last commit is only {self.commit_age} days old "
+            f"(< {self.min_commit_age})"
         )
 
 
@@ -142,7 +142,7 @@ def update_version_in_file(
         matches += 1
     if matches == 0:
         raise Exception(
-            "No matches for %s in %s" % (update_cfg.match, update_cfg.path))
+            f"No matches for {update_cfg.match} in {update_cfg.path}")
     tree.put_file_bytes_non_atomic(update_cfg.path, b"".join(lines))
 
 
@@ -168,7 +168,7 @@ def update_version_in_manpage(
                 args[3] = release_date.strftime(f)
                 break
         else:
-            raise Exception('Unable to find format for date %s' % args[3])
+            raise Exception(f'Unable to find format for date {args[3]}')
         for r, f in VERSION_OPTIONS:
             m = re.fullmatch(r, args[4])
             if m:
@@ -178,7 +178,7 @@ def update_version_in_manpage(
         lines[i] = shlex.join(args).encode() + b'\n'
         break
     else:
-        raise Exception("No matches for date or version in %s" % (path, ))
+        raise Exception(f"No matches for date or version in {path}")
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
 
 
@@ -398,13 +398,13 @@ def release_project(   # noqa: C901
                     now)
         if ws.local_tree.has_filename("Cargo.toml"):
             update_version_in_cargo(ws.local_tree, new_version)
-        ws.local_tree.commit("Release %s." % new_version)
+        ws.local_tree.commit(f"Release {new_version}.")
         tag_name = cfg.tag_name.replace("$VERSION", new_version)
         logging.info('Creating tag %s', tag_name)
         if hasattr(ws.local_tree.branch.repository, '_git'):
             subprocess.check_call(
                 ["git", "tag", "-as", tag_name,
-                 "-m", "Release %s" % new_version],
+                 "-m", f"Release {new_version}"],
                 cwd=ws.local_tree.abspath("."),
             )
         else:
@@ -464,12 +464,12 @@ def release_project(   # noqa: C901
                 logging.info('branch %s is protected; proposing merge instead',
                              ws.local_tree.branch.name)
                 (mp, is_new) = ws.propose(
-                    description="Merge release of %s" % new_version,
+                    description=f"Merge release of {new_version}",
                     tags=[tag_name],
-                    name='release-%s' % new_version, labels=['release'],
+                    name=f'release-{new_version}', labels=['release'],
                     dry_run=dry_run,
-                    commit_message="Merge release of %s" % new_version)
-                logging.info('Created merge proposal: %s', mp.url)
+                    commit_message=f"Merge release of {new_version}")
+                logging.info(f'Created merge proposal: {mp.url}')
             else:
                 raise
 
@@ -487,7 +487,7 @@ def release_project(   # noqa: C901
         logging.info('Using new version %s', new_pending_version)
         if news_file:
             news_file.add_pending(new_pending_version)
-            ws.local_tree.commit('Start on %s' % new_pending_version)
+            ws.local_tree.commit(f'Start on {new_pending_version}')
             if not dry_run:
                 ws.push()
     if not dry_run:
@@ -538,7 +538,7 @@ def create_github_release(repo, tag_name, version, description):
     logging.info('Creating release on GitHub')
     repo.create_git_release(
         tag=tag_name, name=version, draft=False, prerelease=False,
-        message=description or ('Release %s.' % version))
+        message=description or (f'Release {version}.'))
 
 
 def pypi_discover_urls(pypi_user):
@@ -547,13 +547,13 @@ def pypi_discover_urls(pypi_user):
     ret = []
     for relation, package in client.user_packages(pypi_user):
         req = Request(
-            'https://pypi.org/pypi/%s/json' % package,
-            headers={'Content-Type': 'disperse/%s' % version_string})
+            f'https://pypi.org/pypi/{package}/json',
+            headers={'Content-Type': f'disperse/{version_string}'})
         with urlopen(req) as f:
             data = json.load(f)
         project_urls = data['info']['project_urls']
         if project_urls is None:
-            logging.warning('Project %s does not have project URLs', package)
+            logging.warning(f'Project {package} does not have project URLs')
             continue
         for key, url in project_urls.items():
             if key == 'Repository':
@@ -598,12 +598,11 @@ def validate_config(path):
                         break
                 else:
                     raise Exception(
-                        "No matches for %s in %s" % (
-                            r.pattern, update_cfg.path))
+                        f"No matches for {r.pattern} in {update_cfg.path}")
 
     for update in cfg.update_manpages:
         if not glob(wt.abspath(update)):
-            raise Exception("no matches for %s" % update)
+            raise Exception("no matches for {update}")
 
 
 def release_many(urls, *, force=False, dry_run=False, discover=False,
