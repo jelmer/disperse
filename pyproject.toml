@@ -2,6 +2,6 @@
 requires = [
     "packaging",
     "setuptools",
-    "protobuf-setuptools"
+    "setuptools-protobuf"
 ]
 build-backend = "setuptools.build_meta"
