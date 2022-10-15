@@ -31,6 +31,7 @@ jobs:
           python -m pip install --upgrade flake8
           python -m flake8
       - name: Style checks (yaml)
+        if: always()
         run: |
           python -m pip install --upgrade yamllint
           yamllint .
@@ -40,9 +41,11 @@ jobs:
           python -m mypy disperse
         if: "matrix.python-version != 'pypy3'"
       - name: Tests
+        if: always()
         run: |
           python -m unittest disperse.tests.test_suite
       - name: Validate disperse.conf
+        if: always()
         run: |
           disperse validate .
         env:
