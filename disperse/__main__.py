@@ -265,9 +265,9 @@ def check_new_revisions(
 
 
 def release_project(   # noqa: C901
-        repo_url: str, force: bool = False,
+        repo_url: str, *, force: bool = False,
         new_version: Optional[str] = None,
-        dry_run: bool = False):
+        dry_run: bool = False, ignore_ci: bool = False):
     from .config import read_project
     from breezy.controldir import ControlDir
     from breezy.transport.local import LocalTransport
@@ -319,7 +319,14 @@ def release_project(   # noqa: C901
 
         if cfg.github_url:
             gh_repo = get_github_repo(cfg.github_url)
-            check_gh_repo_action_status(gh_repo, cfg.github_branch or 'HEAD')
+            try:
+                check_gh_repo_action_status(
+                    gh_repo, cfg.github_branch or 'HEAD')
+            except GitHubCheckRunFailed as e:
+                if ignore_ci:
+                    logging.warning('Ignoring failing CI: %s', e)
+                else:
+                    raise
         else:
             possible_urls = []
             if ws.local_tree.has_filename('setup.cfg'):
@@ -340,7 +347,13 @@ def release_project(   # noqa: C901
             for url, branch_name in possible_urls:
                 if urlparse(url).hostname == 'github.com':
                     gh_repo = get_github_repo(url)
-                    check_gh_repo_action_status(gh_repo, branch_name)
+                    try:
+                        check_gh_repo_action_status(gh_repo, branch_name)
+                    except GitHubCheckRunFailed as e:
+                        if ignore_ci:
+                            logging.warning('Ignoring failing CI: %s', e)
+                        else:
+                            raise
                     break
             else:
                 gh_repo = None
@@ -606,7 +619,7 @@ def validate_config(path):
 
 
 def release_many(urls, *, force=False, dry_run=False, discover=False,
-                 new_version=None):
+                 new_version=None, ignore_ci=False):
     failed = []
     skipped = []
     success = []
@@ -617,7 +630,7 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,
         try:
             release_project(
                 url, force=force, new_version=new_version,
-                dry_run=dry_run)
+                dry_run=dry_run, ignore_ci=ignore_ci)
         except RecentCommits as e:
             logging.error(
                 "Recent commits exist (%d < %d)", e.min_commit_age,
@@ -681,6 +694,9 @@ def main(argv=None):  # noqa: C901
     release_parser.add_argument("url", nargs="*", type=str)
     release_parser.add_argument(
         "--new-version", type=str, help='New version to release.')
+    release_parser.add_argument(
+        "--ignore-ci", action="store_true",
+        help='Release, even if the CI is not parsing.')
     discover_parser = subparsers.add_parser("discover")
     discover_parser.add_argument(
         "--pypi-user", type=str, action="append",
@@ -704,7 +720,8 @@ def main(argv=None):  # noqa: C901
         else:
             urls = ["."]
         return release_many(urls, force=True, dry_run=args.dry_run,
-                            discover=False, new_version=args.new_version)
+                            discover=False, new_version=args.new_version,
+                            ignore_ci=args.ignore_ci)
     elif args.command == "discover":
         pypi_username = os.environ.get('PYPI_USERNAME')
         urls = []
