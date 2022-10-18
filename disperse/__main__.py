@@ -32,15 +32,9 @@ from github import Github  # type: ignore
 from breezy.urlutils import split_segment_parameters
 import breezy.git  # noqa: F401
 import breezy.bzr  # noqa: F401
-try:
-    from breezy.transport import NoSuchFile
-except ImportError:
-    from breezy.errors import NoSuchFile
-try:
-    from breezy.plugins.github.forge import retrieve_github_token
-except ModuleNotFoundError:
-    from breezy.plugins.github.hoster import retrieve_github_token
-from breezy.git.remote import RemoteGitError
+from breezy.transport import NoSuchFile
+from breezy.plugins.github.forge import retrieve_github_token
+from breezy.git.remote import ProtectedBranchHookDeclined
 from breezy.branch import Branch
 from breezy.tree import InterTree, Tree
 from breezy.revision import NULL_REVISION
@@ -472,19 +466,16 @@ def release_project(   # noqa: C901
         # At this point, it's official - so let's push.
         try:
             ws.push(tags=[tag_name], dry_run=dry_run)
-        except RemoteGitError as e:
-            if str(e) == "protected branch hook declined":
-                logging.info('branch %s is protected; proposing merge instead',
-                             ws.local_tree.branch.name)
-                (mp, is_new) = ws.propose(
-                    description=f"Merge release of {new_version}",
-                    tags=[tag_name],
-                    name=f'release-{new_version}', labels=['release'],
-                    dry_run=dry_run,
-                    commit_message=f"Merge release of {new_version}")
-                logging.info(f'Created merge proposal: {mp.url}')
-            else:
-                raise
+        except ProtectedBranchHookDeclined:
+            logging.info('branch %s is protected; proposing merge instead',
+                         ws.local_tree.branch.name)
+            (mp, is_new) = ws.propose(
+                description=f"Merge release of {new_version}",
+                tags=[tag_name],
+                name=f'release-{new_version}', labels=['release'],
+                dry_run=dry_run,
+                commit_message=f"Merge release of {new_version}")
+            logging.info(f'Created merge proposal: {mp.url}')
 
         if gh_repo:
             if dry_run:
