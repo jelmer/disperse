@@ -45,6 +45,16 @@ For example:
 
 ```
 
+Basic usage
+-----------
+
+disperse has various subcommands. The core ones are:
+
+ * release - create a new release for project in $CWD or at a specific URL
+ * discover - find projects that the current user owns (e.g. on pypi) and
+      release them if they have unreleased changes and are significant enough
+ * validate - validate the disperse configuration
+
 Running from docker
 -------------------
 
