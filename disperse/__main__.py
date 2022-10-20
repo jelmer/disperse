@@ -442,8 +442,18 @@ def release_project(   # noqa: C901
                 except subprocess.CalledProcessError as e:
                     raise DistCommandFailed(
                         "setup.py bdist_wheel", e.returncode)
-                pypi_paths.extend(glob.glob('dist/%s-%s-*-any.whl' % (
-                    result.get_name(), result.get_version())))  # type: ignore
+                wheels_glob = 'dist/%s-%s-*-any.whl' % (
+                    result.get_name().replace('-', '_'),  # type: ignore
+                    result.get_version())  # type: ignore
+                wheels = glob.glob(
+                    os.path.join(ws.local_tree.abspath('.'), wheels_glob))
+                if not wheels:
+                    raise AssertionError(
+                        'setup.py bdist_wheel did not produce expected files. '
+                        'glob: %r, files: %r' % (
+                            wheels_glob,
+                            os.listdir(ws.local_tree.abspath('dist'))))
+                pypi_paths.extend(wheels)
             else:
                 logging.warning(
                     'python module is not pure; not uploading binary wheels')
