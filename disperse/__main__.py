@@ -430,8 +430,9 @@ def release_project(   # noqa: C901
             finally:
                 os.chdir(orig_dir)
             pypi_paths = []
-            if (not result.has_c_libraries()  # type: ignore
-                    and not result.has_ext_modules()):  # type: ignore
+            is_pure = (not result.has_c_libraries()  # type: ignore
+                       and not result.has_ext_modules())  # type: ignore
+            if is_pure:  # type: ignore
                 import glob
                 try:
                     subprocess.check_call(
@@ -443,16 +444,19 @@ def release_project(   # noqa: C901
                         "setup.py bdist_wheel", e.returncode)
                 pypi_paths.extend(glob.glob('dist/%s-%s-*-any.whl' % (
                     result.get_name(), result.get_version())))  # type: ignore
+            else:
+                logging.warning(
+                    'python module is not pure; not uploading binary wheels')
             try:
                 subprocess.check_call(
                     ["./setup.py", "sdist"], cwd=ws.local_tree.abspath(".")
                 )
             except subprocess.CalledProcessError as e:
                 raise DistCommandFailed("setup.py sdist", e.returncode)
-            pypi_paths.append(os.path.join(
+            sdist_path = os.path.join(
                 "dist", "%s-%s.tar.gz" % (
-                    result.get_name(), result.get_version())  # type: ignore
-            ))
+                    result.get_name(), result.get_version()))  # type: ignore
+            pypi_paths.append(sdist_path)
             command = [
                 "twine", "upload", "--non-interactive", "--sign"] + pypi_paths
             if dry_run:
@@ -476,7 +480,7 @@ def release_project(   # noqa: C901
                 logging.info("skipping scp to %s due to dry run mode", loc)
             else:
                 subprocess.check_call(
-                    ["scp", ws.local_tree.abspath(pypi_path), loc])
+                    ["scp", ws.local_tree.abspath(sdist_path), loc])
         # At this point, it's official - so let's push.
         try:
             ws.push(tags=[tag_name], dry_run=dry_run)
