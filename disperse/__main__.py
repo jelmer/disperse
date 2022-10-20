@@ -433,7 +433,6 @@ def release_project(   # noqa: C901
             is_pure = (not result.has_c_libraries()  # type: ignore
                        and not result.has_ext_modules())  # type: ignore
             if is_pure:  # type: ignore
-                import glob
                 try:
                     subprocess.check_call(
                         ["./setup.py", "bdist_wheel"],
@@ -445,7 +444,7 @@ def release_project(   # noqa: C901
                 wheels_glob = 'dist/%s-%s-*-any.whl' % (
                     result.get_name().replace('-', '_'),  # type: ignore
                     result.get_version())  # type: ignore
-                wheels = glob.glob(
+                wheels = glob(
                     os.path.join(ws.local_tree.abspath('.'), wheels_glob))
                 if not wheels:
                     raise AssertionError(
