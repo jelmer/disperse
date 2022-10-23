@@ -714,7 +714,7 @@ def main(argv=None):  # noqa: C901
         "--new-version", type=str, help='New version to release.')
     release_parser.add_argument(
         "--ignore-ci", action="store_true",
-        help='Release, even if the CI is not parsing.')
+        help='Release, even if the CI is not passing.')
     discover_parser = subparsers.add_parser("discover")
     discover_parser.add_argument(
         "--pypi-user", type=str, action="append",
