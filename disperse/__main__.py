@@ -380,7 +380,7 @@ def release_project(   # noqa: C901
             try:
                 check_gh_repo_action_status(
                     gh_repo, cfg.github_branch or 'HEAD')
-            except GitHubCheckRunFailed as e:
+            except (GitHubStatusFailed, GitHubStatusPending) as e:
                 if ignore_ci:
                     logging.warning('Ignoring failing CI: %s', e)
                 else:
@@ -407,7 +407,7 @@ def release_project(   # noqa: C901
                     gh_repo = get_github_repo(url)
                     try:
                         check_gh_repo_action_status(gh_repo, branch_name)
-                    except GitHubCheckRunFailed as e:
+                    except (GitHubStatusFailed, GitHubStatusPending) as e:
                         if ignore_ci:
                             logging.warning('Ignoring failing CI: %s', e)
                         else:
@@ -575,26 +575,34 @@ def get_github_repo(repo_url: str):
     return gh.get_repo(fullname)
 
 
-class GitHubCheckRunFailed(Exception):
-    """A check run failed."""
+class GitHubStatusFailed(Exception):
 
-    def __init__(self, name, conclusion, sha, branch, html_url):
-        self.name = name
-        self.conclusion = conclusion
+    def __init__(self, sha, url):
         self.sha = sha
-        self.branch = branch
-        self.html_url = html_url
+        self.html_url = url
+
+
+class GitHubStatusPending(Exception):
+
+    def __init__(self, sha, url):
+        self.sha = sha
+        self.html_url = url
 
 
 def check_gh_repo_action_status(repo, committish):
     if not committish:
         committish = 'HEAD'
     commit = repo.get_commit(committish)
-    for check_run in commit.get_check_runs():
-        if check_run.conclusion not in ('success', 'skipped'):
-            raise GitHubCheckRunFailed(
-                check_run.name, check_run.conclusion, commit.sha, committish,
-                check_run.html_url)
+    combined_status = commit.get_combined_status()
+    if combined_status.state == "success":
+        return
+    elif combined_status.state == "pending":
+        raise GitHubStatusPending(combined_status.sha, combined_status.url)
+    elif combined_status.state == "failure":
+        raise GitHubStatusFailed(combined_status.sha, combined_status.url)
+    else:
+        raise AssertionError(
+            'unexpected state %s' % combined_status.state)
 
 
 def wait_for_gh_actions(repo, committish, timeout=3600):
@@ -603,9 +611,7 @@ def wait_for_gh_actions(repo, committish, timeout=3600):
     while time.time() - start_time < timeout:
         try:
             check_gh_repo_action_status(repo, committish)
-        except GitHubCheckRunFailed as e:
-            if e.conclusion is not None:
-                raise
+        except GitHubStatusPending:
             time.sleep(30)
         else:
             return
@@ -727,17 +733,16 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,
             skipped.append((url, e))
             if not discover:
                 ret = 1
-        except GitHubCheckRunFailed as e:
-            if e.conclusion is None:
-                logging.error(
-                    'GitHub check %s for commit %s (branch: %s) '
-                    'not finished yet. See %s', e.name, e.sha, e.branch,
-                    e.html_url)
-            else:
-                logging.error(
-                    'GitHub check %s (%s) for commit %s (branch: %s) failed. '
-                    'See %s', e.name, e.conclusion, e.sha, e.branch,
-                    e.html_url)
+        except GitHubStatusPending as e:
+            logging.error(
+                'GitHub checks for commit %s '
+                'not finished yet. See %s', e.sha, e.html_url)
+            failed.append((url, e))
+            ret = 1
+        except GitHubStatusFailed as e:
+            logging.error(
+                'GitHub check for commit %failed. '
+                'See %s', e.sha, e.html_url)
             failed.append((url, e))
             ret = 1
         else:
