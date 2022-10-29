@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from typing import Optional, List, Tuple
 from urllib.request import urlopen, Request
 from urllib.parse import urlparse
@@ -258,6 +259,69 @@ def check_new_revisions(
             raise NoUnreleasedChanges()
 
 
+def upload_python_artifacts(local_tree, pypi_paths):
+    command = [
+        "twine", "upload", "--non-interactive",
+        "--sign"] + pypi_paths
+    try:
+        subprocess.check_call(command, cwd=local_tree.abspath("."))
+    except subprocess.CalledProcessError as e:
+        raise UploadCommandFailed(command, e.returncode)
+
+
+def create_python_artifacts(local_tree):
+    # Import setuptools, just in case it tries to replace distutils
+    import setuptools  # noqa: F401
+    from distutils.core import run_setup
+
+    orig_dir = os.getcwd()
+    try:
+        os.chdir(local_tree.abspath('.'))
+        result = run_setup(
+            local_tree.abspath("setup.py"), stop_after="config")
+    finally:
+        os.chdir(orig_dir)
+    pypi_paths = []
+    is_pure = (
+        not result.has_c_libraries()  # type: ignore
+        and not result.has_ext_modules())  # type: ignore
+    if is_pure:
+        try:
+            subprocess.check_call(
+                ["./setup.py", "bdist_wheel"],
+                cwd=local_tree.abspath(".")
+            )
+        except subprocess.CalledProcessError as e:
+            raise DistCommandFailed(
+                "setup.py bdist_wheel", e.returncode)
+        wheels_glob = 'dist/%s-%s-*-any.whl' % (
+            result.get_name().replace('-', '_'),  # type: ignore
+            result.get_version())  # type: ignore
+        wheels = glob(
+            os.path.join(local_tree.abspath('.'), wheels_glob))
+        if not wheels:
+            raise AssertionError(
+                'setup.py bdist_wheel did not produce expected files. '
+                'glob: %r, files: %r' % (
+                    wheels_glob,
+                    os.listdir(local_tree.abspath('dist'))))
+        pypi_paths.extend(wheels)
+    else:
+        logging.warning(
+            'python module is not pure; not uploading binary wheels')
+    try:
+        subprocess.check_call(
+            ["./setup.py", "sdist"], cwd=local_tree.abspath(".")
+        )
+    except subprocess.CalledProcessError as e:
+        raise DistCommandFailed("setup.py sdist", e.returncode)
+    sdist_path = os.path.join(
+        "dist", "%s-%s.tar.gz" % (
+            result.get_name(), result.get_version()))  # type: ignore
+    pypi_paths.append(sdist_path)
+    return pypi_paths
+
+
 def release_project(   # noqa: C901
         repo_url: str, *, force: bool = False,
         new_version: Optional[str] = None,
@@ -407,6 +471,7 @@ def release_project(   # noqa: C901
             update_version_in_cargo(ws.local_tree, new_version)
         ws.local_tree.commit(f"Release {new_version}.")
         tag_name = cfg.tag_name.replace("$VERSION", new_version)
+        assert not ws.main_branch.tags.has_tag(tag_name)
         logging.info('Creating tag %s', tag_name)
         if hasattr(ws.local_tree.branch.repository, '_git'):
             subprocess.check_call(
@@ -418,81 +483,48 @@ def release_project(   # noqa: C901
             ws.local_tree.branch.tags.set_tag(
                 tag_name, ws.local_tree.last_revision())
         if ws.local_tree.has_filename("setup.py"):
-            # Import setuptools, just in case it tries to replace distutils
-            import setuptools  # noqa: F401
-            from distutils.core import run_setup
+            pypi_paths = create_python_artifacts(ws.local_tree)
+        else:
+            pypi_paths = None
 
-            orig_dir = os.getcwd()
-            try:
-                os.chdir(ws.local_tree.abspath('.'))
-                result = run_setup(
-                    ws.local_tree.abspath("setup.py"), stop_after="config")
-            finally:
-                os.chdir(orig_dir)
-            pypi_paths = []
-            is_pure = (not result.has_c_libraries()  # type: ignore
-                       and not result.has_ext_modules())  # type: ignore
-            if is_pure:  # type: ignore
-                try:
+        artifacts = []
+        ws.push_tags(tags=[tag_name], dry_run=dry_run)
+        try:
+            # Wait for CI to go green
+            if gh_repo:
+                if dry_run:
+                    logging.info('In dry-run mode, so unable to wait for CI')
+                else:
+                    wait_for_gh_actions(gh_repo, tag_name)
+
+            if pypi_paths:
+                artifacts.extend(pypi_paths)
+                if dry_run:
+                    logging.info("skipping twine upload due to dry run mode")
+                elif cfg.skip_twine_upload:
+                    logging.info("skipping twine upload; disabled in config")
+                else:
+                    upload_python_artifacts(ws.local_tree, pypi_paths)
+            if ws.local_tree.has_filename("Cargo.toml"):
+                if dry_run:
+                    logging.info("skipping cargo upload due to dry run mode")
+                else:
                     subprocess.check_call(
-                        ["./setup.py", "bdist_wheel"],
-                        cwd=ws.local_tree.abspath(".")
-                    )
-                except subprocess.CalledProcessError as e:
-                    raise DistCommandFailed(
-                        "setup.py bdist_wheel", e.returncode)
-                wheels_glob = 'dist/%s-%s-*-any.whl' % (
-                    result.get_name().replace('-', '_'),  # type: ignore
-                    result.get_version())  # type: ignore
-                wheels = glob(
-                    os.path.join(ws.local_tree.abspath('.'), wheels_glob))
-                if not wheels:
-                    raise AssertionError(
-                        'setup.py bdist_wheel did not produce expected files. '
-                        'glob: %r, files: %r' % (
-                            wheels_glob,
-                            os.listdir(ws.local_tree.abspath('dist'))))
-                pypi_paths.extend(wheels)
-            else:
-                logging.warning(
-                    'python module is not pure; not uploading binary wheels')
-            try:
-                subprocess.check_call(
-                    ["./setup.py", "sdist"], cwd=ws.local_tree.abspath(".")
-                )
-            except subprocess.CalledProcessError as e:
-                raise DistCommandFailed("setup.py sdist", e.returncode)
-            sdist_path = os.path.join(
-                "dist", "%s-%s.tar.gz" % (
-                    result.get_name(), result.get_version()))  # type: ignore
-            pypi_paths.append(sdist_path)
-            command = [
-                "twine", "upload", "--non-interactive", "--sign"] + pypi_paths
-            if dry_run:
-                logging.info("skipping twine upload due to dry run mode")
-            elif cfg.skip_twine_upload:
-                logging.info("skipping twine upload; disabled in config")
-            else:
-                try:
-                    subprocess.check_call(
-                        command, cwd=ws.local_tree.abspath("."))
-                except subprocess.CalledProcessError as e:
-                    raise UploadCommandFailed(command, e.returncode)
-        if ws.local_tree.has_filename("Cargo.toml"):
-            if dry_run:
-                logging.info("skipping cargo upload due to dry run mode")
-            else:
-                subprocess.check_call(
-                    ["cargo", "upload"], cwd=ws.local_tree.abspath("."))
-        for loc in cfg.tarball_location:
-            if dry_run:
-                logging.info("skipping scp to %s due to dry run mode", loc)
-            else:
-                subprocess.check_call(
-                    ["scp", ws.local_tree.abspath(sdist_path), loc])
+                        ["cargo", "upload"], cwd=ws.local_tree.abspath("."))
+            for loc in cfg.tarball_location:
+                if dry_run:
+                    logging.info("skipping scp to %s due to dry run mode", loc)
+                else:
+                    subprocess.check_call(["scp"] + artifacts + [loc])
+        except BaseException:
+            logging.info('Deleting remote tag %s', tag_name)
+            if not dry_run:
+                ws.main_branch.tags.delete_tag(tag_name)
+            raise
+
         # At this point, it's official - so let's push.
         try:
-            ws.push(tags=[tag_name], dry_run=dry_run)
+            ws.push(dry_run=dry_run)
         except ProtectedBranchHookDeclined:
             logging.info('branch %s is protected; proposing merge instead',
                          ws.local_tree.branch.name)
@@ -554,15 +586,32 @@ class GitHubCheckRunFailed(Exception):
         self.html_url = html_url
 
 
-def check_gh_repo_action_status(repo, branch):
-    if not branch:
-        branch = 'HEAD'
-    commit = repo.get_commit(branch)
+def check_gh_repo_action_status(repo, committish):
+    if not committish:
+        committish = 'HEAD'
+    commit = repo.get_commit(committish)
     for check_run in commit.get_check_runs():
         if check_run.conclusion not in ('success', 'skipped'):
             raise GitHubCheckRunFailed(
-                check_run.name, check_run.conclusion, commit.sha, branch,
+                check_run.name, check_run.conclusion, commit.sha, committish,
                 check_run.html_url)
+
+
+def wait_for_gh_actions(repo, committish, timeout=3600):
+    logging.info('Waiting for CI for %s on %s to go green', repo, committish)
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            check_gh_repo_action_status(repo, committish)
+        except GitHubCheckRunFailed as e:
+            if e.conclusion is not None:
+                raise
+            time.sleep(30)
+        else:
+            return
+    raise TimeoutError(
+        'timed out waiting for CI after %d seconds' % (
+            time.time() - start_time))
 
 
 def create_github_release(repo, tag_name, version, description):
@@ -714,7 +763,7 @@ def main(argv=None):  # noqa: C901
         "--new-version", type=str, help='New version to release.')
     release_parser.add_argument(
         "--ignore-ci", action="store_true",
-        help='Release, even if the CI is not parsing.')
+        help='Release, even if the CI is not passing.')
     discover_parser = subparsers.add_parser("discover")
     discover_parser.add_argument(
         "--pypi-user", type=str, action="append",
