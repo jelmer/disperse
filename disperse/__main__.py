@@ -430,12 +430,15 @@ def release_project(   # noqa: C901
             finally:
                 os.chdir(orig_dir)
             pypi_paths = []
-            is_pure = (not result.has_c_libraries()  # type: ignore
-                       and not result.has_ext_modules())  # type: ignore
-            if is_pure:  # type: ignore
+            can_be_pure = (
+                not result.has_c_libraries()  # type: ignore
+                and not [
+                    cext for cext in result.ext_modules  # type: ignore
+                    if not cext.optional])
+            if can_be_pure:  # type: ignore
                 try:
                     subprocess.check_call(
-                        ["./setup.py", "bdist_wheel"],
+                        ["./setup.py", "bdist_wheel", "--universal"],
                         cwd=ws.local_tree.abspath(".")
                     )
                 except subprocess.CalledProcessError as e:
