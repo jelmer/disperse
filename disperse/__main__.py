@@ -598,26 +598,30 @@ def check_gh_repo_action_status(repo, committish):
     if not committish:
         committish = 'HEAD'
     commit = repo.get_commit(committish)
-    combined_status = commit.get_combined_status()
-    if combined_status.state == "success":
-        return
-    elif combined_status.state == "pending":
-        raise GitHubStatusPending(combined_status.sha, combined_status.url)
-    elif combined_status.state == "failure":
-        raise GitHubStatusFailed(combined_status.sha, combined_status.url)
-    else:
-        raise AssertionError(
-            'unexpected state %s' % combined_status.state)
+    for check in commit.get_check_runs():
+        if check.conclusion in ('success', 'skipped'):
+            continue
+        elif check.conclusion is None:
+            raise GitHubStatusPending(check.sha, check.html_url)
+        else:
+            raise GitHubStatusFailed(check.sha, check.html_url)
 
 
 def wait_for_gh_actions(repo, committish, *, timeout=DEFAULT_CI_TIMEOUT):
     logging.info('Waiting for CI for %s on %s to go green', repo, committish)
+    if not committish:
+        committish = 'HEAD'
+    commit = repo.get_commit(committish)
     start_time = time.time()
     while time.time() - start_time < timeout:
-        try:
-            check_gh_repo_action_status(repo, committish)
-        except GitHubStatusPending:
-            time.sleep(30)
+        for check in commit.get_check_runs():
+            if check.conclusion in ("success", "skipped"):
+                continue
+            elif check.conclusion == "pending":
+                time.sleep(30)
+                break
+            else:
+                raise GitHubStatusFailed(check.sha, check.html_url)
         else:
             return
     raise TimeoutError(
