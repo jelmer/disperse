@@ -49,6 +49,9 @@ from .news_file import (
     )
 
 
+DEFAULT_CI_TIMEOUT = 7200
+
+
 class RecentCommits(Exception):
     """Indicates there are too recent commits for a package."""
 
@@ -495,7 +498,9 @@ def release_project(   # noqa: C901
                 if dry_run:
                     logging.info('In dry-run mode, so unable to wait for CI')
                 else:
-                    wait_for_gh_actions(gh_repo, tag_name)
+                    wait_for_gh_actions(
+                        gh_repo, tag_name,
+                        timeout=(cfg.ci_timeout or DEFAULT_CI_TIMEOUT))
 
             if pypi_paths:
                 artifacts.extend(pypi_paths)
@@ -605,7 +610,7 @@ def check_gh_repo_action_status(repo, committish):
             'unexpected state %s' % combined_status.state)
 
 
-def wait_for_gh_actions(repo, committish, timeout=3600):
+def wait_for_gh_actions(repo, committish, *, timeout=DEFAULT_CI_TIMEOUT):
     logging.info('Waiting for CI for %s on %s to go green', repo, committish)
     start_time = time.time()
     while time.time() - start_time < timeout:
