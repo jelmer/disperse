@@ -750,7 +750,7 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,
             ret = 1
         except GitHubStatusFailed as e:
             logging.error(
-                'GitHub check for commit %failed. '
+                'GitHub check for commit %s failed. '
                 'See %s', e.sha, e.html_url)
             failed.append((url, e))
             ret = 1
