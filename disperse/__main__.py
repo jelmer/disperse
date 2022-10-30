@@ -602,9 +602,9 @@ def check_gh_repo_action_status(repo, committish):
         if check.conclusion in ('success', 'skipped'):
             continue
         elif check.conclusion is None:
-            raise GitHubStatusPending(check.sha, check.html_url)
+            raise GitHubStatusPending(check.head_sha, check.html_url)
         else:
-            raise GitHubStatusFailed(check.sha, check.html_url)
+            raise GitHubStatusFailed(check.head_sha, check.html_url)
 
 
 def wait_for_gh_actions(repo, committish, *, timeout=DEFAULT_CI_TIMEOUT):
@@ -621,7 +621,7 @@ def wait_for_gh_actions(repo, committish, *, timeout=DEFAULT_CI_TIMEOUT):
                 time.sleep(30)
                 break
             else:
-                raise GitHubStatusFailed(check.sha, check.html_url)
+                raise GitHubStatusFailed(check.head_sha, check.html_url)
         else:
             return
     raise TimeoutError(
