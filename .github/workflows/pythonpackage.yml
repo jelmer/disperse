@@ -37,7 +37,7 @@ jobs:
           yamllint .
       - name: Typing checks
         run: |
-          pip install -U mypy types-toml
+          pip install -U mypy types-toml types-setuptools
           python -m mypy disperse
         if: "matrix.python-version != 'pypy3'"
       - name: Tests
