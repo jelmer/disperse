@@ -322,7 +322,8 @@ def release_project(   # noqa: C901
             possible_urls = []
             if ws.local_tree.has_filename('setup.cfg'):
                 possible_urls.extend(
-                    read_project_urls_from_setup_cfg(ws.local_tree.abspath('setup.cfg')))
+                    read_project_urls_from_setup_cfg(
+                        ws.local_tree.abspath('setup.cfg')))
             if public_repo_url is not None:
                 possible_urls.append((public_repo_url, public_branch.name))
 
