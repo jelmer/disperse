@@ -1,5 +1,5 @@
 FROM debian:sid-slim
 RUN apt -y update && apt -y install brz --no-install-recommends python3-github silver-platter python3-protobuf gnupg python3-setuptools python3-pip twine protobuf-compiler git openssh-client
 ADD . /code
-RUN pip3 install /code
+RUN pip3 install /code git+https://github.com/breezy-team/breezy
 CMD python3 -m disperse discover --try
