@@ -46,7 +46,7 @@ def pypi_discover_urls(pypi_user):
     import xmlrpc.client
     client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
     ret = []
-    for relation, package in client.user_packages(pypi_user):
+    for relation, package in client.user_packages(pypi_user):  # type: ignore
         req = Request(
             f'https://pypi.org/pypi/{package}/json',
             headers={'Content-Type': f'disperse/{version_string}'})
@@ -180,6 +180,6 @@ def read_project_urls_from_setup_cfg(path):
     project_urls = metadata.get('project_urls', {})
     for key in ['GitHub', 'Source Code', 'Repository']:
         try:
-            yield (project_urls[key], cfg.github_branch or 'HEAD')
+            yield (project_urls[key], 'HEAD')
         except KeyError:
             pass

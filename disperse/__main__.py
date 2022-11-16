@@ -546,7 +546,7 @@ def wait_for_gh_actions(repo, committish, *, timeout=DEFAULT_CI_TIMEOUT):
     start_time = time.time()
     while time.time() - start_time < timeout:
         for check in commit.get_check_runs():
-            if check.conclusion in ("success", "skipped"):
+            if check.conclusion in ("success", "SKipped"):
                 continue
             elif check.conclusion == "pending":
                 time.sleep(30)
@@ -607,8 +607,8 @@ def validate_config(path):
 
 def release_many(urls, *, force=False, dry_run=False, discover=False,
                  new_version=None, ignore_ci=False):
-    failed = []
-    skipped = []
+    failed: List[Tuple[str, Exception]] = []
+    skipped: List[Tuple[str, Exception]] = []
     success = []
     ret = 0
     for url in urls:

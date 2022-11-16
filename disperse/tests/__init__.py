@@ -14,11 +14,12 @@
 
 """Tests for disperse."""
 
+from typing import List
 import unittest
 
 
 def test_suite():
-    names = [
+    names: List[str] = [
         ]
     module_names = ['disperse.tests.' + name for name in names]
     result = unittest.TestSuite()

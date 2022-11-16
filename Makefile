@@ -8,9 +8,20 @@ proto: disperse/config_pb2.py
 clean:
 	rm disperse/*_pb2.py
 
-check:
-	flake8
+check:: flake8
+
+check:: test
+
+test:
 	PYTHONPATH=. python3 -m unittest disperse.tests.test_suite
+
+flake8:
+	flake8
+
+check:: typing
+
+typing:
+	mypy disperse
 
 docker: proto
 	buildah build -t ghcr.io/jelmer/disperse:latest .
