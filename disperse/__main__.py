@@ -368,9 +368,17 @@ def release_project(   # noqa: C901
                 shell=True)
 
         if cfg.verify_command:
+            verify_command = cfg.verify_command
+        else:
+            if ws.local_tree.has_filename('tox.ini'):
+                verify_command = "tox"
+            else:
+                verify_command = None
+
+        if verify_command:
             try:
                 subprocess.check_call(
-                    cfg.verify_command, cwd=ws.local_tree.abspath("."),
+                    verify_command, cwd=ws.local_tree.abspath("."),
                     shell=True
                 )
             except subprocess.CalledProcessError as e:
