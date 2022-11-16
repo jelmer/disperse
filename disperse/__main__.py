@@ -52,6 +52,7 @@ from .python import (
     upload_python_artifacts,
     create_python_artifacts,
     create_setup_py_artifacts,
+    read_project_urls_from_setup_cfg,
 )
 
 
@@ -320,17 +321,8 @@ def release_project(   # noqa: C901
         else:
             possible_urls = []
             if ws.local_tree.has_filename('setup.cfg'):
-                import setuptools.config.setupcfg
-                config = setuptools.config.setupcfg.read_configuration(
-                    ws.local_tree.abspath('setup.cfg'))
-                metadata = config.get('metadata', {})
-                project_urls = metadata.get('project_urls', {})
-                for key in ['GitHub', 'Source Code', 'Repository']:
-                    try:
-                        possible_urls.append(
-                            (project_urls[key], cfg.github_branch or 'HEAD'))
-                    except KeyError:
-                        pass
+                possible_urls.extend(
+                    read_project_urls_from_setup_cfg(ws.local_tree.abspath('setup.cfg')))
             if public_repo_url is not None:
                 possible_urls.append((public_repo_url, public_branch.name))
 

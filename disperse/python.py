@@ -171,3 +171,15 @@ def create_python_artifacts(local_tree):
             config['metadata']['version']))
     pypi_paths.append(sdist_path)
     return pypi_paths
+
+
+def read_project_urls_from_setup_cfg(path):
+    import setuptools.config.setupcfg
+    config = setuptools.config.setupcfg.read_configuration(path)
+    metadata = config.get('metadata', {})
+    project_urls = metadata.get('project_urls', {})
+    for key in ['GitHub', 'Source Code', 'Repository']:
+        try:
+            yield (project_urls[key], cfg.github_branch or 'HEAD')
+        except KeyError:
+            pass
