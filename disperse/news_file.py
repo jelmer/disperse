@@ -92,12 +92,27 @@ def skip_header(lines):
     return 0
 
 
+class OddVersion(Exception):
+    """Version string found was odd."""
+
+    def __init__(self, version):
+        self.version = version
+
+
+def check_version(v):
+    import re
+    if not re.fullmatch(r'[0-9\.]+', v):
+        raise OddVersion(v)
+
+
 def parse_version_line(line) -> Tuple[str, Optional[str], str]:
     if b'\t' in line.strip():
         (version, date) = line.strip().split(b'\t', 1)
+        check_version(version.decode())
         return version.decode(), date.decode(), '%(version)s\t%(date)s'
     if b' ' in line.strip():
         (version, date) = line.strip().split(b' ', 1)
+        check_version(version.decode())
         if date.startswith(b'(') and date.endswith(b')'):
             return (
                 version.decode(), date[1:-1].decode(),
@@ -105,7 +120,9 @@ def parse_version_line(line) -> Tuple[str, Optional[str], str]:
         else:
             return version.decode(), date.decode(), '%(version)s %(date)s'
     else:
-        return line.strip().decode(), None, '%(version)s'
+        version = line.strip()
+        check_version(version.decode())
+        return version.decode(), None, '%(version)s'
 
 
 def news_find_pending(tree, path):
