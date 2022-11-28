@@ -97,7 +97,7 @@ def create_setup_py_artifacts(local_tree):
     if is_pure:
         try:
             subprocess.check_call(
-                ["./setup.py", "bdist_wheel"],
+                ["./setup.py", "egg_info", "-Db", "", "bdist_wheel"],
                 cwd=local_tree.abspath(".")
             )
         except subprocess.CalledProcessError as e:
@@ -120,7 +120,8 @@ def create_setup_py_artifacts(local_tree):
             'python module is not pure; not uploading binary wheels')
     try:
         subprocess.check_call(
-            ["./setup.py", "sdist"], cwd=local_tree.abspath(".")
+            ["./setup.py", "egg_info", "-Db", "", "sdist"],
+            cwd=local_tree.abspath(".")
         )
     except subprocess.CalledProcessError as e:
         raise DistCommandFailed("setup.py sdist", e.returncode)
