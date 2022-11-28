@@ -35,8 +35,11 @@ from breezy.transport import NoSuchFile
 from breezy.plugins.github.forge import retrieve_github_token
 from breezy.git.remote import ProtectedBranchHookDeclined
 from breezy.branch import Branch
+from breezy.mutabletree import MutableTree
 from breezy.tree import InterTree, Tree
 from breezy.revision import NULL_REVISION
+from breezy.workingtree import WorkingTree
+
 from silver_platter.workspace import Workspace
 
 
@@ -109,7 +112,7 @@ def _version_line_re(new_line: str) -> re.Pattern:
 
 
 def update_version_in_file(
-        tree: Tree, update_cfg, new_version: str, status: str) -> None:
+        tree: MutableTree, update_cfg, new_version: str, status: str) -> None:
     with tree.get_file(update_cfg.path) as f:
         lines = list(f.readlines())
     matches = 0
@@ -138,7 +141,7 @@ def update_version_in_file(
 
 
 def update_version_in_manpage(
-        tree: Tree, path, new_version: str, release_date: datetime) -> None:
+        tree: MutableTree, path, new_version: str, release_date: datetime) -> None:
     with tree.get_file(path) as f:
         lines = list(f.readlines())
     DATE_OPTIONS = [
@@ -173,7 +176,7 @@ def update_version_in_manpage(
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
 
 
-def update_version_in_cargo(tree: Tree, new_version: str) -> None:
+def update_version_in_cargo(tree: WorkingTree, new_version: str) -> None:
     from toml.decoder import load, TomlPreserveCommentDecoder
     from toml.encoder import dumps, TomlPreserveCommentEncoder
     with open(tree.abspath('Cargo.toml'), 'r') as f:
@@ -503,7 +506,8 @@ def get_github_repo(repo_url: str):
     parsed_url = urlparse(repo_url)
     fullname = '/'.join(parsed_url.path.strip('/').split('/')[:2])
     try:
-        token = retrieve_github_token(parsed_url.scheme, parsed_url.hostname)
+        token = retrieve_github_token(  # type: ignore
+            parsed_url.scheme, parsed_url.hostname)
     except TypeError:
         # Newer versions of retrieve_github_token don't take any arguments
         token = retrieve_github_token()
@@ -569,7 +573,6 @@ def create_github_release(repo, tag_name, version, description):
 
 
 def validate_config(path):
-    from breezy.workingtree import WorkingTree
     wt = WorkingTree.open(path)
 
     from .config import read_project
