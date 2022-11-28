@@ -141,7 +141,8 @@ def update_version_in_file(
 
 
 def update_version_in_manpage(
-        tree: MutableTree, path, new_version: str, release_date: datetime) -> None:
+        tree: MutableTree, path, new_version: str,
+        release_date: datetime) -> None:
     with tree.get_file(path) as f:
         lines = list(f.readlines())
     DATE_OPTIONS = [
