@@ -3,4 +3,5 @@ RUN apt -y update && apt -y install brz --no-install-recommends python3-github s
 ADD . /code
 RUN pip3 install "setuptools-protobuf[mypy]" git+https://github.com/breezy-team/breezy && pip3 install /code
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-CMD python3 -m disperse discover --try
+ENTRYPOINT ["python3", "-m", "disperse"]
+CMD ["discover", "--try"]
