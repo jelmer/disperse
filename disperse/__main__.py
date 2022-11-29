@@ -28,6 +28,12 @@ from urllib.parse import urlparse
 
 from github import Github  # type: ignore
 
+from prometheus_client import (
+    CollectorRegistry,
+    Counter,
+    push_to_gateway,
+)
+
 from breezy.urlutils import split_segment_parameters
 import breezy.git  # noqa: F401
 import breezy.bzr  # noqa: F401
@@ -62,6 +68,67 @@ from .python import (
 DEFAULT_CI_TIMEOUT = 7200
 
 
+registry = CollectorRegistry()
+
+ci_ignored_count = Counter(
+    'ci_ignored',
+    'CI was failing but ignored per user request',
+    registry=registry,
+    labelnames=['project'])
+
+no_disperse_config = Counter(
+    'no_disperse_config',
+    'No disperse configuration present',
+    registry=registry)
+
+recent_commits_count = Counter(
+    'recent_commits',
+    'There were recent commits, so no release was done',
+    registry=registry,
+    labelnames=['project'])
+
+pre_dist_command_failed = Counter(
+    'pre_dist_command_failed',
+    'The pre-dist command failed to run',
+    registry=registry,
+    labelnames=['project'])
+
+
+verify_command_failed = Counter(
+    'verify_command_failed',
+    'The verify command failed to run',
+    registry=registry,
+    labelnames=['project'])
+
+
+branch_protected_count = Counter(
+    'branch_protected',
+    'The branch was protected',
+    registry=registry,
+    labelnames=['project'])
+
+
+released_count = Counter(
+    'released',
+    'Released projects',
+    registry=registry,
+    labelnames=['project'])
+
+
+no_unreleased_changes_count = Counter(
+    'no_unreleased_changes',
+    'There were no unreleased changes',
+    registry=registry,
+    labelnames=['project'])
+
+
+release_tag_exists = Counter(
+    'release_tag_exists',
+    'A release tag already exists',
+    registry=registry,
+    labelnames=['project'])
+
+
 class RecentCommits(Exception):
     """Indicates there are too recent commits for a package."""
 
@@ -81,8 +148,23 @@ class VerifyCommandFailed(Exception):
         self.retcode = retcode
 
 
+class PreDistCommandFailed(Exception):
+
+    def __init__(self, command, retcode):
+        self.command = command
+        self.retcode = retcode
+
+
 class NodisperseConfig(Exception):
     """No disperse config present"""
+
+
+class ReleaseTagExists(Exception):
+
+    def __init__(self, project, version, tag_name):
+        self.project = project
+        self.version = version
+        self.tag_name = tag_name
 
 
 def increase_version(version: str, idx: int = -1) -> str:
@@ -237,7 +319,7 @@ def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
 
 
 def check_new_revisions(
-        branch: Branch, news_file_path: Optional[str] = None) -> None:
+        branch: Branch, news_file_path: Optional[str] = None) -> bool:
     tags = branch.tags.get_reverse_tag_dict()
     graph = branch.repository.get_graph()
     from_tree = None
@@ -255,8 +337,7 @@ def check_new_revisions(
                 if delta.modified[i].path == (news_file_path, news_file_path):
                     del delta.modified[i]
                     break
-        if not delta.has_changed():
-            raise NoUnreleasedChanges()
+        return delta.has_changed()
 
 
 def release_project(   # noqa: C901
@@ -310,6 +391,7 @@ def release_project(   # noqa: C901
                 with ws.local_tree.get_file("releaser.conf") as f:
                     cfg = read_project(f)
             except NoSuchFile:
+                no_disperse_config.inc()
                 raise NodisperseConfig() from exc
 
         if cfg.github_url:
@@ -319,6 +401,7 @@ def release_project(   # noqa: C901
                     gh_repo, cfg.github_branch or 'HEAD')
             except (GitHubStatusFailed, GitHubStatusPending) as e:
                 if ignore_ci:
+                    ci_ignored_count.labels(project=cfg.name).inc()
                     logging.warning('Ignoring failing CI: %s', e)
                 else:
                     raise
@@ -339,16 +422,20 @@ def release_project(   # noqa: C901
                     except (GitHubStatusFailed, GitHubStatusPending) as e:
                         if ignore_ci:
                             logging.warning('Ignoring failing CI: %s', e)
+                            ci_ignored_count.labels(project=cfg.name).inc()
                         else:
                             raise
                     break
             else:
                 gh_repo = None
 
-        check_new_revisions(ws.local_tree.branch, cfg.news_file)
+        if not check_new_revisions(ws.local_tree.branch, cfg.news_file):
+            no_unreleased_changes_count.labels(project=cfg.name).inc()
+            raise NoUnreleasedChanges()
         try:
             check_release_age(ws.local_tree.branch, cfg, now)
         except RecentCommits:
+            recent_commits_count.labels(project=cfg.name).inc()
             if not force:
                 raise
         if new_version is None:
@@ -368,9 +455,13 @@ def release_project(   # noqa: C901
         assert " " not in str(new_version), "Invalid version %r" % new_version
 
         if cfg.pre_dist_command:
-            subprocess.check_call(
-                cfg.pre_dist_command, cwd=ws.local_tree.abspath('.'),
-                shell=True)
+            try:
+                subprocess.check_call(
+                    cfg.pre_dist_command, cwd=ws.local_tree.abspath('.'),
+                    shell=True)
+            except subprocess.CalledProcessError as e:
+                pre_dist_command_failed.labels(project=cfg.name).inc()
+                raise PreDistCommandFailed(cfg.pre_dist_command, e.returncode)
 
         if cfg.verify_command:
             verify_command = cfg.verify_command
@@ -387,6 +478,7 @@ def release_project(   # noqa: C901
                     shell=True
                 )
             except subprocess.CalledProcessError as e:
+                verify_command_failed.labels(project=cfg.name).inc()
                 raise VerifyCommandFailed(cfg.verify_command, e.returncode)
 
         logging.info("releasing %s", new_version)
@@ -408,7 +500,12 @@ def release_project(   # noqa: C901
             update_version_in_cargo(ws.local_tree, new_version)
         ws.local_tree.commit(f"Release {new_version}.")
         tag_name = cfg.tag_name.replace("$VERSION", new_version)
-        assert not ws.main_branch.tags.has_tag(tag_name)
+        if ws.main_branch.tags.has_tag(tag_name):
+            release_tag_exists.labels(project=cfg.name).inc()
+            # Maybe there's a pending pull request merging new_version?
+            # TODO(jelmer): Do some more verification. Expect: release tag
+            # has one additional revision that's not on our branch.
+            raise ReleaseTagExists(cfg.name, new_version, tag_name)
         logging.info('Creating tag %s', tag_name)
         if hasattr(ws.local_tree.branch.repository, '_git'):
             subprocess.check_call(
@@ -467,6 +564,7 @@ def release_project(   # noqa: C901
         try:
             ws.push(dry_run=dry_run)
         except ProtectedBranchHookDeclined:
+            branch_protected_count.labels(project=cfg.name).inc()
             logging.info('branch %s is protected; proposing merge instead',
                          ws.local_tree.branch.name)
             (mp, is_new) = ws.propose(
@@ -499,6 +597,9 @@ def release_project(   # noqa: C901
             local_wt.pull(public_branch)
         elif local_branch is not None:
             local_branch.pull(public_branch)
+
+    released_count.labels(project=cfg.name).inc()
+    return cfg.name, new_version
 
 
 def get_github_repo(repo_url: str):
@@ -624,7 +725,7 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,
                 url, force=force, new_version=new_version,
                 dry_run=dry_run, ignore_ci=ignore_ci)
         except RecentCommits as e:
-            logging.error(
+            logging.info(
                 "Recent commits exist (%d < %d)", e.min_commit_age,
                 e.commit_age)
             skipped.append((url, e))
@@ -634,10 +735,22 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,
             logging.error('Verify command (%s) failed to run.', e.command)
             failed.append((url, e))
             ret = 1
+        except PreDistCommandFailed as e:
+            logging.error('Pre-Dist command (%s) failed to run.', e.command)
+            failed.append((url, e))
+            ret = 1
         except UploadCommandFailed as e:
             logging.error('Upload command (%s) failed to run.', e.command)
             failed.append((url, e))
             ret = 1
+        except ReleaseTagExists as e:
+            logging.warning(
+                '%s: Release tag %s for version %s exists. '
+                'Unmerged release commit?',
+                e.project, e.tag_name, e.version)
+            skipped.append((url, e))
+            if not discover:
+                ret = 1
         except DistCommandFailed as e:
             logging.error('Dist command (%s) failed to run.', e.command)
             failed.append((url, e))
@@ -680,6 +793,9 @@ def main(argv=None):  # noqa: C901
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Dry run, don't actually create a release.")
+    parser.add_argument(
+        "--prometheus", type=str,
+        help="Prometheus pushgateway to export to")
     subparsers = parser.add_subparsers(dest="command")
     release_parser = subparsers.add_parser("release")
     release_parser.add_argument("url", nargs="*", type=str)
@@ -722,6 +838,9 @@ def main(argv=None):  # noqa: C901
                            discover=True)
         if getattr(args, 'try'):
             return 0
+        if args.prometheus:
+            push_to_gateway(args.prometheus, job='disperse',
+                            registry=registry)
         return ret
     elif args.command == "validate":
         return validate_config(args.path)
