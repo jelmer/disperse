@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Tuple, Optional
 
 from . import NoUnreleasedChanges
+from breezy.tree import Tree
 
 
 class NewsFile(object):
@@ -48,8 +49,8 @@ def news_mark_released(
         tree, path: str, expected_version: str, release_date: datetime):
     lines = tree.get_file_lines(path)
     i = skip_header(lines)
-    version, date, line_format = parse_version_line(lines[i])
-    if date is not None and date != 'UNRELEASED':
+    version, date, line_format, pending = parse_version_line(lines[i])
+    if not pending:
         raise NoUnreleasedChanges()
     if expected_version != version:
         raise AssertionError(
@@ -145,7 +146,7 @@ def parse_version_line(line) -> Tuple[str, Optional[str], str, bool]:
         return version.decode(), None, '%(version)s', pending
 
 
-def news_find_pending(tree, path):
+def news_find_pending(tree: Tree, path: str) -> str:
     lines = tree.get_file_lines(path)
     i = skip_header(lines)
     (version, date, line_format, pending) = parse_version_line(lines[i])

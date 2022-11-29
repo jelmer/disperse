@@ -81,6 +81,13 @@ class VerifyCommandFailed(Exception):
         self.retcode = retcode
 
 
+class PreDistCommandFailed(Exception):
+
+    def __init__(self, command, retcode):
+        self.command = command
+        self.retcode = retcode
+
+
 class NodisperseConfig(Exception):
     """No disperse config present"""
 
@@ -368,9 +375,12 @@ def release_project(   # noqa: C901
         assert " " not in str(new_version), "Invalid version %r" % new_version
 
         if cfg.pre_dist_command:
-            subprocess.check_call(
-                cfg.pre_dist_command, cwd=ws.local_tree.abspath('.'),
-                shell=True)
+            try:
+                subprocess.check_call(
+                    cfg.pre_dist_command, cwd=ws.local_tree.abspath('.'),
+                    shell=True)
+            except subprocess.CalledProcessError as e:
+                raise PreDistCommandFailed(cfg.pre_dist_command, e.returncode)
 
         if cfg.verify_command:
             verify_command = cfg.verify_command
@@ -632,6 +642,10 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,
                 ret = 1
         except VerifyCommandFailed as e:
             logging.error('Verify command (%s) failed to run.', e.command)
+            failed.append((url, e))
+            ret = 1
+        except PreDistCommandFailed as e:
+            logging.error('Pre-Dist command (%s) failed to run.', e.command)
             failed.append((url, e))
             ret = 1
         except UploadCommandFailed as e:
