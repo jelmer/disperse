@@ -28,6 +28,12 @@ from urllib.parse import urlparse
 
 from github import Github  # type: ignore
 
+from prometheus_client import (
+    CollectorRegistry,
+    Counter,
+    push_to_gateway,
+)
+
 from breezy.urlutils import split_segment_parameters
 import breezy.git  # noqa: F401
 import breezy.bzr  # noqa: F401
@@ -60,6 +66,60 @@ from .python import (
 
 
 DEFAULT_CI_TIMEOUT = 7200
+
+
+registry = CollectorRegistry()
+
+ci_ignored_count = Counter(
+    'ci_ignored',
+    'CI was failing but ignored per user request',
+    registry=registry,
+    labelnames=['project'])
+
+no_disperse_config = Counter(
+    'no_disperse_config',
+    'No disperse configuration present',
+    registry=registry)
+
+recent_commits_count = Counter(
+    'recent_commits',
+    'There were recent commits, so no release was done',
+    registry=registry,
+    labelnames=['project'])
+
+pre_dist_command_failed = Counter(
+    'pre_dist_command_failed',
+    'The pre-dist command failed to run',
+    registry=registry,
+    labelnames=['project'])
+
+
+verify_command_failed = Counter(
+    'verify_command_failed',
+    'The verify command failed to run',
+    registry=registry,
+    labelnames=['project'])
+
+
+branch_protected_count = Counter(
+    'branch_protected',
+    'The branch was protected',
+    registry=registry,
+    labelnames=['project'])
+
+
+released_count = Counter(
+    'released',
+    'Released projects',
+    registry=registry,
+    labelnames=['project'])
+
+
+no_unreleased_changes_count = Counter(
+    'no_unreleased_changes',
+    'There were no unreleased changes',
+    registry=registry,
+    labelnames=['project'])
 
 
 class RecentCommits(Exception):
@@ -244,7 +304,7 @@ def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
 
 
 def check_new_revisions(
-        branch: Branch, news_file_path: Optional[str] = None) -> None:
+        branch: Branch, news_file_path: Optional[str] = None) -> bool:
     tags = branch.tags.get_reverse_tag_dict()
     graph = branch.repository.get_graph()
     from_tree = None
@@ -262,8 +322,7 @@ def check_new_revisions(
                 if delta.modified[i].path == (news_file_path, news_file_path):
                     del delta.modified[i]
                     break
-        if not delta.has_changed():
-            raise NoUnreleasedChanges()
+        return delta.has_changed()
 
 
 def release_project(   # noqa: C901
@@ -317,6 +376,7 @@ def release_project(   # noqa: C901
                 with ws.local_tree.get_file("releaser.conf") as f:
                     cfg = read_project(f)
             except NoSuchFile:
+                no_disperse_config.inc()
                 raise NodisperseConfig() from exc
 
         if cfg.github_url:
@@ -326,6 +386,7 @@ def release_project(   # noqa: C901
                     gh_repo, cfg.github_branch or 'HEAD')
             except (GitHubStatusFailed, GitHubStatusPending) as e:
                 if ignore_ci:
+                    ci_ignored_count.labels(project=cfg.name).inc()
                     logging.warning('Ignoring failing CI: %s', e)
                 else:
                     raise
@@ -346,16 +407,20 @@ def release_project(   # noqa: C901
                     except (GitHubStatusFailed, GitHubStatusPending) as e:
                         if ignore_ci:
                             logging.warning('Ignoring failing CI: %s', e)
+                            ci_ignored_count.labels(project=cfg.name).inc()
                         else:
                             raise
                     break
             else:
                 gh_repo = None
 
-        check_new_revisions(ws.local_tree.branch, cfg.news_file)
+        if not check_new_revisions(ws.local_tree.branch, cfg.news_file):
+            no_unreleased_changes_count.labels(project=cfg.name).inc()
+            raise NoUnreleasedChanges()
         try:
             check_release_age(ws.local_tree.branch, cfg, now)
         except RecentCommits:
+            recent_commits_count.labels(project=cfg.name).inc()
             if not force:
                 raise
         if new_version is None:
@@ -380,6 +445,7 @@ def release_project(   # noqa: C901
                     cfg.pre_dist_command, cwd=ws.local_tree.abspath('.'),
                     shell=True)
             except subprocess.CalledProcessError as e:
+                pre_dist_command_failed.labels(project=cfg.name).inc()
                 raise PreDistCommandFailed(cfg.pre_dist_command, e.returncode)
 
         if cfg.verify_command:
@@ -397,6 +463,7 @@ def release_project(   # noqa: C901
                     shell=True
                 )
             except subprocess.CalledProcessError as e:
+                verify_command_failed.labels(project=cfg.name).inc()
                 raise VerifyCommandFailed(cfg.verify_command, e.returncode)
 
         logging.info("releasing %s", new_version)
@@ -477,6 +544,7 @@ def release_project(   # noqa: C901
         try:
             ws.push(dry_run=dry_run)
         except ProtectedBranchHookDeclined:
+            branch_protected_count.labels(project=cfg.name).inc()
             logging.info('branch %s is protected; proposing merge instead',
                          ws.local_tree.branch.name)
             (mp, is_new) = ws.propose(
@@ -509,6 +577,9 @@ def release_project(   # noqa: C901
             local_wt.pull(public_branch)
         elif local_branch is not None:
             local_branch.pull(public_branch)
+
+    released_count.labels(project=cfg.name).inc()
+    return cfg.name, new_version
 
 
 def get_github_repo(repo_url: str):
@@ -694,6 +765,9 @@ def main(argv=None):  # noqa: C901
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Dry run, don't actually create a release.")
+    parser.add_argument(
+        "--prometheus", type=str,
+        help="Prometheus pushgateway to export to")
     subparsers = parser.add_subparsers(dest="command")
     release_parser = subparsers.add_parser("release")
     release_parser.add_argument("url", nargs="*", type=str)
@@ -736,6 +810,9 @@ def main(argv=None):  # noqa: C901
                            discover=True)
         if getattr(args, 'try'):
             return 0
+        if args.prometheus:
+            push_to_gateway(args.prometheus, job='disperse',
+                            registry=registry)
         return ret
     elif args.command == "validate":
         return validate_config(args.path)
