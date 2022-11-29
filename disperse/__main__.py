@@ -122,6 +122,13 @@ no_unreleased_changes_count = Counter(
     labelnames=['project'])
 
 
+release_tag_exists = Counter(
+    'release_tag_exists',
+    'A release tag already exists',
+    registry=registry,
+    labelnames=['project'])
+
+
 class RecentCommits(Exception):
     """Indicates there are too recent commits for a package."""
 
@@ -150,6 +157,14 @@ class PreDistCommandFailed(Exception):
 
 class NodisperseConfig(Exception):
     """No disperse config present"""
+
+
+class ReleaseTagExists(Exception):
+
+    def __init__(self, project, version, tag_name):
+        self.project = project
+        self.version = version
+        self.tag_name = tag_name
 
 
 def increase_version(version: str, idx: int = -1) -> str:
@@ -485,7 +500,12 @@ def release_project(   # noqa: C901
             update_version_in_cargo(ws.local_tree, new_version)
         ws.local_tree.commit(f"Release {new_version}.")
         tag_name = cfg.tag_name.replace("$VERSION", new_version)
-        assert not ws.main_branch.tags.has_tag(tag_name)
+        if ws.main_branch.tags.has_tag(tag_name):
+            release_tag_exists.labels(project=cfg.name).inc()
+            # Maybe there's a pending pull request merging new_version?
+            # TODO(jelmer): Do some more verification. Expect: release tag
+            # has one additional revision that's not on our branch.
+            raise ReleaseTagExists(cfg.name, new_version, tag_name)
         logging.info('Creating tag %s', tag_name)
         if hasattr(ws.local_tree.branch.repository, '_git'):
             subprocess.check_call(
@@ -705,7 +725,7 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,
                 url, force=force, new_version=new_version,
                 dry_run=dry_run, ignore_ci=ignore_ci)
         except RecentCommits as e:
-            logging.error(
+            logging.info(
                 "Recent commits exist (%d < %d)", e.min_commit_age,
                 e.commit_age)
             skipped.append((url, e))
@@ -723,6 +743,14 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,
             logging.error('Upload command (%s) failed to run.', e.command)
             failed.append((url, e))
             ret = 1
+        except ReleaseTagExists as e:
+            logging.warning(
+                '%s: Release tag %s for version %s exists. '
+                'Unmerged release commit?',
+                e.project, e.tag_name, e.version)
+            skipped.append((url, e))
+            if not discover:
+                ret = 1
         except DistCommandFailed as e:
             logging.error('Dist command (%s) failed to run.', e.command)
             failed.append((url, e))
