@@ -836,11 +836,11 @@ def main(argv=None):  # noqa: C901
             urls.extend(pypi_discover_urls(pypi_username))
         ret = release_many(urls, force=args.force, dry_run=args.dry_run,
                            discover=True)
-        if getattr(args, 'try'):
-            return 0
         if args.prometheus:
             push_to_gateway(args.prometheus, job='disperse',
                             registry=registry)
+        if getattr(args, 'try'):
+            return 0
         return ret
     elif args.command == "validate":
         return validate_config(args.path)
