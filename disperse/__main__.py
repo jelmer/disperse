@@ -575,6 +575,9 @@ def release_project(   # noqa: C901
                 commit_message=f"Merge release of {new_version}")
             logging.info(f'Created merge proposal: {mp.url}')
 
+            if getattr(mp, 'supports_auto_merge', False):
+                mp.merge(auto=True, message=f"Merge release of {new_version}")
+
         if gh_repo:
             if dry_run:
                 logging.info(
