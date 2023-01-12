@@ -22,7 +22,7 @@ from . import NoUnreleasedChanges
 from breezy.tree import Tree
 
 
-class NewsFile(object):
+class NewsFile:
 
     def __init__(self, tree, path):
         self.tree = tree
@@ -54,7 +54,7 @@ def news_mark_released(
         raise NoUnreleasedChanges()
     if expected_version != version:
         raise AssertionError(
-            "unexpected version: %s != %s" % (version, expected_version)
+            "unexpected version: {} != {}".format(version, expected_version)
         )
     change_lines = []
     for line in lines[i+1:]:

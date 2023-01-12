@@ -103,7 +103,7 @@ def create_setup_py_artifacts(local_tree):
         except subprocess.CalledProcessError as e:
             raise DistCommandFailed(
                 "setup.py bdist_wheel", e.returncode)
-        wheels_glob = 'dist/%s-%s-*-any.whl' % (
+        wheels_glob = 'dist/{}-{}-*-any.whl'.format(
             result.get_name().replace('-', '_'),  # type: ignore
             result.get_version())  # type: ignore
         wheels = glob(
@@ -126,7 +126,7 @@ def create_setup_py_artifacts(local_tree):
     except subprocess.CalledProcessError as e:
         raise DistCommandFailed("setup.py sdist", e.returncode)
     sdist_path = os.path.join(
-        "dist", "%s-%s.tar.gz" % (
+        "dist", "{}-{}.tar.gz".format(
             result.get_name(), result.get_version()))  # type: ignore
     pypi_paths.append(sdist_path)
     return pypi_paths
@@ -147,7 +147,7 @@ def create_python_artifacts(local_tree):
     except subprocess.CalledProcessError as e:
         raise DistCommandFailed(
             "setup.py bdist_wheel", e.returncode)
-    wheels_glob = 'dist/%s-%s-*-any.whl' % (
+    wheels_glob = 'dist/{}-{}-*-any.whl'.format(
         config['metadata']['name'].replace('-', '_'),
         config['metadata']['version'])
     wheels = glob(
@@ -167,7 +167,7 @@ def create_python_artifacts(local_tree):
     except subprocess.CalledProcessError as e:
         raise DistCommandFailed("setup.py sdist", e.returncode)
     sdist_path = os.path.join(
-        "dist", "%s-%s.tar.gz" % (
+        "dist", "{}-{}.tar.gz".format(
             config['metadata']['name'],
             config['metadata']['version']))
     pypi_paths.append(sdist_path)
