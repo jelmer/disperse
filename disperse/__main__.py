@@ -135,7 +135,7 @@ class RecentCommits(Exception):
     def __init__(self, commit_age, min_commit_age):
         self.commit_age = commit_age
         self.min_commit_age = min_commit_age
-        super(RecentCommits, self).__init__(
+        super().__init__(
             f"Last commit is only {self.commit_age} days old "
             f"(< {self.min_commit_age})"
         )
@@ -262,7 +262,7 @@ def update_version_in_manpage(
 def update_version_in_cargo(tree: WorkingTree, new_version: str) -> None:
     from toml.decoder import load, TomlPreserveCommentDecoder
     from toml.encoder import dumps, TomlPreserveCommentEncoder
-    with open(tree.abspath('Cargo.toml'), 'r') as f:
+    with open(tree.abspath('Cargo.toml')) as f:
         d = load(f, dict, TomlPreserveCommentDecoder())
     d['package']['version'] = new_version
     tree.put_file_bytes_non_atomic(

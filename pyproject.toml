@@ -16,5 +16,6 @@ module = [
     "setuptools.config.setupcfg",
     "breezy.*",
     "silver_platter.*",
+    "prometheus_client.*",
 ]
 ignore_missing_imports = true
