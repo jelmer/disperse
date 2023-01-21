@@ -32,6 +32,10 @@ message Project {
     optional bool skip_twine_upload = 12 [ default = false ];
 
     optional int32 ci_timeout = 13 [default=7200];
+
+    optional string launchpad_project = 14;
+
+    optional string launchpad_series = 15;
 };
 
 message Config {

@@ -50,6 +50,11 @@ from silver_platter.workspace import Workspace
 
 
 from . import NoUnreleasedChanges
+from .launchpad import (
+    ensure_launchpad_release,
+    ensure_launchpad_milestone,
+    add_launchpad_release_files,
+)
 from .news_file import (
     NewsFile,
     news_find_pending,
@@ -394,6 +399,16 @@ def release_project(   # noqa: C901
                 no_disperse_config.inc()
                 raise NodisperseConfig() from exc
 
+        if cfg.launchpad_project:
+            launchpad_project = cfg.launchpad_project
+        else:
+            launchpad_project = None
+
+        if cfg.launchpad_series:
+            launchpad_series = cfg.launchpad_series
+        else:
+            launchpad_series = None
+
         if cfg.github_url:
             gh_repo = get_github_repo(cfg.github_url)
             try:
@@ -415,7 +430,9 @@ def release_project(   # noqa: C901
                 possible_urls.append((public_repo_url, public_branch.name))
 
             for url, branch_name in possible_urls:
-                if urlparse(url).hostname == 'github.com':
+                parsed_url = urlparse(url)
+                hostname = parsed_url.hostname
+                if hostname == 'github.com':
                     gh_repo = get_github_repo(url)
                     try:
                         check_gh_repo_action_status(gh_repo, branch_name)
@@ -426,6 +443,11 @@ def release_project(   # noqa: C901
                         else:
                             raise
                     break
+                elif hostname == 'launchpad.net':
+                    parts = parsed_url.strip('/').split('/')[0]
+                    launchpad_project = parts[0]
+                    if len(parts) > 1 and not parts[1].startswith('+'):
+                        launchpad_series = parts[1]
             else:
                 gh_repo = None
 
@@ -585,6 +607,18 @@ def release_project(   # noqa: C901
             else:
                 create_github_release(
                     gh_repo, tag_name, new_version, release_changes)
+
+        if launchpad_project:
+            if dry_run:
+                logging.info(
+                    "skipping upload of tarball to Launchpad")
+            else:
+                lp_release = ensure_launchpad_release(
+                    cfg.name, new_version, series_name=launchpad_series,
+                    release_notes=release_changes)
+                add_launchpad_release_files(
+                    lp_release, artifacts)
+
         # TODO(jelmer): Mark any news bugs in NEWS as fixed [later]
         # * Commit:
         #  * Update NEWS and version strings for next version
@@ -595,6 +629,9 @@ def release_project(   # noqa: C901
             ws.local_tree.commit(f'Start on {new_pending_version}')
             if not dry_run:
                 ws.push()
+        if launchpad_project:
+            ensure_launchpad_milestone(
+                cfg.name, new_pending_version, series_name=launchpad_series)
     if not dry_run:
         if local_wt is not None:
             local_wt.pull(public_branch)
