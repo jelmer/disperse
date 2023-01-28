@@ -185,12 +185,26 @@ def find_pending_version(tree: Tree, cfg) -> str:
         raise NotImplementedError
 
 
+def _status_tupled_version(v, s):
+    return "(%s)" % ", ".join(v.split(".") + [repr(s), '0'])
+
+
+version_variables = {
+    'TUPLED_VERSION': lambda v, s: "(%s)" % ", ".join(v.split(".")),
+    'STATUS_TUPLED_VERSION': _status_tupled_version,
+    'VERSION': lambda v, s: v,
+    'MAJOR_VERSION': lambda v, s: v.split(".")[0],
+    'MINOR_VERSION': lambda v, s: v.split(".")[1],
+    'MICRO_VERSION': lambda v, s: v.split(".")[2],
+}
+
+
 def _version_line_re(new_line: str) -> re.Pattern:
     ps = []
     for p in re.split(
-            r'(\$TUPLED_VERSION|\$VERSION|\$STATUS_TUPLED_VERSION)',
-            new_line):
-        if p in ('$TUPLED_VERSION', '$VERSION', '$STATUS_TUPLED_VERSION'):
+                r'(' + '|'.join(
+                    [f'${k}' for k in version_variables]) + ')', new_line):
+        if p[0] == '$' and p[1:] in version_variables:
             ps.append('(?P<' + p[1:].lower() + '>.*)')
         else:
             ps.append(re.escape(p))
@@ -210,16 +224,11 @@ def update_version_in_file(
     for i, line in enumerate(lines):
         if not r.match(line):
             continue
-        tupled_version = "(%s)" % ", ".join(new_version.split("."))
-        status_tupled_version = "(%s)" % ", ".join(
-            new_version.split(".") + [repr(status), '0'])
-        lines[i] = (
-            update_cfg.new_line.encode()
-            .replace(b"$VERSION", new_version.encode())
-            .replace(b"$TUPLED_VERSION", tupled_version.encode())
-            .replace(b"$STATUS_TUPLED_VERSION", status_tupled_version.encode())
-            + b"\n"
-        )
+        new_line = update_cfg.new_line.encode()
+        for k, v in version_variables.items():
+            new_line = new_line.replace(
+                b"$" + k.encode(), v(new_version, status).encode())
+        lines[i] = new_line + b"\n"
         matches += 1
     if matches == 0:
         raise Exception(
