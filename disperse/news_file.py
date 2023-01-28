@@ -109,7 +109,7 @@ class OddVersion(Exception):
 
 def check_version(v):
     import re
-    if v == "UNRELEASED" or v == "%(version)s":
+    if v == "UNRELEASED" or v == "%(version)s" or v == 'NEXT':
         return True
     if not re.fullmatch(r'[0-9\.]+', v):
         raise OddVersion(v)
