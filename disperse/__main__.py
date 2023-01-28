@@ -50,6 +50,7 @@ from silver_platter.workspace import Workspace
 
 
 from . import NoUnreleasedChanges
+from .cargo import update_version_in_cargo, cargo_upload
 from .launchpad import (
     ensure_launchpad_release,
     ensure_launchpad_milestone,
@@ -271,18 +272,6 @@ def update_version_in_manpage(
     else:
         raise Exception(f"No matches for date or version in {path}")
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
-
-
-def update_version_in_cargo(tree: WorkingTree, new_version: str) -> None:
-    from toml.decoder import load, TomlPreserveCommentDecoder
-    from toml.encoder import dumps, TomlPreserveCommentEncoder
-    with open(tree.abspath('Cargo.toml')) as f:
-        d = load(f, dict, TomlPreserveCommentDecoder())
-    d['package']['version'] = new_version
-    tree.put_file_bytes_non_atomic(
-        'Cargo.toml',
-        dumps(d, TomlPreserveCommentEncoder()).encode())  # type: ignore
-    subprocess.check_call(['cargo', 'update'], cwd=tree.abspath('.'))
 
 
 def check_release_age(branch: Branch, cfg, now: datetime) -> None:
@@ -578,8 +567,7 @@ def release_project(   # noqa: C901
                 if dry_run:
                     logging.info("skipping cargo upload due to dry run mode")
                 else:
-                    subprocess.check_call(
-                        ["cargo", "upload"], cwd=ws.local_tree.abspath("."))
+                    cargo_upload(ws.local_tree, ".")
             for loc in cfg.tarball_location:
                 if dry_run:
                     logging.info("skipping scp to %s due to dry run mode", loc)
