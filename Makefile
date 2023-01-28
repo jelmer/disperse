@@ -16,7 +16,7 @@ check:: flake8
 check:: test
 
 test: build
-	PYTHONPATH=. python3 -m unittest disperse.tests.test_suite
+	PYTHONPATH=. pytest tests
 
 flake8: build
 	flake8

@@ -16,6 +16,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 from datetime import datetime
+import re
 from typing import Tuple, Optional
 
 from . import NoUnreleasedChanges
@@ -92,14 +93,17 @@ def news_add_pending(tree: MutableTree, path: str, new_version: str):
 
 def skip_header(lines):
     i = 0
-    if lines[i].startswith(b'Changelog for '):
-        i += 1
-        if lines[i].startswith(b'======'):
-            i += 1
-        while not lines[i].strip():
-            i += 1
+    for i, line in enumerate(lines):
+        if line.startswith(b'Changelog for '):
+            continue
+        if re.fullmatch(b'.* release notes', line.strip()):
+            continue
+        if all([x in ('=', '-') for x in line.strip().decode()]):
+            continue
+        if not line.strip():
+            continue
         return i
-    return 0
+    raise ValueError('no contents in news file?')
 
 
 class OddVersion(Exception):
@@ -119,7 +123,7 @@ def check_version(v: str) -> bool:
 
 
 def check_date(d):
-    if d == "UNRELEASED":
+    if d == "UNRELEASED" or d.startswith('NEXT '):
         return True
     return False
 
