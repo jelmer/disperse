@@ -173,12 +173,13 @@ class ReleaseTagExists(Exception):
 
 
 def increase_version(version: str, idx: int = -1) -> str:
+    assert version
     parts = [int(x) for x in version.split('.')]
     parts[idx] += 1
     return '.'.join(map(str, parts))
 
 
-def find_pending_version(tree: Tree, cfg) -> str:
+def find_pending_version(tree: Tree, cfg) -> Optional[str]:
     if cfg.news_file:
         return news_find_pending(tree, cfg.news_file)
     else:
@@ -473,6 +474,8 @@ def release_project(   # noqa: C901
             try:
                 new_version = find_pending_version(ws.local_tree, cfg)
             except NotImplementedError:
+                new_version = None
+            if new_version is None:
                 last_version, last_version_status = find_last_version(
                     ws.local_tree, cfg)
                 last_version_tag_name = cfg.tag_name.replace(
@@ -481,7 +484,8 @@ def release_project(   # noqa: C901
                     new_version = increase_version(last_version)
                 else:
                     new_version = last_version
-            logging.info('Using new version: %s', new_version)
+            assert new_version
+            logging.info('Picked new version: %s', new_version)
 
         assert " " not in str(new_version), "Invalid version %r" % new_version
 
