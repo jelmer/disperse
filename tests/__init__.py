@@ -20,8 +20,9 @@ import unittest
 
 def test_suite():
     names: List[str] = [
+        'test_versions',
         ]
-    module_names = ['disperse.tests.' + name for name in names]
+    module_names = ['tests.' + name for name in names]
     result = unittest.TestSuite()
     loader = unittest.TestLoader()
     suite = loader.loadTestsFromNames(module_names)

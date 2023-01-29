@@ -204,10 +204,9 @@ version_variables = {
 
 def _version_line_re(new_line: str) -> re.Pattern:
     ps = []
-    for p in re.split(
-                r'(' + '|'.join(
-                    [f'${k}' for k in version_variables]) + ')', new_line):
-        if p[0] == '$' and p[1:] in version_variables:
+    ver_match = '|'.join([f'\\${k}' for k in version_variables])
+    for p in re.split(r'(' + ver_match + r')', new_line):
+        if p and p[0] == '$' and p[1:] in version_variables:
             ps.append('(?P<' + p[1:].lower() + '>.*)')
         else:
             ps.append(re.escape(p))
