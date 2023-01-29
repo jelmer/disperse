@@ -54,8 +54,8 @@ def create_milestone(project, version, series_name=None):
         name=version, date_targeted=release_date)
 
 
-def get_launchpad_project(project):
-    launchpad = Launchpad.login_with("disperse")
+def get_project(project):
+    launchpad = Launchpad.login_with("disperse", "production", version="devel")
 
     # Look up the project using the Launchpad instance.
     return launchpad.projects[project]
@@ -76,9 +76,7 @@ def create_release_from_milestone(project, version):
     return None
 
 
-def ensure_launchpad_release(
-        project_name, version, series_name=None, release_notes=None):
-    proj = get_launchpad_project(project_name)
+def ensure_release(proj, version, series_name=None, release_notes=None):
     release = proj.find_release(proj, version)
     if not release:
         release = create_release_from_milestone(proj, version)
@@ -92,12 +90,7 @@ def ensure_launchpad_release(
     return release
 
 
-def ensure_launchpad_milestone(project_name, name, series_name=None):
-    proj = get_launchpad_project(project_name)
-    return create_milestone(proj, name, series_name=series_name)
-
-
-def add_launchpad_release_files(release, artifacts):
+def add_release_files(release, artifacts):
     for artifact in artifacts:
         if artifact.endswith('.tar.gz'):
             with open(artifact, 'rb') as f:
