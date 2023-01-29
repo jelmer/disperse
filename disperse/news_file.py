@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Tuple, Optional
 
 from . import NoUnreleasedChanges
+from breezy.mutabletree import MutableTree
 from breezy.tree import Tree
 
 
@@ -52,7 +53,7 @@ def news_mark_released(
     version, date, line_format, pending = parse_version_line(lines[i])
     if not pending:
         raise NoUnreleasedChanges()
-    if expected_version != version:
+    if version is not None and expected_version != version:
         raise AssertionError(
             "unexpected version: {} != {}".format(version, expected_version)
         )
@@ -64,7 +65,7 @@ def news_mark_released(
         else:
             break
     lines[i] = (line_format % {
-        'version': version,
+        'version': expected_version,
         'date': release_date.strftime("%Y-%m-%d")}).encode() + b'\n'
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
     return ''.join(change_lines)
@@ -74,7 +75,8 @@ class PendingExists(Exception):
     """Last item is already pending."""
 
 
-def news_add_pending(tree, path, new_version):
+def news_add_pending(tree: MutableTree, path: str, new_version: str):
+    assert new_version
     lines = tree.get_file_lines(path)
     i = skip_header(lines)
     unused_version, unused_date, line_format, pending = (
@@ -107,9 +109,9 @@ class OddVersion(Exception):
         self.version = version
 
 
-def check_version(v):
+def check_version(v: str) -> bool:
     import re
-    if v == "UNRELEASED" or v == "%(version)s":
+    if v == "UNRELEASED" or v == "%(version)s" or v == 'NEXT':
         return True
     if not re.fullmatch(r'[0-9\.]+', v):
         raise OddVersion(v)
@@ -122,31 +124,57 @@ def check_date(d):
     return False
 
 
-def parse_version_line(line) -> Tuple[str, Optional[str], str, bool]:
+def parse_version_line(line: bytes) -> Tuple[
+        Optional[str], Optional[str], str, bool]:
+    """Extract version info from news line.
+
+    Args:
+      line: Line to parse
+    Returns:
+      tuple with version, date released, line template, is_pending
+    """
     if b'\t' in line.strip():
         (version, date) = line.strip().split(b'\t', 1)
-        pending = check_version(version.decode()) or check_date(date.decode())
+        version_is_placeholder = check_version(version.decode())
+        date_is_placeholder = check_date(date.decode())
+        pending = version_is_placeholder or date_is_placeholder
         return (
-            version.decode(), date.decode(), '%(version)s\t%(date)s', pending)
+            version.decode() if not version_is_placeholder else None,
+            date.decode() if not date_is_placeholder else None,
+            '%(version)s\t%(date)s', pending)
     if b' ' in line.strip():
         (version, date) = line.strip().split(b' ', 1)
-        pending = (check_version(version.decode())
-                   or check_date(date[1:-1].decode()))
         if date.startswith(b'(') and date.endswith(b')'):
-            return (
-                version.decode(), date[1:-1].decode(),
-                '%(version)s (%(date)s)', pending)
+            date = date[1:-1]
+            template = '%(version)s (%(date)s)'
         else:
-            return (
-                version.decode(), date.decode(), '%(version)s %(date)s',
-                pending)
+            template = '%(version)s %(date)s'
+
+        assert version
+        version_is_placeholder = check_version(version.decode())
+        date_is_placeholder = check_date(date.decode())
+        pending = version_is_placeholder or date_is_placeholder
+        return (
+            version.decode() if not version_is_placeholder else None,
+            date.decode() if not date_is_placeholder else None, template,
+            pending)
     else:
         version = line.strip()
-        pending = check_version(version.decode())
-        return version.decode(), None, '%(version)s', pending
+        pending = date_is_placeholder = check_version(version.decode())
+        return (
+            version.decode() if not date_is_placeholder else None, None,
+            '%(version)s', pending)
 
 
-def news_find_pending(tree: Tree, path: str) -> str:
+def news_find_pending(tree: Tree, path: str) -> Optional[str]:
+    """Find pending version in news file.
+
+    Args:
+      tree: Tree object
+      path: Path to news file in tree
+    Returns:
+      version string
+    """
     lines = tree.get_file_lines(path)
     i = skip_header(lines)
     (version, date, line_format, pending) = parse_version_line(lines[i])
