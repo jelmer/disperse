@@ -51,9 +51,10 @@ from silver_platter.workspace import Workspace
 
 from . import NoUnreleasedChanges
 from .launchpad import (
-    ensure_launchpad_release,
-    ensure_launchpad_milestone,
-    add_launchpad_release_files,
+    get_project as get_launchpad_project,
+    ensure_release as ensure_launchpad_release,
+    create_milestone as create_launchpad_milestone,
+    add_release_files as add_launchpad_release_files,
 )
 from .news_file import (
     NewsFile,
@@ -409,7 +410,7 @@ def release_project(   # noqa: C901
                 raise NodisperseConfig() from exc
 
         if cfg.launchpad_project:
-            launchpad_project = cfg.launchpad_project
+            launchpad_project = get_launchpad_project(cfg.launchpad_project)
         else:
             launchpad_project = None
 
@@ -454,7 +455,7 @@ def release_project(   # noqa: C901
                     break
                 elif hostname == 'launchpad.net':
                     parts = parsed_url.strip('/').split('/')[0]
-                    launchpad_project = parts[0]
+                    launchpad_project = get_launchpad_project(parts[0])
                     if len(parts) > 1 and not parts[1].startswith('+'):
                         launchpad_series = parts[1]
             else:
@@ -623,10 +624,10 @@ def release_project(   # noqa: C901
                     "skipping upload of tarball to Launchpad")
             else:
                 lp_release = ensure_launchpad_release(
-                    cfg.name, new_version, series_name=launchpad_series,
+                    launchpad_project, new_version,
+                    series_name=launchpad_series,
                     release_notes=release_changes)
-                add_launchpad_release_files(
-                    lp_release, artifacts)
+                add_launchpad_release_files(lp_release, artifacts)
 
         # TODO(jelmer): Mark any news bugs in NEWS as fixed [later]
         # * Commit:
@@ -639,8 +640,14 @@ def release_project(   # noqa: C901
             if not dry_run:
                 ws.push()
         if launchpad_project:
-            ensure_launchpad_milestone(
-                cfg.name, new_pending_version, series_name=launchpad_series)
+            if dry_run:
+                logging.info(
+                    'Skipping creation of new milestone %s on Launchpad',
+                    new_pending_version)
+            else:
+                create_launchpad_milestone(
+                    launchpad_project, new_pending_version,
+                    series_name=launchpad_series)
     if not dry_run:
         if local_wt is not None:
             local_wt.pull(public_branch)
