@@ -15,62 +15,43 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-from datetime import datetime
-from glob import glob
 import logging
 import os
 import re
 import subprocess
 import sys
 import time
-from typing import Optional, List, Tuple
+from datetime import datetime
+from glob import glob
+from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
-from github import Github  # type: ignore
-
-from prometheus_client import (
-    CollectorRegistry,
-    Counter,
-    push_to_gateway,
-)
-
-from breezy.urlutils import split_segment_parameters
-import breezy.git  # noqa: F401
 import breezy.bzr  # noqa: F401
-from breezy.transport import NoSuchFile
-from breezy.plugins.github.forge import retrieve_github_token
-from breezy.git.remote import ProtectedBranchHookDeclined
+import breezy.git  # noqa: F401
 from breezy.branch import Branch
+from breezy.git.remote import ProtectedBranchHookDeclined
 from breezy.mutabletree import MutableTree
-from breezy.tree import InterTree, Tree
+from breezy.plugins.github.forge import retrieve_github_token
 from breezy.revision import NULL_REVISION
+from breezy.transport import NoSuchFile
+from breezy.tree import InterTree, Tree
+from breezy.urlutils import split_segment_parameters
 from breezy.workingtree import WorkingTree
-
+from github import Github  # type: ignore
+from prometheus_client import CollectorRegistry, Counter, push_to_gateway
 from silver_platter.workspace import Workspace
 
-
 from . import NoUnreleasedChanges
-from .cargo import update_version_in_cargo, cargo_upload
-from .launchpad import (
-    get_project as get_launchpad_project,
-    ensure_release as ensure_launchpad_release,
-    create_milestone as create_launchpad_milestone,
-    add_release_files as add_launchpad_release_files,
-)
-from .news_file import (
-    NewsFile,
-    news_find_pending,
-    )
-from .python import (
-    pypi_discover_urls,
-    UploadCommandFailed,
-    DistCommandFailed,
-    upload_python_artifacts,
-    create_python_artifacts,
-    create_setup_py_artifacts,
-    read_project_urls_from_setup_cfg,
-)
-
+from .cargo import cargo_upload, update_version_in_cargo
+from .launchpad import add_release_files as add_launchpad_release_files
+from .launchpad import create_milestone as create_launchpad_milestone
+from .launchpad import ensure_release as ensure_launchpad_release
+from .launchpad import get_project as get_launchpad_project
+from .news_file import NewsFile, news_find_pending
+from .python import (DistCommandFailed, UploadCommandFailed,
+                     create_python_artifacts, create_setup_py_artifacts,
+                     pypi_discover_urls, read_project_urls_from_setup_cfg,
+                     upload_python_artifacts)
 
 DEFAULT_CI_TIMEOUT = 7200
 
@@ -348,9 +329,10 @@ def release_project(   # noqa: C901
         repo_url: str, *, force: bool = False,
         new_version: Optional[str] = None,
         dry_run: bool = False, ignore_ci: bool = False):
-    from .config import read_project
     from breezy.controldir import ControlDir
     from breezy.transport.local import LocalTransport
+
+    from .config import read_project
 
     now = datetime.now()
     local_wt, branch = ControlDir.open_tree_or_branch(repo_url)
