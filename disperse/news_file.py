@@ -15,13 +15,14 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-from datetime import datetime
 import re
-from typing import Tuple, Optional
+from datetime import datetime
+from typing import Optional, Tuple
 
-from . import NoUnreleasedChanges
 from breezy.mutabletree import MutableTree
 from breezy.tree import Tree
+
+from . import NoUnreleasedChanges
 
 
 class NewsFile:

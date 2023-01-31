@@ -16,14 +16,14 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 
-from glob import glob
 import json
 import logging
 import os
 import subprocess
 import sys
-from urllib.request import urlopen, Request
+from glob import glob
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from . import version_string
 
@@ -80,8 +80,9 @@ def upload_python_artifacts(local_tree, pypi_paths):
 
 def create_setup_py_artifacts(local_tree):
     # Import setuptools, just in case it tries to replace distutils
-    import setuptools  # noqa: F401
     from distutils.core import run_setup
+
+    import setuptools  # noqa: F401
 
     orig_dir = os.getcwd()
     try:

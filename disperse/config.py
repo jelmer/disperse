@@ -18,6 +18,7 @@
 from google.protobuf import text_format  # type: ignore
 
 from . import config_pb2
+
 Project = config_pb2.Project
 
 

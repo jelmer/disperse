@@ -14,8 +14,8 @@
 
 """Tests for disperse."""
 
-from typing import List
 import unittest
+from typing import List
 
 
 def test_suite():

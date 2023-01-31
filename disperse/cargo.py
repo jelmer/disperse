@@ -25,8 +25,8 @@ def cargo_upload(tree, subpath="."):
 
 
 def update_version_in_cargo(tree: WorkingTree, new_version: str) -> None:
-    from toml.decoder import load, TomlPreserveCommentDecoder
-    from toml.encoder import dumps, TomlPreserveCommentEncoder
+    from toml.decoder import TomlPreserveCommentDecoder, load
+    from toml.encoder import TomlPreserveCommentEncoder, dumps
 
     with open(tree.abspath('Cargo.toml')) as f:
         d = load(f, dict, TomlPreserveCommentDecoder())
