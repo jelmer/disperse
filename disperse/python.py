@@ -47,6 +47,7 @@ def pypi_discover_urls(pypi_user):
     client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
     ret = []
     for relation, package in client.user_packages(pypi_user):  # type: ignore
+        assert isinstance(package, str)
         req = Request(
             f'https://pypi.org/pypi/{package}/json',
             headers={'Content-Type': f'disperse/{version_string}'})
@@ -98,7 +99,7 @@ def create_setup_py_artifacts(local_tree):
     if is_pure:
         try:
             subprocess.check_call(
-                ["./setup.py", "egg_info", "-Db", "", "bdist_wheel"],
+                ["python", "./setup.py", "egg_info", "-Db", "", "bdist_wheel"],
                 cwd=local_tree.abspath(".")
             )
         except subprocess.CalledProcessError as e:
