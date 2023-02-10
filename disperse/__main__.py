@@ -173,13 +173,20 @@ def _status_tupled_version(v, s):
     return "(%s)" % ", ".join(v.split(".") + [repr(s), '0'])
 
 
+def _version_part(v, i):
+    parts = v.split(".")
+    if len(parts) <= i:
+        return None
+    return parts[i]
+
+
 version_variables = {
     'TUPLED_VERSION': lambda v, s: "(%s)" % ", ".join(v.split(".")),
     'STATUS_TUPLED_VERSION': _status_tupled_version,
     'VERSION': lambda v, s: v,
-    'MAJOR_VERSION': lambda v, s: v.split(".")[0],
-    'MINOR_VERSION': lambda v, s: v.split(".")[1],
-    'MICRO_VERSION': lambda v, s: v.split(".")[2],
+    'MAJOR_VERSION': lambda v, s: _version_part(v, 0),
+    'MINOR_VERSION': lambda v, s: _version_part(v, 1),
+    'MICRO_VERSION': lambda v, s: _version_part(v, 2),
 }
 
 
@@ -208,9 +215,14 @@ def update_version_in_file(
         if not r.match(line):
             continue
         new_line = update_cfg.new_line.encode()
-        for k, v in version_variables.items():
-            new_line = new_line.replace(
-                b"$" + k.encode(), v(new_version, status).encode())
+        for k, vfn in version_variables.items():
+            v = vfn(new_version, status)
+            if v is not None:
+                new_line = new_line.replace(b"$" + k.encode(), v.encode())
+            else:
+                if (b'$' + k.encode()) in new_line:
+                    raise ValueError(
+                        f'no expansion for variable ${k} used in {new_line}')
         lines[i] = new_line + b"\n"
         matches += 1
     if matches == 0:
