@@ -60,9 +60,9 @@ def news_mark_released(
             "unexpected version: {} != {}".format(version, expected_version)
         )
     change_lines = []
-    for line in lines[i+1:]:
-        if (not line.strip() or line.startswith(b' ') or
-                line.startswith(b'\t')):
+    for line in lines[i + 1:]:
+        if (not line.strip() or line.startswith(b' ')
+                or line.startswith(b'\t')):
             change_lines.append(line.decode())
         else:
             break

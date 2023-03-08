@@ -62,8 +62,8 @@ def pypi_discover_urls(pypi_user):
                 ret.append(url)
                 break
             parsed_url = urlparse(url)
-            if (parsed_url.hostname == 'github.com' and
-                    parsed_url.path.strip('/').count('/') == 1):
+            if (parsed_url.hostname == 'github.com'
+                    and parsed_url.path.strip('/').count('/') == 1):
                 ret.append(url)
                 break
     return ret
