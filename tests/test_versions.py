@@ -22,4 +22,4 @@ from disperse.__main__ import _version_line_re
 def test_version_line_re():
     assert _version_line_re(
         "__version__ = $TUPLED_VERSION").pattern == \
-                b'__version__\\ =\\ (?P<tupled_version>.*)'
+        b'__version__\\ =\\ (?P<tupled_version>.*)'

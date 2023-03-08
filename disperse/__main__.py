@@ -360,8 +360,8 @@ def release_project(   # noqa: C901
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
         logging.info('Using public branch %s', public_repo_url)
-    elif (branch.get_submit_branch() and
-            not branch.get_submit_branch().startswith('file:')):
+    elif (branch.get_submit_branch()
+            and not branch.get_submit_branch().startswith('file:')):
         public_repo_url = branch.get_submit_branch()
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
@@ -752,7 +752,7 @@ def validate_config(path):
             raise Exception("no matches for {update}")
 
 
-def release_many(urls, *, force=False, dry_run=False, discover=False,
+def release_many(urls, *, force=False, dry_run=False, discover=False,  # noqa: C901
                  new_version=None, ignore_ci=False):
     failed: List[Tuple[str, Exception]] = []
     skipped: List[Tuple[str, Exception]] = []

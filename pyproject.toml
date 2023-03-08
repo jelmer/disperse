@@ -1,8 +1,8 @@
 [build-system]
 requires = [
-    "packaging",
     "setuptools",
-    "setuptools-protobuf[mypy]>=0.1.3"
+    "setuptools-protobuf[mypy]>=0.1.3",
+    "protobuf>=2.4",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -20,3 +20,38 @@ module = [
     "launchpadlib.*",
 ]
 ignore_missing_imports = true
+
+[project]
+name = "disperse"
+authors = [{name = "Jelmer Vernooij", email = "jelmer@jelmer.uk"}]
+description = "automation for creation of releases"
+dependencies = [
+    "breezy>=3.3.0.dev.0",
+    "protobuf>=2.4",
+    "pygithub",
+    "launchpadlib",
+    "silver-platter>=0.5.2",
+    "build",
+    "prometheus_client>=0.15",
+    "mypy-protobuf",
+]
+dynamic = ["version"]
+
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"
+
+[project.urls]
+Homepage = "https://github.com/jelmer/disperse"
+Repository = "https://github.com/jelmer/disperse.git"
+
+[project.scripts]
+disperse = "disperse.__main__:main"
+releaser = "disperse.__main__:main"
+
+[tool.setuptools]
+packages = ["disperse"]
+include-package-data = false
+
+[tool.setuptools.dynamic]
+version = {attr = "disperse.__version__"}
