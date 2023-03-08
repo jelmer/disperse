@@ -51,6 +51,7 @@ from .news_file import NewsFile, news_find_pending
 from .python import (DistCommandFailed, UploadCommandFailed,
                      create_python_artifacts, create_setup_py_artifacts,
                      pypi_discover_urls, read_project_urls_from_setup_cfg,
+                     read_project_urls_from_pyproject_toml,
                      upload_python_artifacts)
 
 DEFAULT_CI_TIMEOUT = 7200
@@ -419,6 +420,10 @@ def release_project(   # noqa: C901
                 possible_urls.extend(
                     read_project_urls_from_setup_cfg(
                         ws.local_tree.abspath('setup.cfg')))
+            if ws.local_tree.has_filename('pyproject.toml'):
+                possible_urls.extend(
+                    read_project_urls_from_pyproject_toml(
+                        ws.local_tree.abspath('pyproject.toml')))
             if public_repo_url is not None:
                 possible_urls.append((public_repo_url, public_branch.name))
 

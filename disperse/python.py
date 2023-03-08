@@ -137,9 +137,23 @@ def create_setup_py_artifacts(local_tree):
 def create_python_artifacts(local_tree):
     # Import setuptools, just in case it tries to replace distutils
     import setuptools  # noqa: F401
-    from setuptools.config.setupcfg import read_configuration
 
-    config = read_configuration(local_tree.abspath('setup.cfg'))
+    if local_tree.has_filename('setup.cfg'):
+        from setuptools.config.setupcfg import read_configuration
+
+        config = read_configuration(local_tree.abspath('setup.cfg'))
+
+        name = config['metadata']['name']
+        version = config['metadata']['version']
+    elif local_tree.has_filename('pyproject.toml'):
+        from toml.decoder import load
+        with local_tree.get_file('pyproject.toml') as f:
+            d = load(f)
+        name = d['project']['name']
+        version = d['project']['version']
+    else:
+        raise RuntimeError('unable to determine name / version')
+
     pypi_paths = []
     try:
         subprocess.check_call(
@@ -150,8 +164,7 @@ def create_python_artifacts(local_tree):
         raise DistCommandFailed(
             "setup.py bdist_wheel", e.returncode)
     wheels_glob = 'dist/{}-{}-*-any.whl'.format(
-        config['metadata']['name'].replace('-', '_'),
-        config['metadata']['version'])
+        name.replace('-', '_'), version)
     wheels = glob(
         os.path.join(local_tree.abspath('.'), wheels_glob))
     if not wheels:
@@ -168,12 +181,21 @@ def create_python_artifacts(local_tree):
         )
     except subprocess.CalledProcessError as e:
         raise DistCommandFailed("setup.py sdist", e.returncode)
-    sdist_path = os.path.join(
-        "dist", "{}-{}.tar.gz".format(
-            config['metadata']['name'],
-            config['metadata']['version']))
+    sdist_path = os.path.join("dist", "{}-{}.tar.gz".format(name, version))
     pypi_paths.append(sdist_path)
     return pypi_paths
+
+
+def read_project_urls_from_pyproject_toml(path):
+    from toml.decoder import load
+    with open(path) as f:
+        d = load(f)
+    project_urls = d.get('project', {}).get('urls', {})
+    for key in ['GitHub', 'Source Code', 'Repository']:
+        try:
+            yield (project_urls[key], 'HEAD')
+        except KeyError:
+            pass
 
 
 def read_project_urls_from_setup_cfg(path):
