@@ -176,6 +176,18 @@ def create_python_artifacts(local_tree):
     return pypi_paths
 
 
+def read_project_urls_from_pyproject_toml(path):
+    from toml.decoder import load
+    with open(path) as f:
+        d = load(f)
+    project_urls = d.get('project', {}).get('urls', {})
+    for key in ['GitHub', 'Source Code', 'Repository']:
+        try:
+            yield (project_urls[key], 'HEAD')
+        except KeyError:
+            pass
+
+
 def read_project_urls_from_setup_cfg(path):
     import setuptools.config.setupcfg
     config = setuptools.config.setupcfg.read_configuration(path)
