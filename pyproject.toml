@@ -34,6 +34,7 @@ dependencies = [
     "build",
     "prometheus_client>=0.15",
     "mypy-protobuf",
+    "toml",
 ]
 dynamic = ["version"]
 
