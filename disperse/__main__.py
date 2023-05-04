@@ -494,16 +494,6 @@ def release_project(   # noqa: C901
             else:
                 verify_command = None
 
-        if verify_command:
-            try:
-                subprocess.check_call(
-                    verify_command, cwd=ws.local_tree.abspath("."),
-                    shell=True
-                )
-            except subprocess.CalledProcessError as e:
-                verify_command_failed.labels(project=cfg.name).inc()
-                raise VerifyCommandFailed(cfg.verify_command, e.returncode)
-
         logging.info("releasing %s", new_version)
         news_file: Optional[NewsFile]
         if cfg.news_file:
@@ -522,6 +512,17 @@ def release_project(   # noqa: C901
         if ws.local_tree.has_filename("Cargo.toml"):
             update_version_in_cargo(ws.local_tree, new_version)
         ws.local_tree.commit(f"Release {new_version}.")
+
+        if verify_command:
+            try:
+                subprocess.check_call(
+                    verify_command, cwd=ws.local_tree.abspath("."),
+                    shell=True
+                )
+            except subprocess.CalledProcessError as e:
+                verify_command_failed.labels(project=cfg.name).inc()
+                raise VerifyCommandFailed(cfg.verify_command, e.returncode)
+
         tag_name = cfg.tag_name.replace("$VERSION", new_version)
         if ws.main_branch.tags.has_tag(tag_name):
             release_tag_exists.labels(project=cfg.name).inc()
