@@ -21,7 +21,7 @@ from breezy.workingtree import WorkingTree
 
 
 def cargo_upload(tree, subpath="."):
-    subprocess.check_call(["cargo", "upload"], cwd=tree.abspath(subpath))
+    subprocess.check_call(["cargo", "publish"], cwd=tree.abspath(subpath))
 
 
 def update_version_in_cargo(tree: WorkingTree, new_version: str) -> None:
