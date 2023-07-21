@@ -20,7 +20,7 @@ import subprocess
 from breezy.workingtree import WorkingTree
 
 
-def cargo_upload(tree, subpath="."):
+def cargo_publish(tree, subpath="."):
     subprocess.check_call(["cargo", "publish"], cwd=tree.abspath(subpath))
 
 

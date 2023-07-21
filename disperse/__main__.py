@@ -42,7 +42,7 @@ from prometheus_client import CollectorRegistry, Counter, push_to_gateway
 from silver_platter.workspace import Workspace
 
 from . import NoUnreleasedChanges
-from .cargo import cargo_upload, update_version_in_cargo
+from .cargo import cargo_publish, update_version_in_cargo
 from .launchpad import add_release_files as add_launchpad_release_files
 from .launchpad import create_milestone as create_launchpad_milestone
 from .launchpad import ensure_release as ensure_launchpad_release
@@ -571,7 +571,7 @@ def release_project(   # noqa: C901
                 if dry_run:
                     logging.info("skipping cargo upload due to dry run mode")
                 else:
-                    cargo_upload(ws.local_tree, ".")
+                    cargo_publish(ws.local_tree, ".")
             for loc in cfg.tarball_location:
                 if dry_run:
                     logging.info("skipping scp to %s due to dry run mode", loc)
