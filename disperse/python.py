@@ -16,23 +16,15 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 
+from build import ProjectBuilder, BuildBackendException
 import json
 import logging
 import os
 import subprocess
-import sys
-from glob import glob
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from . import version_string
-
-
-class DistCommandFailed(Exception):
-
-    def __init__(self, command, retcode):
-        self.command = command
-        self.retcode = retcode
+from . import version_string, DistCreationFailed
 
 
 class UploadCommandFailed(Exception):
@@ -96,92 +88,38 @@ def create_setup_py_artifacts(local_tree):
     is_pure = (
         not result.has_c_libraries()  # type: ignore
         and not result.has_ext_modules())  # type: ignore
+    builder = ProjectBuilder(local_tree.abspath('.'))
     if is_pure:
         try:
-            subprocess.check_call(
-                ["python", "./setup.py", "egg_info", "-Db", "", "bdist_wheel"],
-                cwd=local_tree.abspath(".")
-            )
-        except subprocess.CalledProcessError as e:
-            raise DistCommandFailed(
-                "setup.py bdist_wheel", e.returncode)
-        wheels_glob = 'dist/{}-{}-*-any.whl'.format(
-            result.get_name().replace('-', '_'),  # type: ignore
-            result.get_version())  # type: ignore
-        wheels = glob(
-            os.path.join(local_tree.abspath('.'), wheels_glob))
-        if not wheels:
-            raise AssertionError(
-                'setup.py bdist_wheel did not produce expected files. '
-                'glob: %r, files: %r' % (
-                    wheels_glob,
-                    os.listdir(local_tree.abspath('dist'))))
-        pypi_paths.extend(wheels)
+            wheels = builder.build("wheel", output_directory=local_tree.abspath("dist"))
+        except BuildBackendException as e:
+            raise DistCreationFailed(e)
+        pypi_paths.append(wheels)
     else:
         logging.warning(
             'python module is not pure; not uploading binary wheels')
     try:
-        subprocess.check_call(
-            ["./setup.py", "egg_info", "-Db", "", "sdist"],
-            cwd=local_tree.abspath(".")
-        )
-    except subprocess.CalledProcessError as e:
-        raise DistCommandFailed("setup.py sdist", e.returncode)
-    sdist_path = os.path.join(
-        "dist", "{}-{}.tar.gz".format(
-            result.get_name(), result.get_version()))  # type: ignore
+        sdist_path = builder.build(
+            "source", output_directory=local_tree.abspath("dist"))
+    except BuildBackendException as e:
+        raise DistCreationFailed(e)
     pypi_paths.append(sdist_path)
     return pypi_paths
 
 
-def create_python_artifacts(local_tree):
-    # Import setuptools, just in case it tries to replace distutils
-    import setuptools  # noqa: F401
-
-    if local_tree.has_filename('setup.cfg'):
-        from setuptools.config.setupcfg import read_configuration
-
-        config = read_configuration(local_tree.abspath('setup.cfg'))
-
-        name = config['metadata']['name']
-        version = config['metadata']['version']
-    elif local_tree.has_filename('pyproject.toml'):
-        from toml.decoder import load
-        with local_tree.get_file('pyproject.toml') as f:
-            d = load(f)
-        name = d['project']['name']
-        version = d['project']['version']
-    else:
-        raise RuntimeError('unable to determine name / version')
-
+def create_python_artifacts(local_tree) -> list[str]:
     pypi_paths = []
+    builder = ProjectBuilder(local_tree.abspath('.'))
     try:
-        subprocess.check_call(
-            [sys.executable, "-m", "build", "-w"],
-            cwd=local_tree.abspath(".")
-        )
-    except subprocess.CalledProcessError as e:
-        raise DistCommandFailed(
-            "setup.py bdist_wheel", e.returncode)
-    wheels_glob = 'dist/{}-{}-*-any.whl'.format(
-        name.replace('-', '_'), version)
-    wheels = glob(
-        os.path.join(local_tree.abspath('.'), wheels_glob))
-    if not wheels:
-        raise AssertionError(
-            'setup.py bdist_wheel did not produce expected files. '
-            'glob: %r, files: %r' % (
-                wheels_glob,
-                os.listdir(local_tree.abspath('dist'))))
-    pypi_paths.extend(wheels)
+        wheels = builder.build("wheel", output_directory=local_tree.abspath("dist"))
+    except BuildBackendException as e:
+        raise DistCreationFailed(e)
+    pypi_paths.append(wheels)
     try:
-        subprocess.check_call(
-            [sys.executable, "-m", "build", "--sdist"],
-            cwd=local_tree.abspath(".")
-        )
-    except subprocess.CalledProcessError as e:
-        raise DistCommandFailed("setup.py sdist", e.returncode)
-    sdist_path = os.path.join("dist", "{}-{}.tar.gz".format(name, version))
+        sdist_path = builder.build(
+            "source", output_directory=local_tree.abspath("dist"))
+    except BuildBackendException as e:
+        raise DistCreationFailed(e)
     pypi_paths.append(sdist_path)
     return pypi_paths
 

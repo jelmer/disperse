@@ -41,14 +41,14 @@ from github import Github  # type: ignore
 from prometheus_client import CollectorRegistry, Counter, push_to_gateway
 from silver_platter.workspace import Workspace
 
-from . import NoUnreleasedChanges
+from . import NoUnreleasedChanges, DistCreationFailed
 from .cargo import cargo_publish, update_version_in_cargo
 from .launchpad import add_release_files as add_launchpad_release_files
 from .launchpad import create_milestone as create_launchpad_milestone
 from .launchpad import ensure_release as ensure_launchpad_release
 from .launchpad import get_project as get_launchpad_project
 from .news_file import NewsFile, news_find_pending
-from .python import (DistCommandFailed, UploadCommandFailed,
+from .python import (UploadCommandFailed,
                      create_python_artifacts, create_setup_py_artifacts,
                      pypi_discover_urls, read_project_urls_from_setup_cfg,
                      read_project_urls_from_pyproject_toml,
@@ -798,8 +798,8 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,  # noqa: C
             skipped.append((url, e))
             if not discover:
                 ret = 1
-        except DistCommandFailed as e:
-            logging.error('Dist command (%s) failed to run.', e.command)
+        except DistCreationFailed as e:
+            logging.error('Dist creation failed to run: %s', e)
             failed.append((url, e))
             ret = 1
         except NoUnreleasedChanges as e:

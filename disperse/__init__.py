@@ -22,3 +22,7 @@ version_string = '.'.join(map(str, __version__))
 
 class NoUnreleasedChanges(Exception):
     """No unreleased changes."""
+
+
+class DistCreationFailed(Exception):
+    """Failed to create distribution."""
