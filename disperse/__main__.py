@@ -614,14 +614,13 @@ def release_project(   # noqa: C901
             logging.info('branch %s is protected; proposing merge instead',
                          ws.local_tree.branch.name)
             if not dry_run:
-                (mp, is_new) = ws.propose(
+                (mp, _is_new) = ws.propose(
                     description=f"Merge release of {new_version}",
                     tags=[tag_name],
                     name=f'release-{new_version}', labels=['release'],
                     commit_message=f"Merge release of {new_version}")
             else:
                 mp = None
-                is_new = None
             logging.info(f'Created merge proposal: {mp.url}')
 
             if getattr(mp, 'supports_auto_merge', False):
