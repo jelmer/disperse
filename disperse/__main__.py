@@ -20,7 +20,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 from datetime import datetime
 from glob import glob
 from typing import List, Optional, Tuple
@@ -31,24 +30,25 @@ import breezy.git  # noqa: F401
 from breezy.branch import Branch
 from breezy.git.remote import ProtectedBranchHookDeclined
 from breezy.mutabletree import MutableTree
-from breezy.plugins.github.forge import retrieve_github_token
 from breezy.revision import NULL_REVISION
 from breezy.transport import NoSuchFile
 from breezy.tree import InterTree, Tree
 from breezy.urlutils import split_segment_parameters
 from breezy.workingtree import WorkingTree
-from github import Github  # type: ignore
 from prometheus_client import CollectorRegistry, Counter, push_to_gateway
 from silver_platter.workspace import Workspace
 
-from . import NoUnreleasedChanges
-from .cargo import cargo_upload, update_version_in_cargo
+from . import NoUnreleasedChanges, DistCreationFailed
+from .cargo import cargo_publish, update_version_in_cargo
+from .github import (GitHubStatusFailed, GitHubStatusPending,
+                     check_gh_repo_action_status, get_github_repo,
+                     create_github_release, wait_for_gh_actions)
 from .launchpad import add_release_files as add_launchpad_release_files
 from .launchpad import create_milestone as create_launchpad_milestone
 from .launchpad import ensure_release as ensure_launchpad_release
 from .launchpad import get_project as get_launchpad_project
-from .news_file import NewsFile, news_find_pending
-from .python import (DistCommandFailed, UploadCommandFailed,
+from .news_file import NewsFile, news_find_pending, OddVersion as OddNewsVersion
+from .python import (UploadCommandFailed,
                      create_python_artifacts, create_setup_py_artifacts,
                      pypi_discover_urls, read_project_urls_from_setup_cfg,
                      read_project_urls_from_pyproject_toml,
@@ -118,6 +118,10 @@ release_tag_exists = Counter(
     labelnames=['project'])
 
 
+class RepositoryUnavailable(Exception):
+    """Indicates that a repository is unavailable."""
+
+
 class RecentCommits(Exception):
     """Indicates there are too recent commits for a package."""
 
@@ -163,9 +167,22 @@ def increase_version(version: str, idx: int = -1) -> str:
     return '.'.join(map(str, parts))
 
 
+class OddPendingVersion(Exception):
+    """Indicates that the pending version is odd."""
+
+    def __init__(self, version):
+        self.version = version
+        super().__init__(
+            f"Pending version {self.version} is odd."
+        )
+
+
 def find_pending_version(tree: Tree, cfg) -> Optional[str]:
     if cfg.news_file:
-        return news_find_pending(tree, cfg.news_file)
+        try:
+            return news_find_pending(tree, cfg.news_file)
+        except OddNewsVersion as e:
+            raise OddPendingVersion(e.version) from e
     else:
         raise NotImplementedError
 
@@ -344,11 +361,15 @@ def release_project(   # noqa: C901
         dry_run: bool = False, ignore_ci: bool = False):
     from breezy.controldir import ControlDir
     from breezy.transport.local import LocalTransport
+    import breezy.errors as breezy_errors
 
     from .config import read_project
 
     now = datetime.now()
-    local_wt, branch = ControlDir.open_tree_or_branch(repo_url)
+    try:
+        local_wt, branch = ControlDir.open_tree_or_branch(repo_url)
+    except breezy_errors.ConnectionError as e:
+        raise RepositoryUnavailable(e)
 
     public_repo_url: Optional[str]
 
@@ -548,7 +569,8 @@ def release_project(   # noqa: C901
             pypi_paths = None
 
         artifacts = []
-        ws.push_tags(tags=[tag_name], dry_run=dry_run)
+        if not dry_run:
+            ws.push_tags(tags={tag_name: ws.local_tree.branch.tags.lookup_tag(tag_name)})
         try:
             # Wait for CI to go green
             if gh_repo:
@@ -571,7 +593,7 @@ def release_project(   # noqa: C901
                 if dry_run:
                     logging.info("skipping cargo upload due to dry run mode")
                 else:
-                    cargo_upload(ws.local_tree, ".")
+                    cargo_publish(ws.local_tree, ".")
             for loc in cfg.tarball_location:
                 if dry_run:
                     logging.info("skipping scp to %s due to dry run mode", loc)
@@ -585,17 +607,20 @@ def release_project(   # noqa: C901
 
         # At this point, it's official - so let's push.
         try:
-            ws.push(dry_run=dry_run)
+            if not dry_run:
+                ws.push()
         except ProtectedBranchHookDeclined:
             branch_protected_count.labels(project=cfg.name).inc()
             logging.info('branch %s is protected; proposing merge instead',
                          ws.local_tree.branch.name)
-            (mp, is_new) = ws.propose(
-                description=f"Merge release of {new_version}",
-                tags=[tag_name],
-                name=f'release-{new_version}', labels=['release'],
-                dry_run=dry_run,
-                commit_message=f"Merge release of {new_version}")
+            if not dry_run:
+                (mp, _is_new) = ws.propose(
+                    description=f"Merge release of {new_version}",
+                    tags=[tag_name],
+                    name=f'release-{new_version}', labels=['release'],
+                    commit_message=f"Merge release of {new_version}")
+            else:
+                mp = None
             logging.info(f'Created merge proposal: {mp.url}')
 
             if getattr(mp, 'supports_auto_merge', False):
@@ -647,78 +672,6 @@ def release_project(   # noqa: C901
 
     released_count.labels(project=cfg.name).inc()
     return cfg.name, new_version
-
-
-def get_github_repo(repo_url: str):
-    if repo_url.endswith('.git'):
-        repo_url = repo_url[:-4]
-    parsed_url = urlparse(repo_url)
-    fullname = '/'.join(parsed_url.path.strip('/').split('/')[:2])
-    try:
-        token = retrieve_github_token(  # type: ignore
-            parsed_url.scheme, parsed_url.hostname)
-    except TypeError:
-        # Newer versions of retrieve_github_token don't take any arguments
-        token = retrieve_github_token()
-    gh = Github(token)
-    logging.info('Finding project %s on GitHub', fullname)
-    return gh.get_repo(fullname)
-
-
-class GitHubStatusFailed(Exception):
-
-    def __init__(self, sha, url):
-        self.sha = sha
-        self.html_url = url
-
-
-class GitHubStatusPending(Exception):
-
-    def __init__(self, sha, url):
-        self.sha = sha
-        self.html_url = url
-
-
-def check_gh_repo_action_status(repo, committish):
-    if not committish:
-        committish = 'HEAD'
-    commit = repo.get_commit(committish)
-    for check in commit.get_check_runs():
-        if check.conclusion in ('success', 'skipped'):
-            continue
-        elif check.conclusion is None:
-            raise GitHubStatusPending(check.head_sha, check.html_url)
-        else:
-            raise GitHubStatusFailed(check.head_sha, check.html_url)
-
-
-def wait_for_gh_actions(repo, committish, *, timeout=DEFAULT_CI_TIMEOUT):
-    logging.info('Waiting for CI for %s on %s to go green', repo, committish)
-    if not committish:
-        committish = 'HEAD'
-    commit = repo.get_commit(committish)
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        for check in commit.get_check_runs():
-            if check.conclusion in ("success", "SKipped"):
-                continue
-            elif check.conclusion == "pending":
-                time.sleep(30)
-                break
-            else:
-                raise GitHubStatusFailed(check.head_sha, check.html_url)
-        else:
-            return
-    raise TimeoutError(
-        'timed out waiting for CI after %d seconds' % (
-            time.time() - start_time))
-
-
-def create_github_release(repo, tag_name, version, description):
-    logging.info('Creating release on GitHub')
-    repo.create_git_release(
-        tag=tag_name, name=version, draft=False, prerelease=False,
-        message=description or (f'Release {version}.'))
 
 
 def validate_config(path):
@@ -798,8 +751,8 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,  # noqa: C
             skipped.append((url, e))
             if not discover:
                 ret = 1
-        except DistCommandFailed as e:
-            logging.error('Dist command (%s) failed to run.', e.command)
+        except DistCreationFailed as e:
+            logging.error('Dist creation failed to run: %s', e)
             failed.append((url, e))
             ret = 1
         except NoUnreleasedChanges as e:
@@ -822,6 +775,14 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,  # noqa: C
             logging.error(
                 'GitHub check for commit %s failed. '
                 'See %s', e.sha, e.html_url)
+            failed.append((url, e))
+            ret = 1
+        except RepositoryUnavailable as e:
+            logging.error('Repository is unavailable: %s', e.args[0])
+            failed.append((url, e))
+            ret = 1
+        except OddPendingVersion as e:
+            logging.error('Odd pending version: %s', e.version)
             failed.append((url, e))
             ret = 1
         else:
