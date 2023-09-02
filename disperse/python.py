@@ -63,8 +63,7 @@ def pypi_discover_urls(pypi_user):
 
 def upload_python_artifacts(local_tree, pypi_paths):
     command = [
-        "twine", "upload", "--non-interactive",
-        "--sign"] + pypi_paths
+        "twine", "upload", "--non-interactive"] + pypi_paths
     try:
         subprocess.check_call(command, cwd=local_tree.abspath("."))
     except subprocess.CalledProcessError as e:
@@ -100,7 +99,7 @@ def create_setup_py_artifacts(local_tree):
             'python module is not pure; not uploading binary wheels')
     try:
         sdist_path = builder.build(
-            "source", output_directory=local_tree.abspath("dist"))
+            "sdist", output_directory=local_tree.abspath("dist"))
     except BuildBackendException as e:
         raise DistCreationFailed(e)
     pypi_paths.append(sdist_path)

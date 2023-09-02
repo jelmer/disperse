@@ -115,6 +115,7 @@ class OddVersion(Exception):
 
 
 def check_version(v: str) -> bool:
+    """Returns whether the version is a placeholder."""
     import re
     if v == "UNRELEASED" or v == "%(version)s" or v == 'NEXT':
         return True
