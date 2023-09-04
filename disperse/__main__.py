@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 
 import breezy.bzr  # noqa: F401
 import breezy.git  # noqa: F401
+import breezy.plugins.launchpad  # noqa: F401
 from breezy.branch import Branch
 from breezy.git.remote import ProtectedBranchHookDeclined
 from breezy.mutabletree import MutableTree
