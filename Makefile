@@ -1,12 +1,14 @@
+PYTHON = python3
+
 all: proto
 
 proto: disperse/config_pb2.py
 
-%_pb2.py: %.proto
-	protoc --python_out=. --mypy_out=. $<
-
 build::
-	python3 setup.py build
+	$(PYTHON) setup.py build
+
+build-inplace:
+	$(PYTHON) setup.py build_ext --inplace
 
 clean:
 	rm disperse/*_pb2.py
@@ -19,12 +21,12 @@ test: build
 	PYTHONPATH=. pytest tests
 
 flake8: build
-	flake8
+	$(PYTHON) -m flake8
 
 check:: typing
 
-typing: build
-	mypy disperse
+typing: build-inplace
+	$(PYTHON) -m mypy disperse
 
 docker: proto
 	buildah build -t ghcr.io/jelmer/disperse:latest .
