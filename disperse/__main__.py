@@ -363,7 +363,7 @@ def release_project(   # noqa: C901
     from breezy.controldir import ControlDir
     from breezy.transport.local import LocalTransport
     try:
-        from breezy.errors import ConnectionError
+        from breezy.errors import ConnectionError  # type: ignore
     except ImportError:
         pass
 
