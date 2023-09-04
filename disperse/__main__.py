@@ -362,14 +362,17 @@ def release_project(   # noqa: C901
         dry_run: bool = False, ignore_ci: bool = False):
     from breezy.controldir import ControlDir
     from breezy.transport.local import LocalTransport
-    import breezy.errors as breezy_errors
+    try:
+        from breezy.errors import ConnectionError
+    except ImportError:
+        pass
 
     from .config import read_project
 
     now = datetime.now()
     try:
         local_wt, branch = ControlDir.open_tree_or_branch(repo_url)
-    except breezy_errors.ConnectionError as e:
+    except ConnectionError as e:
         raise RepositoryUnavailable(e)
 
     public_repo_url: Optional[str]
