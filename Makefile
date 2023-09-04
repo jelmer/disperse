@@ -8,7 +8,7 @@ build::
 	$(PYTHON) setup.py build
 
 build-inplace:
-	$(PYTHON) setup.py build_ext --inplace
+	$(PYTHON) setup.py build_protobuf
 
 clean:
 	rm disperse/*_pb2.py
