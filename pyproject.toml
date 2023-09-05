@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 warn_redundant_casts = true
 warn_unused_configs = true
 check_untyped_defs = true
-exclude = ["disperse/config_pb2.py"]
+exclude = ["disperse/config_pb2.pyi", "disperse/config_pb2.py"]
 
 [[tool.mypy.overrides]]
 module = [
