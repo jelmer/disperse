@@ -1,0 +1,13 @@
+[package]
+name = "disperse"
+version = "0.0.6"
+authors = ["Jelmer Vernooĳ <jelmer@jelmer.uk>"]
+edition = "2021"
+description = "automation for creation of releases"
+license = "GPL-3.0+"
+repository = "https://github.com/jelmer/disperse.git"
+homepage = "https://github.com/jelmer/disperse"
+
+[dependencies]
+breezyshim = "0.1.20"
+lazy-regex = "3.0.1"

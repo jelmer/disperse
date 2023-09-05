@@ -6,3 +6,4 @@ __pycache__
 build
 disperse.egg-info
 dist
+target
