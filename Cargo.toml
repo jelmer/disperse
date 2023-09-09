@@ -1,7 +1,7 @@
 [package]
 name = "disperse"
-version = "0.0.6"
-authors = ["Jelmer Vernooĳ <jelmer@jelmer.uk>"]
+version = "0.0.7"
+authors = [ "Jelmer Vernooĳ <jelmer@jelmer.uk>",]
 edition = "2021"
 description = "automation for creation of releases"
 license = "GPL-3.0+"
