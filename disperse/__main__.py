@@ -673,6 +673,18 @@ def release_project(   # noqa: C901
     return cfg.name, new_version
 
 
+def info(path):
+    wt = WorkingTree.open(path)
+
+    from .config import read_project_with_fallback
+    try:
+        cfg = read_project_with_fallback(wt)
+    except NoSuchFile as exc:
+        raise NodisperseConfig() from exc
+
+    print("Project:", cfg.name)
+
+
 def validate_config(path):
     wt = WorkingTree.open(path)
 
@@ -819,6 +831,8 @@ def main(argv=None):  # noqa: C901
         help="Do not exit with non-zero if projects failed to be released.")
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("path", type=str, nargs="?", default=".")
+    info_parser = subparsers.add_parser("info")
+    info_parser.add_argument("path", type=str, nargs="?", default=".")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -846,6 +860,8 @@ def main(argv=None):  # noqa: C901
         return ret
     elif args.command == "validate":
         return validate_config(args.path)
+    elif args.command == "info":
+        return info(args.path)
     else:
         parser.print_usage()
 
