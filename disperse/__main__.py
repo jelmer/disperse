@@ -367,7 +367,7 @@ def release_project(   # noqa: C901
     except ImportError:
         pass
 
-    from .config import read_project
+    from .config import read_project_with_fallback
 
     now = datetime.now()
     try:
@@ -408,15 +408,15 @@ def release_project(   # noqa: C901
 
     with Workspace(public_branch, resume_branch=local_branch) as ws:
         try:
-            with ws.local_tree.get_file("disperse.conf") as f:
-                cfg = read_project(f)
+            cfg = read_project_with_fallback(ws.local_tree)
         except NoSuchFile as exc:
-            try:
-                with ws.local_tree.get_file("releaser.conf") as f:
-                    cfg = read_project(f)
-            except NoSuchFile:
-                no_disperse_config.inc()
-                raise NodisperseConfig() from exc
+            no_disperse_config.inc()
+            raise NodisperseConfig() from exc
+
+        if cfg.name:
+            name = cfg.name
+        else:
+            name = None
 
         if cfg.launchpad_project:
             launchpad_project = get_launchpad_project(cfg.launchpad_project)
@@ -435,7 +435,7 @@ def release_project(   # noqa: C901
                     gh_repo, cfg.github_branch or 'HEAD')
             except (GitHubStatusFailed, GitHubStatusPending) as e:
                 if ignore_ci:
-                    ci_ignored_count.labels(project=cfg.name).inc()
+                    ci_ignored_count.labels(project=name).inc()
                     logging.warning('Ignoring failing CI: %s', e)
                 else:
                     raise
@@ -462,7 +462,7 @@ def release_project(   # noqa: C901
                     except (GitHubStatusFailed, GitHubStatusPending) as e:
                         if ignore_ci:
                             logging.warning('Ignoring failing CI: %s', e)
-                            ci_ignored_count.labels(project=cfg.name).inc()
+                            ci_ignored_count.labels(project=name).inc()
                         else:
                             raise
                     break
@@ -475,12 +475,12 @@ def release_project(   # noqa: C901
                 gh_repo = None
 
         if not check_new_revisions(ws.local_tree.branch, cfg.news_file):
-            no_unreleased_changes_count.labels(project=cfg.name).inc()
+            no_unreleased_changes_count.labels(project=name).inc()
             raise NoUnreleasedChanges()
         try:
             check_release_age(ws.local_tree.branch, cfg, now)
         except RecentCommits:
-            recent_commits_count.labels(project=cfg.name).inc()
+            recent_commits_count.labels(project=name).inc()
             if not force:
                 raise
         if new_version is None:
@@ -508,7 +508,7 @@ def release_project(   # noqa: C901
                     cfg.pre_dist_command, cwd=ws.local_tree.abspath('.'),
                     shell=True)
             except subprocess.CalledProcessError as e:
-                pre_dist_command_failed.labels(project=cfg.name).inc()
+                pre_dist_command_failed.labels(project=name).inc()
                 raise PreDistCommandFailed(cfg.pre_dist_command, e.returncode)
 
         if cfg.verify_command:
@@ -527,10 +527,10 @@ def release_project(   # noqa: C901
         else:
             news_file = None
             release_changes = None
-        for update in cfg.update_version:
-            update_version_in_file(ws.local_tree, update, new_version, "final")
-        for update in cfg.update_manpages:
-            for path in glob(ws.local_tree.abspath(update)):
+        for update_version in cfg.update_version:
+            update_version_in_file(ws.local_tree, update_version, new_version, "final")
+        for update_manpage in cfg.update_manpages:
+            for path in glob(ws.local_tree.abspath(update_manpage)):
                 update_version_in_manpage(
                     ws.local_tree, ws.local_tree.relpath(path), new_version,
                     now)
@@ -545,16 +545,16 @@ def release_project(   # noqa: C901
                     shell=True
                 )
             except subprocess.CalledProcessError as e:
-                verify_command_failed.labels(project=cfg.name).inc()
+                verify_command_failed.labels(project=name).inc()
                 raise VerifyCommandFailed(cfg.verify_command, e.returncode)
 
         tag_name = cfg.tag_name.replace("$VERSION", new_version)
         if ws.main_branch.tags.has_tag(tag_name):
-            release_tag_exists.labels(project=cfg.name).inc()
+            release_tag_exists.labels(project=name).inc()
             # Maybe there's a pending pull request merging new_version?
             # TODO(jelmer): Do some more verification. Expect: release tag
             # has one additional revision that's not on our branch.
-            raise ReleaseTagExists(cfg.name, new_version, tag_name)
+            raise ReleaseTagExists(name, new_version, tag_name)
         logging.info('Creating tag %s', tag_name)
         if hasattr(ws.local_tree.branch.repository, '_git'):
             subprocess.check_call(
@@ -614,7 +614,7 @@ def release_project(   # noqa: C901
             if not dry_run:
                 ws.push()
         except ProtectedBranchHookDeclined:
-            branch_protected_count.labels(project=cfg.name).inc()
+            branch_protected_count.labels(project=name).inc()
             logging.info('branch %s is protected; proposing merge instead',
                          ws.local_tree.branch.name)
             if not dry_run:
@@ -674,23 +674,31 @@ def release_project(   # noqa: C901
         elif local_branch is not None:
             local_branch.pull(public_branch)
 
-    released_count.labels(project=cfg.name).inc()
-    return cfg.name, new_version
+    released_count.labels(project=name).inc()
+    return name, new_version
+
+
+def info(path):
+    wt = WorkingTree.open(path)
+
+    from .config import read_project_with_fallback
+    try:
+        cfg = read_project_with_fallback(wt)
+    except NoSuchFile:
+        logging.info("No configuration found")
+        return
+
+    logging.info("Project: %s", cfg.name)
 
 
 def validate_config(path):
     wt = WorkingTree.open(path)
 
-    from .config import read_project
+    from .config import read_project_with_fallback
     try:
-        with wt.get_file("disperse.conf") as f:
-            cfg = read_project(f)
+        cfg = read_project_with_fallback(wt)
     except NoSuchFile as exc:
-        try:
-            with wt.get_file("releaser.conf") as f:
-                cfg = read_project(f)
-        except NoSuchFile:
-            raise NodisperseConfig() from exc
+        raise NodisperseConfig() from exc
 
     if cfg.news_file:
         news_file = NewsFile(wt, cfg.news_file)
@@ -829,6 +837,8 @@ def main(argv=None):  # noqa: C901
         help="Do not exit with non-zero if projects failed to be released.")
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("path", type=str, nargs="?", default=".")
+    info_parser = subparsers.add_parser("info")
+    info_parser.add_argument("path", type=str, nargs="?", default=".")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -856,6 +866,8 @@ def main(argv=None):  # noqa: C901
         return ret
     elif args.command == "validate":
         return validate_config(args.path)
+    elif args.command == "info":
+        return info(args.path)
     else:
         parser.print_usage()
 

@@ -17,6 +17,9 @@
 
 from google.protobuf import text_format  # type: ignore
 
+from breezy.transport import NoSuchFile
+from breezy.tree import Tree
+
 from . import config_pb2
 
 Project = config_pb2.Project
@@ -26,5 +29,17 @@ def read_config(f):
     return text_format.Parse(f.read(), config_pb2.Config())
 
 
-def read_project(f):
+def read_project(f) -> Project:
     return text_format.Parse(f.read(), config_pb2.Project())
+
+
+def read_project_with_fallback(tree: Tree) -> Project:
+    try:
+        with tree.get_file("disperse.conf") as f:
+            return read_project(f)
+    except NoSuchFile as orig:
+        try:
+            with tree.get_file("releaser.conf") as f:
+                return read_project(f)
+        except NoSuchFile:
+            raise orig
