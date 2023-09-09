@@ -931,6 +931,10 @@ def main(argv=None):  # noqa: C901
         urls = []
         for pypi_username in args.pypi_user:
             urls.extend(pypi_discover_urls(pypi_username))
+        if not urls:
+            logging.error(
+                "No projects found. Specify --pypi-username or PYPI_USERNAME?")
+            return 0
         if args.info:
             ret = info_many(urls)
         else:
