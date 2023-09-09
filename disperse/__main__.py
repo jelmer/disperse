@@ -41,6 +41,7 @@ from silver_platter.workspace import Workspace
 
 from . import NoUnreleasedChanges, DistCreationFailed
 from .cargo import cargo_publish, update_version_in_cargo
+from .config import read_project_with_fallback, ProjectConfig
 from .github import (GitHubStatusFailed, GitHubStatusPending,
                      check_gh_repo_action_status, get_github_repo,
                      create_github_release, wait_for_gh_actions)
@@ -287,7 +288,7 @@ def update_version_in_manpage(
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
 
 
-def check_release_age(branch: Branch, cfg, now: datetime) -> None:
+def check_release_age(branch: Branch, cfg: ProjectConfig, now: datetime) -> None:
     rev = branch.repository.get_revision(branch.last_revision())
     if cfg.timeout_days is not None:
         commit_time = datetime.fromtimestamp(rev.timestamp)
@@ -366,8 +367,6 @@ def release_project(   # noqa: C901
         from breezy.errors import ConnectionError  # type: ignore
     except ImportError:
         pass
-
-    from .config import read_project_with_fallback
 
     now = datetime.now()
     try:
@@ -681,7 +680,6 @@ def release_project(   # noqa: C901
 def info(path):
     wt = WorkingTree.open(path)
 
-    from .config import read_project_with_fallback
     try:
         cfg = read_project_with_fallback(wt)
     except NoSuchFile:
@@ -690,11 +688,20 @@ def info(path):
 
     logging.info("Project: %s", cfg.name)
 
+    last_version, last_version_status = find_last_version(wt, cfg)
+    logging.info("Last version: %s (%s)", last_version, last_version_status)
+
+    try:
+        new_version = find_pending_version(wt, cfg)
+    except NotImplementedError:
+        logging.info("No pending version found")
+    else:
+        logging.info("Pending version: %s", new_version)
+
 
 def validate_config(path):
     wt = WorkingTree.open(path)
 
-    from .config import read_project_with_fallback
     try:
         cfg = read_project_with_fallback(wt)
     except NoSuchFile as exc:
