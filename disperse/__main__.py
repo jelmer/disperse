@@ -41,7 +41,7 @@ from silver_platter.workspace import Workspace
 
 from . import NoUnreleasedChanges, DistCreationFailed
 from .cargo import cargo_publish, update_version_in_cargo
-from .config import read_project_with_fallback, ProjectConfig
+from .project_config import read_project_with_fallback, ProjectConfig
 from .github import (GitHubStatusFailed, GitHubStatusPending,
                      check_gh_repo_action_status, get_github_repo,
                      create_github_release, wait_for_gh_actions)
