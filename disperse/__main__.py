@@ -878,6 +878,8 @@ def main(argv=None):  # noqa: C901
     info_parser.add_argument("path", type=str, nargs="?", default=".")
     args = parser.parse_args()
 
+    os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
+
     logging.basicConfig(level=logging.INFO, format='%(message)s')
 
     if args.command == "release":
