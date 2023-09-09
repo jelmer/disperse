@@ -731,7 +731,7 @@ def info(wt):
     logging.info("Project: %s", cfg.name)
 
     last_version, last_version_status = find_last_version(wt, cfg)
-    logging.info("Last version: %s", last_version)
+    logging.info("Last release: %s", last_version)
     if last_version_status:
         logging.info("  status: %s", last_version_status)
 
@@ -747,17 +747,18 @@ def info(wt):
         missing = list(
             graph.iter_lefthand_ancestry(wt.branch.last_revision(), [release_revid]))
         if missing[-1] == NULL_REVISION:
-            logging.info("Last release not found in ancestry")
+            logging.info("  last release not found in ancestry")
         else:
             first = wt.branch.repository.get_revision(missing[-1])
             first_age = datetime.now() - datetime.fromtimestamp(first.timestamp)
-            logging.info("%d revisions since last release. First is %d days old.",
+            logging.info("  %d revisions since last release. First is %d days old.",
                          len(missing), first_age.days)
 
     try:
         new_version = find_pending_version(wt, cfg)
     except NotImplementedError:
-        logging.info("No pending version found")
+        logging.info("No pending version found; would use %s",
+                     increase_version(last_version, -1))
     else:
         logging.info("Pending version: %s", new_version)
 
