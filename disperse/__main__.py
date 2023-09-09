@@ -367,7 +367,7 @@ def release_project(   # noqa: C901
     except ImportError:
         pass
 
-    from .config import read_project
+    from .config import read_project_with_fallback
 
     now = datetime.now()
     try:
@@ -408,15 +408,10 @@ def release_project(   # noqa: C901
 
     with Workspace(public_branch, resume_branch=local_branch) as ws:
         try:
-            with ws.local_tree.get_file("disperse.conf") as f:
-                cfg = read_project(f)
+            cfg = read_project_with_fallback(ws.local_tree)
         except NoSuchFile as exc:
-            try:
-                with ws.local_tree.get_file("releaser.conf") as f:
-                    cfg = read_project(f)
-            except NoSuchFile:
-                no_disperse_config.inc()
-                raise NodisperseConfig() from exc
+            no_disperse_config.inc()
+            raise NodisperseConfig() from exc
 
         if cfg.launchpad_project:
             launchpad_project = get_launchpad_project(cfg.launchpad_project)
@@ -681,16 +676,11 @@ def release_project(   # noqa: C901
 def validate_config(path):
     wt = WorkingTree.open(path)
 
-    from .config import read_project
+    from .config import read_project_with_fallback
     try:
-        with wt.get_file("disperse.conf") as f:
-            cfg = read_project(f)
+        cfg = read_project_with_fallback(wt)
     except NoSuchFile as exc:
-        try:
-            with wt.get_file("releaser.conf") as f:
-                cfg = read_project(f)
-        except NoSuchFile:
-            raise NodisperseConfig() from exc
+        raise NodisperseConfig() from exc
 
     if cfg.news_file:
         news_file = NewsFile(wt, cfg.news_file)
