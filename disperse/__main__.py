@@ -41,6 +41,7 @@ from silver_platter.workspace import Workspace
 
 from . import NoUnreleasedChanges, DistCreationFailed
 from .cargo import cargo_publish, update_version_in_cargo
+from .config import load_config
 from .project_config import read_project_with_fallback, ProjectConfig
 from .github import (GitHubStatusFailed, GitHubStatusPending,
                      check_gh_repo_action_status, get_github_repo,
@@ -919,6 +920,8 @@ def main(argv=None):  # noqa: C901
 
     logging.basicConfig(level=logging.INFO, format='%(message)s')
 
+    config = load_config()
+
     if args.command == "release":
         if args.url:
             urls = args.url
@@ -928,7 +931,11 @@ def main(argv=None):  # noqa: C901
                             discover=False, new_version=args.new_version,
                             ignore_ci=args.ignore_ci)
     elif args.command == "discover":
-        pypi_username = os.environ.get('PYPI_USERNAME')
+        pypi_username = args.pypi_username
+        if pypi_username is None:
+            pypi_config = config.get('pypi', {})
+            pypi_username = pypi_config.get('username')
+
         urls = []
         for pypi_username in args.pypi_user:
             urls.extend(pypi_discover_urls(pypi_username))
