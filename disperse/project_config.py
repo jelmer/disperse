@@ -15,22 +15,31 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-import os
-import toml
+from google.protobuf import text_format  # type: ignore
+
+from breezy.transport import NoSuchFile
+from breezy.tree import Tree
+
+from . import config_pb2
+
+ProjectConfig = config_pb2.Project
 
 
-CONFIG_FILE_NAME = "disperse.toml"
+def read_config(f):
+    return text_format.Parse(f.read(), config_pb2.Config())
 
 
-def load_config():
-    # Check if XDG_CONFIG_HOME is set, otherwise use the default path
-    xdg_config_home = os.environ.get(
-        "XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config"))
+def read_project(f) -> ProjectConfig:
+    return text_format.Parse(f.read(), config_pb2.Project())
 
-    config_file_path = os.path.join(xdg_config_home, "disperse", CONFIG_FILE_NAME)
 
-    if not os.path.exists(config_file_path):
-        return {}
-
-    with open(config_file_path, "r") as config_file:
-        return toml.load(config_file)
+def read_project_with_fallback(tree: Tree) -> ProjectConfig:
+    try:
+        with tree.get_file("disperse.conf") as f:
+            return read_project(f)
+    except NoSuchFile as orig:
+        try:
+            with tree.get_file("releaser.conf") as f:
+                return read_project(f)
+        except NoSuchFile:
+            raise orig

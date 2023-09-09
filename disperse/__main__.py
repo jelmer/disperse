@@ -41,7 +41,8 @@ from silver_platter.workspace import Workspace
 
 from . import NoUnreleasedChanges, DistCreationFailed
 from .cargo import cargo_publish, update_version_in_cargo
-from .config import read_project_with_fallback, ProjectConfig
+from .config import load_config
+from .project_config import read_project_with_fallback, ProjectConfig
 from .github import (GitHubStatusFailed, GitHubStatusPending,
                      check_gh_repo_action_status, get_github_repo,
                      create_github_release, wait_for_gh_actions)
@@ -731,7 +732,7 @@ def info(wt):
     logging.info("Project: %s", cfg.name)
 
     last_version, last_version_status = find_last_version(wt, cfg)
-    logging.info("Last version: %s", last_version)
+    logging.info("Last release: %s", last_version)
     if last_version_status:
         logging.info("  status: %s", last_version_status)
 
@@ -747,17 +748,18 @@ def info(wt):
         missing = list(
             graph.iter_lefthand_ancestry(wt.branch.last_revision(), [release_revid]))
         if missing[-1] == NULL_REVISION:
-            logging.info("Last release not found in ancestry")
+            logging.info("  last release not found in ancestry")
         else:
             first = wt.branch.repository.get_revision(missing[-1])
             first_age = datetime.now() - datetime.fromtimestamp(first.timestamp)
-            logging.info("%d revisions since last release. First is %d days old.",
+            logging.info("  %d revisions since last release. First is %d days old.",
                          len(missing), first_age.days)
 
     try:
         new_version = find_pending_version(wt, cfg)
     except NotImplementedError:
-        logging.info("No pending version found")
+        logging.info("No pending version found; would use %s",
+                     increase_version(last_version, -1))
     else:
         logging.info("Pending version: %s", new_version)
 
@@ -918,6 +920,8 @@ def main(argv=None):  # noqa: C901
 
     logging.basicConfig(level=logging.INFO, format='%(message)s')
 
+    config = load_config()
+
     if args.command == "release":
         if args.url:
             urls = args.url
@@ -927,7 +931,11 @@ def main(argv=None):  # noqa: C901
                             discover=False, new_version=args.new_version,
                             ignore_ci=args.ignore_ci)
     elif args.command == "discover":
-        pypi_username = os.environ.get('PYPI_USERNAME')
+        pypi_username = args.pypi_username
+        if pypi_username is None:
+            pypi_config = config.get('pypi', {})
+            pypi_username = pypi_config.get('username')
+
         urls = []
         for pypi_username in args.pypi_user:
             urls.extend(pypi_discover_urls(pypi_username))
