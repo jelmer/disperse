@@ -41,6 +41,7 @@ from silver_platter.workspace import Workspace
 
 from . import NoUnreleasedChanges, DistCreationFailed
 from .cargo import cargo_publish, update_version_in_cargo
+from .config import read_project_with_fallback, ProjectConfig
 from .github import (GitHubStatusFailed, GitHubStatusPending,
                      check_gh_repo_action_status, get_github_repo,
                      create_github_release, wait_for_gh_actions)
@@ -287,7 +288,7 @@ def update_version_in_manpage(
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
 
 
-def check_release_age(branch: Branch, cfg, now: datetime) -> None:
+def check_release_age(branch: Branch, cfg: ProjectConfig, now: datetime) -> None:
     rev = branch.repository.get_revision(branch.last_revision())
     if cfg.timeout_days is not None:
         commit_time = datetime.fromtimestamp(rev.timestamp)
@@ -356,6 +357,10 @@ def check_new_revisions(
         return delta.has_changed()
 
 
+def expand_tag(tag_template, version) -> str:
+    return tag_template.replace("$VERSION", version)
+
+
 def release_project(   # noqa: C901
         repo_url: str, *, force: bool = False,
         new_version: Optional[str] = None,
@@ -366,8 +371,6 @@ def release_project(   # noqa: C901
         from breezy.errors import ConnectionError  # type: ignore
     except ImportError:
         pass
-
-    from .config import read_project_with_fallback
 
     now = datetime.now()
     try:
@@ -491,8 +494,7 @@ def release_project(   # noqa: C901
             if new_version is None:
                 last_version, last_version_status = find_last_version(
                     ws.local_tree, cfg)
-                last_version_tag_name = cfg.tag_name.replace(
-                    "$VERSION", last_version)
+                last_version_tag_name = expand_tag(cfg.tag_name, last_version)
                 if ws.local_tree.branch.tags.has_tag(last_version_tag_name):
                     new_version = increase_version(last_version)
                 else:
@@ -548,7 +550,7 @@ def release_project(   # noqa: C901
                 verify_command_failed.labels(project=name).inc()
                 raise VerifyCommandFailed(cfg.verify_command, e.returncode)
 
-        tag_name = cfg.tag_name.replace("$VERSION", new_version)
+        tag_name = expand_tag(cfg.tag_name, new_version)
         if ws.main_branch.tags.has_tag(tag_name):
             release_tag_exists.labels(project=name).inc()
             # Maybe there's a pending pull request merging new_version?
@@ -678,10 +680,48 @@ def release_project(   # noqa: C901
     return name, new_version
 
 
-def info(path):
-    wt = WorkingTree.open(path)
+def get_release_revision(wt, cfg, version):
+    tag_name = expand_tag(cfg.tag_name, version)
+    revid = wt.branch.tags.lookup_tag(tag_name)
+    return wt.branch.repository.get_revision(revid)
 
-    from .config import read_project_with_fallback
+
+def info_many(urls):
+    from breezy.controldir import ControlDir
+    try:
+        from breezy.errors import ConnectionError  # type: ignore
+    except ImportError:
+        pass
+    from breezy.errors import UnsupportedOperation
+
+
+    ret = 0
+
+    for url in urls:
+        if url != ".":
+            logging.info('Processing %s', url)
+
+        try:
+            local_wt, branch = ControlDir.open_tree_or_branch(url)
+        except ConnectionError as e:
+            ret = 1
+            logging.error('Unable to connect to %s: %s', url, e)
+            continue
+
+        if local_wt is not None:
+            info(local_wt)
+        else:
+            try:
+                info(branch.basis_tree())
+            except UnsupportedOperation:
+                with Workspace(branch) as ws:
+                    info(ws.local_tree)
+
+    return ret
+
+
+def info(wt):
+
     try:
         cfg = read_project_with_fallback(wt)
     except NoSuchFile:
@@ -690,11 +730,41 @@ def info(path):
 
     logging.info("Project: %s", cfg.name)
 
+    last_version, last_version_status = find_last_version(wt, cfg)
+    logging.info("Last version: %s", last_version)
+    if last_version_status:
+        logging.info("  status: %s", last_version_status)
+
+    tag_name = expand_tag(cfg.tag_name, last_version)
+    release_revid = wt.branch.tags.lookup_tag(tag_name)
+    logging.info("  tag name: %s (%s)", tag_name, release_revid.decode('utf-8'))
+
+    rev = wt.branch.repository.get_revision(release_revid)
+    logging.info("  date: %s", datetime.fromtimestamp(rev.timestamp))
+
+    if rev.revision_id != wt.branch.last_revision():
+        graph = wt.branch.repository.get_graph()
+        missing = list(
+            graph.iter_lefthand_ancestry(wt.branch.last_revision(), [release_revid]))
+        if missing[-1] == NULL_REVISION:
+            logging.info("Last release not found in ancestry")
+        else:
+            first = wt.branch.repository.get_revision(missing[-1])
+            first_age = datetime.now() - datetime.fromtimestamp(first.timestamp)
+            logging.info("%d revisions since last release. First is %d days old.",
+                         len(missing), first_age.days)
+
+    try:
+        new_version = find_pending_version(wt, cfg)
+    except NotImplementedError:
+        logging.info("No pending version found")
+    else:
+        logging.info("Pending version: %s", new_version)
+
 
 def validate_config(path):
     wt = WorkingTree.open(path)
 
-    from .config import read_project_with_fallback
     try:
         cfg = read_project_with_fallback(wt)
     except NoSuchFile as exc:
@@ -833,6 +903,9 @@ def main(argv=None):  # noqa: C901
         "--force", action="store_true",
         help='Force a new release, even if timeout is not reached.')
     discover_parser.add_argument(
+        "--info", action="store_true",
+        help='Display status only, do not create new releases.')
+    discover_parser.add_argument(
         "--try", action="store_true",
         help="Do not exit with non-zero if projects failed to be released.")
     validate_parser = subparsers.add_parser("validate")
@@ -840,6 +913,8 @@ def main(argv=None):  # noqa: C901
     info_parser = subparsers.add_parser("info")
     info_parser.add_argument("path", type=str, nargs="?", default=".")
     args = parser.parse_args()
+
+    os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
     logging.basicConfig(level=logging.INFO, format='%(message)s')
 
@@ -856,8 +931,15 @@ def main(argv=None):  # noqa: C901
         urls = []
         for pypi_username in args.pypi_user:
             urls.extend(pypi_discover_urls(pypi_username))
-        ret = release_many(urls, force=args.force, dry_run=args.dry_run,
-                           discover=True)
+        if not urls:
+            logging.error(
+                "No projects found. Specify --pypi-username or PYPI_USERNAME?")
+            return 0
+        if args.info:
+            ret = info_many(urls)
+        else:
+            ret = release_many(
+                urls, force=args.force, dry_run=args.dry_run, discover=True)
         if args.prometheus:
             push_to_gateway(args.prometheus, job='disperse',
                             registry=registry)
@@ -867,7 +949,8 @@ def main(argv=None):  # noqa: C901
     elif args.command == "validate":
         return validate_config(args.path)
     elif args.command == "info":
-        return info(args.path)
+        wt = WorkingTree.open(args.path)
+        return info(wt)
     else:
         parser.print_usage()
 

@@ -46,6 +46,8 @@ jobs:
         run: |
           pip install -U pytest
           PYTHONPATH=. pytest tests
+        env:
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
       - name: Validate disperse.conf
         if: always()
         run: |
