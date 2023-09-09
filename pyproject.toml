@@ -19,6 +19,7 @@ module = [
     "silver_platter.*",
     "prometheus_client.*",
     "launchpadlib.*",
+    "google.protobuf.*",
 ]
 ignore_missing_imports = true
 
