@@ -357,6 +357,10 @@ def check_new_revisions(
         return delta.has_changed()
 
 
+def expand_tag(tag_template, version) -> str:
+    return tag_template.replace("$VERSION", version)
+
+
 def release_project(   # noqa: C901
         repo_url: str, *, force: bool = False,
         new_version: Optional[str] = None,
@@ -490,8 +494,7 @@ def release_project(   # noqa: C901
             if new_version is None:
                 last_version, last_version_status = find_last_version(
                     ws.local_tree, cfg)
-                last_version_tag_name = cfg.tag_name.replace(
-                    "$VERSION", last_version)
+                last_version_tag_name = expand_tag(cfg.tag_name, last_version)
                 if ws.local_tree.branch.tags.has_tag(last_version_tag_name):
                     new_version = increase_version(last_version)
                 else:
@@ -547,7 +550,7 @@ def release_project(   # noqa: C901
                 verify_command_failed.labels(project=name).inc()
                 raise VerifyCommandFailed(cfg.verify_command, e.returncode)
 
-        tag_name = cfg.tag_name.replace("$VERSION", new_version)
+        tag_name = expand_tag(cfg.tag_name, new_version)
         if ws.main_branch.tags.has_tag(tag_name):
             release_tag_exists.labels(project=name).inc()
             # Maybe there's a pending pull request merging new_version?
@@ -677,6 +680,12 @@ def release_project(   # noqa: C901
     return name, new_version
 
 
+def get_release_revision(wt, cfg, version):
+    tag_name = expand_tag(cfg.tag_name, version)
+    revid = wt.branch.tags.lookup_tag(tag_name)
+    return wt.branch.repository.get_revision(revid)
+
+
 def info(path):
     wt = WorkingTree.open(path)
 
@@ -689,7 +698,28 @@ def info(path):
     logging.info("Project: %s", cfg.name)
 
     last_version, last_version_status = find_last_version(wt, cfg)
-    logging.info("Last version: %s (%s)", last_version, last_version_status)
+    logging.info("Last version: %s", last_version)
+    if last_version_status:
+        logging.info("  status: %s", last_version_status)
+
+    tag_name = expand_tag(cfg.tag_name, last_version)
+    release_revid = wt.branch.tags.lookup_tag(tag_name)
+    logging.info("  tag name: %s (%s)", tag_name, release_revid.decode('utf-8'))
+
+    rev = wt.branch.repository.get_revision(release_revid)
+    logging.info("  date: %s", datetime.fromtimestamp(rev.timestamp))
+
+    if rev.revision_id != wt.branch.last_revision():
+        graph = wt.branch.repository.get_graph()
+        missing = list(
+            graph.iter_lefthand_ancestry(wt.branch.last_revision(), [release_revid]))
+        if missing[-1] == NULL_REVISION:
+            logging.info("Last release not found in ancestry")
+        else:
+            first = wt.branch.repository.get_revision(missing[-1])
+            first_age = datetime.now() - datetime.fromtimestamp(first.timestamp)
+            logging.info("%d revisions since last release. First is %d days old.",
+                         len(missing), first_age.days)
 
     try:
         new_version = find_pending_version(wt, cfg)
