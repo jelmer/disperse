@@ -686,8 +686,41 @@ def get_release_revision(wt, cfg, version):
     return wt.branch.repository.get_revision(revid)
 
 
-def info(path):
-    wt = WorkingTree.open(path)
+def info_many(urls):
+    from breezy.controldir import ControlDir
+    try:
+        from breezy.errors import ConnectionError  # type: ignore
+    except ImportError:
+        pass
+    from breezy.errors import UnsupportedOperation
+
+
+    ret = 0
+
+    for url in urls:
+        if url != ".":
+            logging.info('Processing %s', url)
+
+        try:
+            local_wt, branch = ControlDir.open_tree_or_branch(url)
+        except ConnectionError as e:
+            ret = 1
+            logging.error('Unable to connect to %s: %s', url, e)
+            continue
+
+        if local_wt is not None:
+            info(local_wt)
+        else:
+            try:
+                info(branch.basis_tree())
+            except UnsupportedOperation:
+                with Workspace(branch) as ws:
+                    info(ws.local_tree)
+
+    return ret
+
+
+def info(wt):
 
     try:
         cfg = read_project_with_fallback(wt)
@@ -870,6 +903,9 @@ def main(argv=None):  # noqa: C901
         "--force", action="store_true",
         help='Force a new release, even if timeout is not reached.')
     discover_parser.add_argument(
+        "--info", action="store_true",
+        help='Display status only, do not create new releases.')
+    discover_parser.add_argument(
         "--try", action="store_true",
         help="Do not exit with non-zero if projects failed to be released.")
     validate_parser = subparsers.add_parser("validate")
@@ -895,8 +931,11 @@ def main(argv=None):  # noqa: C901
         urls = []
         for pypi_username in args.pypi_user:
             urls.extend(pypi_discover_urls(pypi_username))
-        ret = release_many(urls, force=args.force, dry_run=args.dry_run,
-                           discover=True)
+        if args.info:
+            ret = info_many(urls)
+        else:
+            ret = release_many(
+                urls, force=args.force, dry_run=args.dry_run, discover=True)
         if args.prometheus:
             push_to_gateway(args.prometheus, job='disperse',
                             registry=registry)
@@ -906,7 +945,8 @@ def main(argv=None):  # noqa: C901
     elif args.command == "validate":
         return validate_config(args.path)
     elif args.command == "info":
-        return info(args.path)
+        wt = WorkingTree.open(args.path)
+        return info(wt)
     else:
         parser.print_usage()
 
