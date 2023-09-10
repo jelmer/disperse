@@ -40,7 +40,7 @@ from prometheus_client import CollectorRegistry, Counter, push_to_gateway
 from silver_platter.workspace import Workspace
 
 from . import NoUnreleasedChanges, DistCreationFailed
-from .cargo import cargo_publish, update_version_in_cargo
+from .cargo import cargo_publish, update_version_in_cargo, find_version_in_cargo
 from .config import load_config
 from .project_config import read_project_with_fallback, ProjectConfig
 from .github import (GitHubStatusFailed, GitHubStatusPending,
@@ -324,6 +324,8 @@ def reverse_version(
 
 
 def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
+    if tree.has_filename("Cargo.toml"):
+        return find_version_in_cargo(tree), None
     if cfg.update_version:
         for update_cfg in cfg.update_version:
             with tree.get_file(update_cfg.path) as f:
@@ -754,6 +756,8 @@ def info(wt):
             first_age = datetime.now() - datetime.fromtimestamp(first.timestamp)
             logging.info("  %d revisions since last release. First is %d days old.",
                          len(missing), first_age.days)
+    else:
+        logging.info("  no revisions since last release")
 
     try:
         new_version = find_pending_version(wt, cfg)
