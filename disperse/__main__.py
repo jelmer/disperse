@@ -55,7 +55,8 @@ from .python import (UploadCommandFailed,
                      create_python_artifacts, create_setup_py_artifacts,
                      pypi_discover_urls, read_project_urls_from_setup_cfg,
                      read_project_urls_from_pyproject_toml,
-                     upload_python_artifacts)
+                     upload_python_artifacts,
+                     find_version_in_pyproject_toml, update_version_in_pyproject_toml)
 
 DEFAULT_CI_TIMEOUT = 7200
 
@@ -326,6 +327,10 @@ def reverse_version(
 def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
     if tree.has_filename("Cargo.toml"):
         return find_version_in_cargo(tree), None
+    if tree.has_filename("pyproject.toml"):
+        version = find_version_in_pyproject_toml(tree)
+        if version:
+            return version, None
     if cfg.update_version:
         for update_cfg in cfg.update_version:
             with tree.get_file(update_cfg.path) as f:
@@ -541,6 +546,8 @@ def release_project(   # noqa: C901
                     now)
         if ws.local_tree.has_filename("Cargo.toml"):
             update_version_in_cargo(ws.local_tree, new_version)
+        if ws.local_tree.has_filename("pyproject.toml"):
+            update_version_in_pyproject_toml(ws.local_tree, new_version)
         ws.local_tree.commit(f"Release {new_version}.")
 
         if verify_command:

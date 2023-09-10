@@ -16,11 +16,14 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 
+from breezy.tree import Tree
+from breezy.workingtree import WorkingTree
 from build import ProjectBuilder, BuildBackendException
 import json
 import logging
 import os
 import subprocess
+from typing import Optional
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -38,7 +41,7 @@ def pypi_discover_urls(pypi_user):
     import xmlrpc.client
     client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
     ret = []
-    for relation, package in client.user_packages(pypi_user):  # type: ignore
+    for _relation, package in client.user_packages(pypi_user):  # type: ignore
         assert isinstance(package, str)
         req = Request(
             f'https://pypi.org/pypi/{package}/json',
@@ -145,3 +148,29 @@ def read_project_urls_from_setup_cfg(path):
             yield (project_urls[key], 'HEAD')
         except KeyError:
             pass
+
+
+def update_version_in_pyproject_toml(tree: WorkingTree, new_version: str) -> bool:
+    from toml.decoder import TomlPreserveCommentDecoder, load
+    from toml.encoder import TomlPreserveCommentEncoder, dumps
+
+    with open(tree.abspath('pyproject.toml')) as f:
+        d = load(f, dict, TomlPreserveCommentDecoder())
+    if 'project' not in d:
+        return False
+    if 'version' in d['project'].get('dynamic', []):
+        return False
+    if 'version' not in d['project']:
+        logging.warning("pyproject.toml does not have a version")
+        return False
+    d['project']['version'] = new_version
+    tree.put_file_bytes_non_atomic(
+        'pyproject.toml',
+        dumps(d, TomlPreserveCommentEncoder()).encode())  # type: ignore
+    return True
+
+
+def find_version_in_pyproject_toml(tree: Tree) -> Optional[str]:
+    from toml.decoder import loads
+    d = loads(tree.get_file_text('pyproject.toml').decode('utf-8'))
+    return d.get('project', {}).get('name')
