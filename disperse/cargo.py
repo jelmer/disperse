@@ -29,7 +29,7 @@ def update_version_in_cargo(tree: WorkingTree, new_version: str) -> None:
     from toml.decoder import TomlPreserveCommentDecoder, load
     from toml.encoder import TomlPreserveCommentEncoder, dumps
 
-    with tree.get_file('Cargo.toml') as f:
+    with open(tree.abspath('Cargo.toml')) as f:
         d = load(f, dict, TomlPreserveCommentDecoder())
     d['package']['version'] = new_version
     tree.put_file_bytes_non_atomic(
@@ -39,8 +39,6 @@ def update_version_in_cargo(tree: WorkingTree, new_version: str) -> None:
 
 
 def find_version_in_cargo(tree: Tree) -> str:
-    from toml.decoder import TomlPreserveCommentDecoder, load
-
-    with tree.get_file('Cargo.toml') as f:
-        d = load(f, dict, TomlPreserveCommentDecoder())
+    from toml.decoder import loads
+    d = loads(tree.get_file_text('Cargo.toml').decode('utf-8'))
     return d['package']['version']
