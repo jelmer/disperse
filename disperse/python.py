@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import subprocess
+from typing import Optional
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -40,7 +41,7 @@ def pypi_discover_urls(pypi_user):
     import xmlrpc.client
     client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
     ret = []
-    for relation, package in client.user_packages(pypi_user):  # type: ignore
+    for _relation, package in client.user_packages(pypi_user):  # type: ignore
         assert isinstance(package, str)
         req = Request(
             f'https://pypi.org/pypi/{package}/json',
@@ -169,7 +170,7 @@ def update_version_in_pyproject_toml(tree: WorkingTree, new_version: str) -> boo
     return True
 
 
-def find_version_in_pyproject_toml(tree: Tree) -> str | None:
+def find_version_in_pyproject_toml(tree: Tree) -> Optional[str]:
     from toml.decoder import loads
     d = loads(tree.get_file_text('pyproject.toml').decode('utf-8'))
     return d.get('project', {}).get('name')
