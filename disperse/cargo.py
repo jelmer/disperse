@@ -18,6 +18,7 @@
 import subprocess
 
 from breezy.workingtree import WorkingTree
+from breezy.tree import Tree
 
 
 def cargo_publish(tree, subpath="."):
@@ -35,3 +36,11 @@ def update_version_in_cargo(tree: WorkingTree, new_version: str) -> None:
         'Cargo.toml',
         dumps(d, TomlPreserveCommentEncoder()).encode())  # type: ignore
     subprocess.check_call(['cargo', 'update'], cwd=tree.abspath('.'))
+
+
+def find_version_in_cargo(tree: Tree) -> str:
+    from toml.decoder import TomlPreserveCommentDecoder, load
+
+    with open(tree.abspath('Cargo.toml')) as f:
+        d = load(f, dict, TomlPreserveCommentDecoder())
+    return d['package']['version']
