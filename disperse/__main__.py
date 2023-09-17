@@ -29,6 +29,7 @@ import breezy.bzr  # noqa: F401
 import breezy.git  # noqa: F401
 import breezy.plugins.launchpad  # noqa: F401
 from breezy.branch import Branch
+from breezy.errors import NoSuchTag
 from breezy.git.remote import ProtectedBranchHookDeclined
 from breezy.mutabletree import MutableTree
 from breezy.revision import NULL_REVISION
@@ -326,13 +327,16 @@ def reverse_version(
 
 def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
     if tree.has_filename("Cargo.toml"):
+        logging.debug("Reading version from Cargo.toml")
         return find_version_in_cargo(tree), None
     if tree.has_filename("pyproject.toml"):
+        logging.debug("Reading version from pyproject.toml")
         version = find_version_in_pyproject_toml(tree)
         if version:
             return version, None
     if cfg.update_version:
         for update_cfg in cfg.update_version:
+            logging.debug("Reading version from %s", update_cfg.path)
             with tree.get_file(update_cfg.path) as f:
                 lines = list(f.readlines())
             v, s = reverse_version(update_cfg, lines)
@@ -746,25 +750,29 @@ def info(wt):
         logging.info("  status: %s", last_version_status)
 
     tag_name = expand_tag(cfg.tag_name, last_version)
-    release_revid = wt.branch.tags.lookup_tag(tag_name)
-    logging.info("  tag name: %s (%s)", tag_name, release_revid.decode('utf-8'))
-
-    rev = wt.branch.repository.get_revision(release_revid)
-    logging.info("  date: %s", datetime.fromtimestamp(rev.timestamp))
-
-    if rev.revision_id != wt.branch.last_revision():
-        graph = wt.branch.repository.get_graph()
-        missing = list(
-            graph.iter_lefthand_ancestry(wt.branch.last_revision(), [release_revid]))
-        if missing[-1] == NULL_REVISION:
-            logging.info("  last release not found in ancestry")
-        else:
-            first = wt.branch.repository.get_revision(missing[-1])
-            first_age = datetime.now() - datetime.fromtimestamp(first.timestamp)
-            logging.info("  %d revisions since last release. First is %d days old.",
-                         len(missing), first_age.days)
+    try:
+        release_revid = wt.branch.tags.lookup_tag(tag_name)
+    except NoSuchTag:
+        logging.info("  tag %s for previous release not found", tag_name)
     else:
-        logging.info("  no revisions since last release")
+        logging.info("  tag name: %s (%s)", tag_name, release_revid.decode('utf-8'))
+
+        rev = wt.branch.repository.get_revision(release_revid)
+        logging.info("  date: %s", datetime.fromtimestamp(rev.timestamp))
+
+        if rev.revision_id != wt.branch.last_revision():
+            graph = wt.branch.repository.get_graph()
+            missing = list(
+                graph.iter_lefthand_ancestry(wt.branch.last_revision(), [release_revid]))
+            if missing[-1] == NULL_REVISION:
+                logging.info("  last release not found in ancestry")
+            else:
+                first = wt.branch.repository.get_revision(missing[-1])
+                first_age = datetime.now() - datetime.fromtimestamp(first.timestamp)
+                logging.info("  %d revisions since last release. First is %d days old.",
+                             len(missing), first_age.days)
+        else:
+            logging.info("  no revisions since last release")
 
     try:
         new_version = find_pending_version(wt, cfg)
@@ -894,6 +902,8 @@ def main(argv=None):  # noqa: C901
 
     parser = argparse.ArgumentParser("disperse")
     parser.add_argument(
+        "--debug", action="store_true")
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Dry run, don't actually create a release.")
     parser.add_argument(
@@ -929,7 +939,12 @@ def main(argv=None):  # noqa: C901
 
     os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
-    logging.basicConfig(level=logging.INFO, format='%(message)s')
+    if args.debug:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+
+    logging.basicConfig(level=level, format='%(message)s')
 
     config = load_config()
 

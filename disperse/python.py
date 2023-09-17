@@ -173,4 +173,4 @@ def update_version_in_pyproject_toml(tree: WorkingTree, new_version: str) -> boo
 def find_version_in_pyproject_toml(tree: Tree) -> Optional[str]:
     from toml.decoder import loads
     d = loads(tree.get_file_text('pyproject.toml').decode('utf-8'))
-    return d.get('project', {}).get('name')
+    return d.get('project', {}).get('version')
