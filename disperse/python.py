@@ -151,11 +151,11 @@ def read_project_urls_from_setup_cfg(path):
 
 
 def update_version_in_pyproject_toml(tree: WorkingTree, new_version: str) -> bool:
-    from toml.decoder import TomlPreserveCommentDecoder, load
+    from toml.decoder import TomlPreserveCommentDecoder, loads
     from toml.encoder import TomlPreserveCommentEncoder, dumps
 
-    with open(tree.abspath('pyproject.toml')) as f:
-        d = load(f, dict, TomlPreserveCommentDecoder())
+    text = tree.get_file_text('pyproject.toml')
+    d = loads(text.decode(), decoder=TomlPreserveCommentDecoder())
     if 'project' not in d:
         return False
     if 'version' in d['project'].get('dynamic', []):
@@ -166,7 +166,7 @@ def update_version_in_pyproject_toml(tree: WorkingTree, new_version: str) -> boo
     d['project']['version'] = new_version
     tree.put_file_bytes_non_atomic(
         'pyproject.toml',
-        dumps(d, TomlPreserveCommentEncoder()).encode())  # type: ignore
+        dumps(d, encoder=TomlPreserveCommentEncoder()).encode())  # type: ignore
     return True
 
 
