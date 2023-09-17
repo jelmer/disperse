@@ -918,10 +918,12 @@ def main(argv=None):  # noqa: C901
         "--ignore-ci", action="store_true",
         help='Release, even if the CI is not passing.')
     discover_parser = subparsers.add_parser("discover")
+    default_pypi_username = os.environ.get('PYPI_USERNAME', '').split(',')
+    default_pypi_username.remove('')
     discover_parser.add_argument(
         "--pypi-user", type=str, action="append",
         help="Pypi users to upload for",
-        default=os.environ.get('PYPI_USERNAME', '').split(','))
+        default=default_pypi_username or None)
     discover_parser.add_argument(
         "--force", action="store_true",
         help='Force a new release, even if timeout is not reached.')
@@ -957,13 +959,15 @@ def main(argv=None):  # noqa: C901
                             discover=False, new_version=args.new_version,
                             ignore_ci=args.ignore_ci)
     elif args.command == "discover":
-        pypi_username = args.pypi_username
-        if pypi_username is None:
+        pypi_usernames = args.pypi_user
+        if pypi_usernames is None:
             pypi_config = config.get('pypi', {})
-            pypi_username = pypi_config.get('username')
+            username = pypi_config.get('username')
+            if username:
+                pypi_usernames = [username]
 
         urls = []
-        for pypi_username in args.pypi_user:
+        for pypi_username in pypi_usernames:
             urls.extend(pypi_discover_urls(pypi_username))
         if not urls:
             logging.error(

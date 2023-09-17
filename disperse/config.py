@@ -32,5 +32,5 @@ def load_config():
     if not os.path.exists(config_file_path):
         return {}
 
-    with open(config_file_path, "r") as config_file:
-        return toml.load(config_file)
+    with open(config_file_path) as f:
+        return toml.load(f)
