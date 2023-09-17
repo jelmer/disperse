@@ -779,6 +779,10 @@ def info(wt):
     except NotImplementedError:
         logging.info("No pending version found; would use %s",
                      increase_version(last_version, -1))
+    except NoUnreleasedChanges:
+        logging.info("No unreleased changes")
+    except OddPendingVersion as e:
+        logging.info("Pending version: %s (odd)", e.version)
     else:
         logging.info("Pending version: %s", new_version)
 
