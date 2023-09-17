@@ -973,6 +973,10 @@ def main(argv=None):  # noqa: C901
         urls = []
         for pypi_username in pypi_usernames:
             urls.extend(pypi_discover_urls(pypi_username))
+        repositories = config.get('repositories', {})
+        if repositories:
+            for url in repositories.get('owned', []):
+                urls.append(url)
         if not urls:
             logging.error(
                 "No projects found. Specify --pypi-username or PYPI_USERNAME?")
