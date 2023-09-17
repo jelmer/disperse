@@ -77,7 +77,7 @@ def create_release_from_milestone(project, version):
 
 
 def ensure_release(proj, version, series_name=None, release_notes=None):
-    release = proj.find_release(proj, version)
+    release = find_release(proj, version)
     if not release:
         release = create_release_from_milestone(proj, version)
     if not release:
