@@ -373,6 +373,14 @@ def expand_tag(tag_template, version) -> str:
     return tag_template.replace("$VERSION", version)
 
 
+def unexpand_tag(tag_template, tag) -> str:
+    tag_re = re.compile(tag_template.replace("$VERSION", "(.*)"))
+    m = tag_re.match(tag)
+    if not m:
+        raise ValueError(f"Tag {tag} does not match template {tag_template}")
+    return m.group(1)
+
+
 def release_project(   # noqa: C901
         repo_url: str, *, force: bool = False,
         new_version: Optional[str] = None,
@@ -504,8 +512,12 @@ def release_project(   # noqa: C901
             except NotImplementedError:
                 new_version = None
             if new_version is None:
-                last_version, last_version_status = find_last_version(
-                    ws.local_tree, cfg)
+                try:
+                    last_version, last_version_status = find_last_version(
+                        ws.local_tree, cfg)
+                except NotImplementedError:
+                    last_version, last_version_status = find_last_version_in_tags(
+                        ws.local_tree.branch, cfg)
                 last_version_tag_name = expand_tag(cfg.tag_name, last_version)
                 if ws.local_tree.branch.tags.has_tag(last_version_tag_name):
                     new_version = increase_version(last_version)
@@ -734,6 +746,33 @@ def info_many(urls):
     return ret
 
 
+def find_last_version_in_tags(branch, cfg):
+    rev_tag_dict = branch.tags.get_reverse_tag_dict()
+    graph = branch.repository.get_graph()
+
+    for revid in graph.iter_lefthand_ancestry(branch.last_revision()):
+        if revid in rev_tag_dict:
+            tags = rev_tag_dict[revid]
+            break
+    else:
+        raise NotImplementedError
+
+    for tag in tags:
+        try:
+            release = unexpand_tag(cfg.tag_name, tag)
+        except ValueError:
+            continue
+        if revid == branch.last_revision():
+            status = 'final'
+        else:
+            status = 'dev'
+        return release, status
+
+    logging.warning(
+        "Unable to find any tags matching %s", cfg.tag_name)
+    return None, None
+
+
 def info(wt):
 
     try:
@@ -744,7 +783,10 @@ def info(wt):
 
     logging.info("Project: %s", cfg.name)
 
-    last_version, last_version_status = find_last_version(wt, cfg)
+    try:
+        last_version, last_version_status = find_last_version(wt, cfg)
+    except NotImplementedError:
+        last_version, last_version_status = find_last_version_in_tags(wt.branch, cfg)
     logging.info("Last release: %s", last_version)
     if last_version_status:
         logging.info("  status: %s", last_version_status)
