@@ -99,7 +99,7 @@ def skip_header(lines):
             continue
         if re.fullmatch(b'.* release notes', line.strip()):
             continue
-        if all([x in ('=', '-') for x in line.strip().decode()]):
+        if all([x in ('+', '~', '=', '-') for x in line.strip().decode()]):
             continue
         if not line.strip():
             continue
