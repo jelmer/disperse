@@ -8,22 +8,21 @@ likelihood of a brown-bag release.
 
 It can do one or more of the following:
 
- * check if CI is currently passing (for supported platforms, like GitHub)
- * derive the intended new version by checking existing releases and
+* check if CI is currently passing (for supported platforms, like GitHub)
+* derive the intended new version by checking existing releases and
    version strings specified in project files
- * update NEWS files with the release date
- * make sure various files contain the correct version string
- * verify that the testsuite runs successfully
- * optionally only create a release if there were no changes to the repository
+* update NEWS files with the release date
+* make sure various files contain the correct version string
+* verify that the testsuite runs successfully
+* optionally only create a release if there were no changes to the repository
    in the last X days (useful for running in a cronjob)
- * upload to a repository site:
-    * sources and universal wheels to pypi, if the project is a Python project
-    * crates.io, if the project is a rust project
- * create a git tag for the new release
- * create "release" entries (on supported platforms, like GitHub)
+* upload to a repository site:
+  * sources and universal wheels to pypi, if the project is a Python project
+  * crates.io, if the project is a rust project
+* create a git tag for the new release
+* create "release" entries (on supported platforms, like GitHub or Launchpad)
 
-After the release has completed, it can also update
-e.g. NEWS for the next release.
+After the release has completed, it can also update e.g. NEWS for the next release.
 
 Disperse was previously known as "releaser".
 
@@ -41,7 +40,7 @@ autodetected, and which lives in the repository root.
 
 For example:
 
-```
+```textpb
 
    tag_format: "dulwich-%(release)s"
    news_path: "NEWS"
@@ -53,10 +52,10 @@ Basic usage
 
 disperse has various subcommands. The core ones are:
 
- * release - create a new release for project in $CWD or at a specific URL
- * discover - find projects that the current user owns (e.g. on pypi) and
-      release them if they have unreleased changes and are significant enough
- * validate - validate the disperse configuration
+* release - create a new release for project in $CWD or at a specific URL
+* discover - find projects that the current user owns (e.g. on pypi) and
+     release them if they have unreleased changes and are significant enough
+* validate - validate the disperse configuration
 
 Running from docker
 -------------------
@@ -72,4 +71,4 @@ Future
 
 In the future, I would like it to:
 
- * support more languages than just python and rust
+* support more languages than just python and rust
