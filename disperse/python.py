@@ -170,7 +170,28 @@ def update_version_in_pyproject_toml(tree: WorkingTree, new_version: str) -> boo
     return True
 
 
+def find_name_in_pyproject_toml(tree: Tree) -> Optional[str]:
+    from toml.decoder import loads
+    d = loads(tree.get_file_text('pyproject.toml').decode('utf-8'))
+    return d.get('project', {}).get('name')
+
+
 def find_version_in_pyproject_toml(tree: Tree) -> Optional[str]:
     from toml.decoder import loads
     d = loads(tree.get_file_text('pyproject.toml').decode('utf-8'))
     return d.get('project', {}).get('version')
+
+
+def pyproject_uses_hatch_vcs(tree: Tree) -> bool:
+    from toml.decoder import loads
+    d = loads(tree.get_file_text('pyproject.toml').decode('utf-8'))
+    source = d.get('tool', {}).get('hatch', {}).get('version', {}).get("source")
+    return source == "vcs"
+
+
+def find_hatch_vcs_version(tree: WorkingTree) -> Optional[str]:
+    cwd = tree.abspath(".")
+    output = subprocess.check_output(["hatchling", "version"], cwd=cwd)
+    version = output.strip().decode()
+    tupled_version = tuple(int(x) for x in version.split(".")[:3])
+    return "%d.%d.%d" % tupled_version
