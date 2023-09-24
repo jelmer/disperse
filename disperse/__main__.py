@@ -328,7 +328,7 @@ def reverse_version(
     return None, None
 
 
-def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
+def find_last_version(tree: WorkingTree, cfg) -> Tuple[str, Optional[str]]:
     if tree.has_filename("Cargo.toml"):
         logging.debug("Reading version from Cargo.toml")
         return find_version_in_cargo(tree), None
@@ -339,6 +339,9 @@ def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
             return version, None
         if pyproject_uses_hatch_vcs(tree):
             version = find_hatch_vcs_version(tree)
+            if not version:
+                raise NotImplementedError(
+                    "hatch in use but unable to find hatch vcs version")
             return version, None
     if cfg.update_version:
         for update_cfg in cfg.update_version:
@@ -442,6 +445,7 @@ def release_project(   # noqa: C901
             no_disperse_config.inc()
             raise NodisperseConfig() from exc
 
+        name: Optional[str]
         if cfg.name:
             name = cfg.name
         elif ws.local_tree.has_filename('pyproject.toml'):
@@ -788,6 +792,8 @@ def info(wt):
     except NoSuchFile:
         logging.info("No configuration found")
         return
+
+    name: Optional[str]
 
     if cfg.name:
         name = cfg.name

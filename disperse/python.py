@@ -189,7 +189,7 @@ def pyproject_uses_hatch_vcs(tree: Tree) -> bool:
     return source == "vcs"
 
 
-def find_hatch_vcs_version(tree: Tree) -> Optional[str]:
+def find_hatch_vcs_version(tree: WorkingTree) -> Optional[str]:
     cwd = tree.abspath(".")
     output = subprocess.check_output(["hatchling", "version"], cwd=cwd)
     version = output.strip().decode()
