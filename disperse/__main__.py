@@ -614,7 +614,8 @@ def release_project(   # noqa: C901
 
         artifacts = []
         if not dry_run:
-            ws.push_tags(tags={tag_name: ws.local_tree.branch.tags.lookup_tag(tag_name)})
+            ws.push_tags(tags={
+                tag_name: ws.local_tree.branch.tags.lookup_tag(tag_name)})
         try:
             # Wait for CI to go green
             if gh_repo:
@@ -826,7 +827,8 @@ def info(wt):
         if rev.revision_id != wt.branch.last_revision():
             graph = wt.branch.repository.get_graph()
             missing = list(
-                graph.iter_lefthand_ancestry(wt.branch.last_revision(), [release_revid]))
+                graph.iter_lefthand_ancestry(
+                    wt.branch.last_revision(), [release_revid]))
             if missing[-1] == NULL_REVISION:
                 logging.info("  last release not found in ancestry")
             else:
