@@ -19,10 +19,12 @@ __all__ = [
     'cargo_publish',
     'find_version_in_cargo',
     'update_version_in_cargo',
+    'get_owned_crates',
 ]
 
 from ._disperse_rs import (
     cargo_publish,
     find_version_in_cargo,
-    update_version_in_cargo
+    update_version_in_cargo,
+    get_owned_crates,
 )
