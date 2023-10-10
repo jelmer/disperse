@@ -216,7 +216,7 @@ fn news_mark_released(
     }
     let change_lines = Vec::new();
     for line in lines[i + 1:] {
-        if (line.strip().is_empty() || line.startswith(b' ') || line.startswith(b'\t') {
+        if line.strip().is_empty() || line.startswith(b' ') || line.startswith(b'\t') {
             change_lines.append(line.decode())
         } else {
             break;

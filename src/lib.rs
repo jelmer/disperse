@@ -1,1 +1,1 @@
-pub mod news_file;
+pub mod cargo;
