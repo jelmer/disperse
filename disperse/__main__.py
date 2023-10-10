@@ -169,11 +169,7 @@ class ReleaseTagExists(Exception):
         self.tag_name = tag_name
 
 
-def increase_version(version: str, idx: int = -1) -> str:
-    assert version
-    parts = [int(x) for x in version.split('.')]
-    parts[idx] += 1
-    return '.'.join(map(str, parts))
+increase_version = _disperse_rs.increase_version
 
 
 class OddPendingVersion(Exception):

@@ -7,3 +7,4 @@ build
 disperse.egg-info
 dist
 target
+disperse/_disperse_rs.*.so

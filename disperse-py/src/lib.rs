@@ -1,5 +1,12 @@
+use breezyshim::tree::{Tree, WorkingTree};
 use disperse::Version;
 use pyo3::prelude::*;
+
+#[pyfunction]
+fn increase_version(mut version: Version, part: isize) -> PyResult<Version> {
+    disperse::increase_version(&mut version, part);
+    Ok(version)
+}
 
 #[pyfunction]
 fn expand_tag(template: &str, version: Version) -> PyResult<String> {
@@ -15,7 +22,7 @@ fn get_owned_crates(user: &str) -> PyResult<Vec<String>> {
 
 #[pyfunction]
 fn cargo_publish(tree: PyObject, subpath: std::path::PathBuf) -> PyResult<()> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = WorkingTree::new(tree)?;
     disperse::cargo::publish(&tree, subpath.as_path()).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("cargo publish failed: {}", e))
     })
@@ -50,5 +57,6 @@ fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(update_version_in_cargo))?;
     m.add_wrapped(wrap_pyfunction!(get_owned_crates))?;
     m.add_wrapped(wrap_pyfunction!(expand_tag))?;
+    m.add_wrapped(wrap_pyfunction!(increase_version))?;
     Ok(())
 }
