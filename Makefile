@@ -1,6 +1,6 @@
 PYTHON = python3
 
-all: proto
+all: build-inplace
 
 proto: disperse/config_pb2.py
 
@@ -8,7 +8,7 @@ build::
 	$(PYTHON) setup.py build
 
 build-inplace:
-	$(PYTHON) setup.py build_protobuf
+	$(PYTHON) setup.py build_protobuf build_rust -i
 
 clean:
 	rm disperse/*_pb2.py

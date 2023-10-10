@@ -989,10 +989,15 @@ def main(argv=None):  # noqa: C901
     discover_parser = subparsers.add_parser("discover")
     default_pypi_username = os.environ.get('PYPI_USERNAME', '').split(',')
     default_pypi_username.remove('')
+    default_crates_io_username = os.environ.get('CRATES_IO_USERNAME', '')
     discover_parser.add_argument(
         "--pypi-user", type=str, action="append",
         help="Pypi users to upload for",
         default=default_pypi_username or None)
+    discover_parser.add_argument(
+        "--crates-io-user", type=str, action="append",
+        help="Crates.io users to upload for",
+        default=default_crates_io_username or None)
     discover_parser.add_argument(
         "--force", action="store_true",
         help='Force a new release, even if timeout is not reached.')
@@ -1035,9 +1040,18 @@ def main(argv=None):  # noqa: C901
             if username:
                 pypi_usernames = [username]
 
+        crates_io_user = args.crates_io_user
+        if crates_io_user is None:
+            crates_io_config = config.get('crates.io', {})
+            username = crates_io_config.get('username')
+            if username:
+                crates_io_username = username
+
         urls = []
         for pypi_username in pypi_usernames:
             urls.extend(pypi_discover_urls(pypi_username))
+        if crates_io_user is not None:
+            urls.extend(get_owned_crates(crates_io_user))
         repositories = config.get('repositories', {})
         if repositories:
             for url in repositories.get('owned', []):
