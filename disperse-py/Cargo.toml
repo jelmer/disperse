@@ -12,5 +12,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 breezyshim = "0.1.45"
-disperse = { path = ".." }
-pyo3 = { version = "0.19", features = ["extension-module"] }
+disperse = { path = "..", features = ["pyo3"] }
+pyo3 = { workspace = true, features = ["extension-module"] }

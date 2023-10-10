@@ -1,4 +1,10 @@
+use disperse::Version;
 use pyo3::prelude::*;
+
+#[pyfunction]
+fn expand_tag(template: &str, version: Version) -> PyResult<String> {
+    Ok(disperse::expand_tag(template, version))
+}
 
 #[pyfunction]
 fn get_owned_crates(user: &str) -> PyResult<Vec<String>> {
@@ -43,5 +49,6 @@ fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(find_version_in_cargo))?;
     m.add_wrapped(wrap_pyfunction!(update_version_in_cargo))?;
     m.add_wrapped(wrap_pyfunction!(get_owned_crates))?;
+    m.add_wrapped(wrap_pyfunction!(expand_tag))?;
     Ok(())
 }

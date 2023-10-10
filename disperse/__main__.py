@@ -40,6 +40,7 @@ from breezy.workingtree import WorkingTree
 from prometheus_client import CollectorRegistry, Counter, push_to_gateway
 from silver_platter.workspace import Workspace
 
+from . import _disperse_rs
 from . import NoUnreleasedChanges, DistCreationFailed
 from .cargo import cargo_publish, update_version_in_cargo, find_version_in_cargo
 from .config import load_config
@@ -378,8 +379,7 @@ def check_new_revisions(
         return delta.has_changed()
 
 
-def expand_tag(tag_template, version) -> str:
-    return tag_template.replace("$VERSION", version)
+expand_tag = _disperse_rs.expand_tag
 
 
 def unexpand_tag(tag_template, tag) -> str:
