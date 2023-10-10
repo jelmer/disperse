@@ -3,7 +3,8 @@ use disperse::Version;
 use pyo3::prelude::*;
 
 #[pyfunction]
-fn increase_version(mut version: Version, part: isize) -> PyResult<Version> {
+fn increase_version(mut version: Version, part: Option<isize>) -> PyResult<Version> {
+    let part = part.unwrap_or(-1);
     disperse::increase_version(&mut version, part);
     Ok(version)
 }
