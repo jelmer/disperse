@@ -1,6 +1,15 @@
+use breezyshim::branch::Branch;
 use breezyshim::tree::{Tree, WorkingTree};
 use disperse::Version;
 use pyo3::prelude::*;
+use std::path::Path;
+
+#[pyfunction]
+fn check_new_revisions(branch: PyObject, news_file: Option<std::path::PathBuf>) -> PyResult<bool> {
+    let branch = breezyshim::branch::RegularBranch::new(branch);
+    disperse::check_new_revisions(&branch, news_file.as_ref().map(Path::new))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
 
 #[pyfunction]
 fn increase_version(mut version: Version, part: Option<isize>) -> PyResult<Version> {
@@ -59,5 +68,6 @@ fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(get_owned_crates))?;
     m.add_wrapped(wrap_pyfunction!(expand_tag))?;
     m.add_wrapped(wrap_pyfunction!(increase_version))?;
+    m.add_wrapped(wrap_pyfunction!(check_new_revisions))?;
     Ok(())
 }

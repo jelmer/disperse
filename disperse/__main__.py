@@ -34,7 +34,7 @@ from breezy.git.remote import ProtectedBranchHookDeclined
 from breezy.mutabletree import MutableTree
 from breezy.revision import NULL_REVISION
 from breezy.transport import NoSuchFile
-from breezy.tree import InterTree, Tree
+from breezy.tree import Tree
 from breezy.urlutils import split_segment_parameters
 from breezy.workingtree import WorkingTree
 from prometheus_client import CollectorRegistry, Counter, push_to_gateway
@@ -42,7 +42,9 @@ from silver_platter.workspace import Workspace
 
 from . import _disperse_rs
 from . import NoUnreleasedChanges, DistCreationFailed
-from .cargo import cargo_publish, update_version_in_cargo, find_version_in_cargo
+from .cargo import (
+    cargo_publish, update_version_in_cargo, find_version_in_cargo,
+    get_owned_crates)
 from .config import load_config
 from .project_config import read_project_with_fallback, ProjectConfig
 from .github import (GitHubStatusFailed, GitHubStatusPending,
@@ -353,27 +355,7 @@ def find_last_version(tree: WorkingTree, cfg) -> Tuple[str, Optional[str]]:
         raise NotImplementedError
 
 
-def check_new_revisions(
-        branch: Branch, news_file_path: Optional[str] = None) -> bool:
-    tags = branch.tags.get_reverse_tag_dict()
-    graph = branch.repository.get_graph()
-    from_tree = None
-    with branch.lock_read():
-        for revid in graph.iter_lefthand_ancestry(branch.last_revision()):
-            if tags.get(revid):
-                from_tree = branch.repository.revision_tree(revid)
-                break
-        else:
-            from_tree = branch.repository.revision_tree(NULL_REVISION)
-        last_tree = branch.basis_tree()
-        delta = InterTree.get(from_tree, last_tree).compare()
-        if news_file_path:
-            for i in range(len(delta.modified)):
-                if delta.modified[i].path == (news_file_path, news_file_path):
-                    del delta.modified[i]
-                    break
-        return delta.has_changed()
-
+check_new_revisions = _disperse_rs.check_new_revisions
 
 expand_tag = _disperse_rs.expand_tag
 
@@ -1041,7 +1023,7 @@ def main(argv=None):  # noqa: C901
             crates_io_config = config.get('crates.io', {})
             username = crates_io_config.get('username')
             if username:
-                crates_io_username = username
+                pass
 
         urls = []
         for pypi_username in pypi_usernames:
