@@ -1,10 +1,29 @@
-use breezyshim::tree::{Tree, WorkingTree};
+use breezyshim::tree::{MutableTree, Tree, WorkingTree};
 use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
+
+pub fn get_owned_crates(user: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let client = crates_io_api::SyncClient::new(
+        "disperse (jelmer@jelmer.uk)",
+        std::time::Duration::from_millis(1000),
+    )?;
+
+    let user = client.user(user)?;
+
+    let query = crates_io_api::CratesQueryBuilder::new().user_id(user.id);
+
+    let owned_crates = client.crates(query.build())?;
+
+    Ok(owned_crates
+        .crates
+        .into_iter()
+        .filter_map(|c| c.repository)
+        .collect::<Vec<String>>())
+}
 
 // Define a function to publish a Rust package using Cargo
 pub fn publish(tree: &WorkingTree, subpath: &Path) -> Result<(), Box<dyn Error>> {
@@ -19,12 +38,11 @@ pub fn publish(tree: &WorkingTree, subpath: &Path) -> Result<(), Box<dyn Error>>
 // Define a function to update the version in the Cargo.toml file
 pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Box<dyn Error>> {
     // Read the Cargo.toml file
-    let mut cargo_toml = std::fs::File::open(tree.abspath(Path::new("Cargo.toml"))?)?;
-    let mut cargo_toml_contents = String::new();
-    cargo_toml.read_to_string(&mut cargo_toml_contents)?;
+    let cargo_toml_contents = tree.get_file_text(Path::new("Cargo.toml"))?;
 
     // Parse Cargo.toml as TOML
-    let mut parsed_toml: toml_edit::Document = cargo_toml_contents.as_str().parse()?;
+    let mut parsed_toml: toml_edit::Document =
+        String::from_utf8_lossy(cargo_toml_contents.as_slice()).parse()?;
 
     // Update the version field
     if let Some(package) = parsed_toml.as_table_mut().get_mut("package") {
@@ -37,13 +55,12 @@ pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Box<d
     let updated_cargo_toml = parsed_toml.to_string();
 
     // Write the updated TOML back to Cargo.toml
-    let mut updated_cargo_toml_file = File::create(tree.abspath(Path::new("Cargo.toml"))?)?;
-    updated_cargo_toml_file.write_all(updated_cargo_toml.as_bytes())?;
+    tree.put_file_bytes_non_atomic(Path::new("Cargo.toml"), updated_cargo_toml.as_bytes())?;
 
     // Run 'cargo update' to update dependencies
     Command::new("cargo")
         .arg("update")
-        .current_dir(tree.abspath(Path::new("Cargo.toml"))?)
+        .current_dir(tree.abspath(Path::new("."))?)
         .spawn()?
         .wait()?;
 
