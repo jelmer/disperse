@@ -33,18 +33,16 @@ __all__ = [
 from breezy.tree import Tree
 from breezy.workingtree import WorkingTree
 from build import ProjectBuilder, BuildBackendException
-import json
 import logging
 import os
 import subprocess
 from typing import Optional
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 
-from . import version_string, DistCreationFailed
+from . import DistCreationFailed
 from ._disperse_rs import (
     update_version_in_pyproject_toml,
     pypi_discover_urls,
+    find_version_in_pyproject_toml,
 )
 
 
@@ -145,12 +143,6 @@ def find_name_in_pyproject_toml(tree: Tree) -> Optional[str]:
     from toml.decoder import loads
     d = loads(tree.get_file_text('pyproject.toml').decode('utf-8'))
     return d.get('project', {}).get('name')
-
-
-def find_version_in_pyproject_toml(tree: Tree) -> Optional[str]:
-    from toml.decoder import loads
-    d = loads(tree.get_file_text('pyproject.toml').decode('utf-8'))
-    return d.get('project', {}).get('version')
 
 
 def pyproject_uses_hatch_vcs(tree: Tree) -> bool:

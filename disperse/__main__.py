@@ -656,12 +656,6 @@ def release_project(   # noqa: C901
     return name, new_version
 
 
-def get_release_revision(wt, cfg, version):
-    tag_name = expand_tag(cfg.tag_name, version)
-    revid = wt.branch.tags.lookup_tag(tag_name)
-    return wt.branch.repository.get_revision(revid)
-
-
 def info_many(urls):
     from breezy.controldir import ControlDir
     try:

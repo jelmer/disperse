@@ -5,7 +5,7 @@ pub mod update_version;
 pub mod version;
 use breezyshim::branch::Branch;
 use log::warn;
-use project_config::Project;
+
 pub use version::Version;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

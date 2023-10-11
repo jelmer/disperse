@@ -90,6 +90,12 @@ fn find_version_in_cargo(tree: PyObject) -> PyResult<String> {
 }
 
 #[pyfunction]
+fn find_version_in_pyproject_toml(tree: PyObject) -> PyResult<Option<Version>> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    Ok(disperse::python::find_version_in_pyproject_toml(&tree))
+}
+
+#[pyfunction]
 fn update_version_in_cargo(tree: PyObject, version: String) -> PyResult<()> {
     let tree = breezyshim::tree::WorkingTree::new(tree)?;
     disperse::cargo::update_version(&tree, &version).map_err(|e| {
@@ -114,6 +120,7 @@ fn find_last_version_in_tags(
 fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
     m.add_wrapped(wrap_pyfunction!(find_version_in_cargo))?;
+    m.add_wrapped(wrap_pyfunction!(find_version_in_pyproject_toml))?;
     m.add_wrapped(wrap_pyfunction!(update_version_in_cargo))?;
     m.add_wrapped(wrap_pyfunction!(get_owned_crates))?;
     m.add_wrapped(wrap_pyfunction!(expand_tag))?;

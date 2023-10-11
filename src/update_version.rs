@@ -3,8 +3,8 @@ use breezyshim::tree::MutableTree;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use std::error::Error;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 pub fn update_version_in_manpage(
@@ -39,7 +39,7 @@ pub fn update_version_in_manpage(
         // Iterate through date options
         for (r, f) in &date_options {
             let re = Regex::new(r)?;
-            if let Some(captures) = re.captures(&args[3]) {
+            if let Some(_captures) = re.captures(&args[3]) {
                 let formatted_date = release_date.format(f).to_string();
                 args[3] = formatted_date;
                 break;
