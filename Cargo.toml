@@ -19,6 +19,7 @@ regex = "1.10.0"
 shlex = "1.2.0"
 toml_edit = "0.20.2"
 protobuf = "3"
+log = "0.4.20"
 
 [build-dependencies]
 protobuf-codegen = "3"
@@ -31,4 +32,4 @@ members = ["disperse-py"]
 pyo3 = ["dep:pyo3"]
 
 [workspace.dependencies]
-pyo3 = { version = "0.19" }
+pyo3 = { version = "0.19", features = ["serde"] }

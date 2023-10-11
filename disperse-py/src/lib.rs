@@ -85,6 +85,16 @@ fn update_version_in_cargo(tree: PyObject, version: String) -> PyResult<()> {
     })
 }
 
+#[pyfunction]
+fn find_last_version_in_tags(
+    branch: PyObject,
+    tag_name: &str,
+) -> (Option<Version>, Option<disperse::Status>) {
+    let branch = breezyshim::branch::RegularBranch::new(branch);
+    let (version, status) = disperse::find_last_version_in_tags(&branch, tag_name);
+    (version, status)
+}
+
 #[pymodule]
 fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -96,5 +106,6 @@ fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(increase_version))?;
     m.add_wrapped(wrap_pyfunction!(check_new_revisions))?;
     m.add_wrapped(wrap_pyfunction!(update_version_in_manpage))?;
+    m.add_wrapped(wrap_pyfunction!(find_last_version_in_tags))?;
     Ok(())
 }

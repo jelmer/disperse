@@ -232,6 +232,7 @@ dependencies = [
  "chrono",
  "crates_io_api",
  "lazy-regex",
+ "log",
  "protobuf 3.3.0",
  "protobuf-codegen 3.3.0",
  "protoc-rust",
