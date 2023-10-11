@@ -10,4 +10,16 @@ homepage = "https://github.com/jelmer/disperse"
 
 [dependencies]
 breezyshim = "0.1.20"
+crates_io_api = "0.8.1"
 lazy-regex = "3.0.1"
+pyo3 = { workspace = true, optional = true }
+toml_edit = "0.20.2"
+
+[workspace]
+members = ["disperse-py"]
+
+[features]
+pyo3 = ["dep:pyo3"]
+
+[workspace.dependencies]
+pyo3 = { version = "0.19" }

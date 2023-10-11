@@ -34,14 +34,17 @@ from breezy.git.remote import ProtectedBranchHookDeclined
 from breezy.mutabletree import MutableTree
 from breezy.revision import NULL_REVISION
 from breezy.transport import NoSuchFile
-from breezy.tree import InterTree, Tree
+from breezy.tree import Tree
 from breezy.urlutils import split_segment_parameters
 from breezy.workingtree import WorkingTree
 from prometheus_client import CollectorRegistry, Counter, push_to_gateway
 from silver_platter.workspace import Workspace
 
+from . import _disperse_rs
 from . import NoUnreleasedChanges, DistCreationFailed
-from .cargo import cargo_publish, update_version_in_cargo, find_version_in_cargo
+from .cargo import (
+    cargo_publish, update_version_in_cargo, find_version_in_cargo,
+    get_owned_crates)
 from .config import load_config
 from .project_config import read_project_with_fallback, ProjectConfig
 from .github import (GitHubStatusFailed, GitHubStatusPending,
@@ -168,11 +171,7 @@ class ReleaseTagExists(Exception):
         self.tag_name = tag_name
 
 
-def increase_version(version: str, idx: int = -1) -> str:
-    assert version
-    parts = [int(x) for x in version.split('.')]
-    parts[idx] += 1
-    return '.'.join(map(str, parts))
+increase_version = _disperse_rs.increase_version
 
 
 class OddPendingVersion(Exception):
@@ -356,30 +355,9 @@ def find_last_version(tree: WorkingTree, cfg) -> Tuple[str, Optional[str]]:
         raise NotImplementedError
 
 
-def check_new_revisions(
-        branch: Branch, news_file_path: Optional[str] = None) -> bool:
-    tags = branch.tags.get_reverse_tag_dict()
-    graph = branch.repository.get_graph()
-    from_tree = None
-    with branch.lock_read():
-        for revid in graph.iter_lefthand_ancestry(branch.last_revision()):
-            if tags.get(revid):
-                from_tree = branch.repository.revision_tree(revid)
-                break
-        else:
-            from_tree = branch.repository.revision_tree(NULL_REVISION)
-        last_tree = branch.basis_tree()
-        delta = InterTree.get(from_tree, last_tree).compare()
-        if news_file_path:
-            for i in range(len(delta.modified)):
-                if delta.modified[i].path == (news_file_path, news_file_path):
-                    del delta.modified[i]
-                    break
-        return delta.has_changed()
+check_new_revisions = _disperse_rs.check_new_revisions
 
-
-def expand_tag(tag_template, version) -> str:
-    return tag_template.replace("$VERSION", version)
+expand_tag = _disperse_rs.expand_tag
 
 
 def unexpand_tag(tag_template, tag) -> str:
@@ -989,10 +967,15 @@ def main(argv=None):  # noqa: C901
     discover_parser = subparsers.add_parser("discover")
     default_pypi_username = os.environ.get('PYPI_USERNAME', '').split(',')
     default_pypi_username.remove('')
+    default_crates_io_username = os.environ.get('CRATES_IO_USERNAME', '')
     discover_parser.add_argument(
         "--pypi-user", type=str, action="append",
         help="Pypi users to upload for",
         default=default_pypi_username or None)
+    discover_parser.add_argument(
+        "--crates-io-user", type=str, action="append",
+        help="Crates.io users to upload for",
+        default=default_crates_io_username or None)
     discover_parser.add_argument(
         "--force", action="store_true",
         help='Force a new release, even if timeout is not reached.')
@@ -1035,9 +1018,18 @@ def main(argv=None):  # noqa: C901
             if username:
                 pypi_usernames = [username]
 
+        crates_io_user = args.crates_io_user
+        if crates_io_user is None:
+            crates_io_config = config.get('crates.io', {})
+            username = crates_io_config.get('username')
+            if username:
+                pass
+
         urls = []
         for pypi_username in pypi_usernames:
             urls.extend(pypi_discover_urls(pypi_username))
+        if crates_io_user is not None:
+            urls.extend(get_owned_crates(crates_io_user))
         repositories = config.get('repositories', {})
         if repositories:
             for url in repositories.get('owned', []):

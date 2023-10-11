@@ -15,30 +15,16 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-import subprocess
+__all__ = [
+    'cargo_publish',
+    'find_version_in_cargo',
+    'update_version_in_cargo',
+    'get_owned_crates',
+]
 
-from breezy.workingtree import WorkingTree
-from breezy.tree import Tree
-
-
-def cargo_publish(tree, subpath="."):
-    subprocess.check_call(["cargo", "publish"], cwd=tree.abspath(subpath))
-
-
-def update_version_in_cargo(tree: WorkingTree, new_version: str) -> None:
-    from toml.decoder import TomlPreserveCommentDecoder, load
-    from toml.encoder import TomlPreserveCommentEncoder, dumps
-
-    with open(tree.abspath('Cargo.toml')) as f:
-        d = load(f, dict, TomlPreserveCommentDecoder())
-    d['package']['version'] = new_version
-    tree.put_file_bytes_non_atomic(
-        'Cargo.toml',
-        dumps(d, TomlPreserveCommentEncoder()).encode())  # type: ignore
-    subprocess.check_call(['cargo', 'update'], cwd=tree.abspath('.'))
-
-
-def find_version_in_cargo(tree: Tree) -> str:
-    from toml.decoder import loads
-    d = loads(tree.get_file_text('Cargo.toml').decode('utf-8'))
-    return d['package']['version']
+from ._disperse_rs import (
+    cargo_publish,
+    find_version_in_cargo,
+    update_version_in_cargo,
+    get_owned_crates,
+)
