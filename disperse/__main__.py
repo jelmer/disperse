@@ -439,7 +439,7 @@ def release_project(   # noqa: C901
                             raise
                     break
                 elif hostname == 'launchpad.net':
-                    parts = parsed_url.strip('/').split('/')[0]
+                    parts = parsed_url.path.strip('/').split('/')[0]
                     launchpad_project = get_launchpad_project(parts[0])
                     if len(parts) > 1 and not parts[1].startswith('+'):
                         launchpad_series = parts[1]

@@ -164,3 +164,71 @@ pub fn find_hatch_vcs_version(tree: &WorkingTree) -> Option<Version> {
             .join("."),
     ))
 }
+
+pub fn read_project_urls_from_pyproject_toml(
+    path: &std::path::Path,
+) -> Result<Vec<(url::Url, Option<String>)>, Box<dyn std::error::Error>> {
+    let content = std::fs::read(path)?;
+
+    let parsed_toml: toml_edit::Document = String::from_utf8_lossy(&content).parse()?;
+
+    let project_urls = match parsed_toml
+        .as_table()
+        .get("project")
+        .and_then(|v| v.as_table())
+        .and_then(|v| v.get("urls"))
+        .and_then(|v| v.as_table())
+    {
+        Some(v) => v,
+        None => return Ok(vec![]),
+    };
+
+    let mut result = vec![];
+    for key in &["GitHub", "Source Code", "Repository"] {
+        if let Some(url) = project_urls.get(key).and_then(|v| v.as_str()) {
+            let parsed_url = match url::Url::parse(url) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::warn!("Could not parse URL {}: {}", url, e);
+                    continue;
+                }
+            };
+            result.push((parsed_url, None));
+        }
+    }
+    Ok(result)
+}
+
+pub fn read_project_urls_from_setup_cfg(
+    path: &std::path::Path,
+) -> pyo3::PyResult<Vec<(url::Url, Option<String>)>> {
+    pyo3::Python::with_gil(|py| {
+        let setuptools = py.import("setuptools.config.setupcfg")?;
+
+        let config = setuptools.call_method1("read_configuration", (path,))?;
+
+        let metadata = match config.get_item("metadata") {
+            Ok(v) => v,
+            Err(_) => return Ok(vec![]),
+        };
+
+        let project_urls = match metadata.get_item("project_urls") {
+            Ok(v) => v,
+            Err(_) => return Ok(vec![]),
+        };
+
+        let mut result = vec![];
+
+        for key in ["GitHub", "Source Code", "Repository"].iter() {
+            match project_urls.get_item(key) {
+                Ok(url) => {
+                    let url_str = url.extract::<String>()?;
+                    result.push((url_str.parse::<url::Url>().unwrap(), None));
+                }
+                Err(_) => continue,
+            }
+        }
+
+        Ok(result)
+    })
+}

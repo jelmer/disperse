@@ -135,6 +135,32 @@ fn find_hatch_vcs_version(tree: PyObject) -> PyResult<Option<Version>> {
     Ok(disperse::python::find_hatch_vcs_version(&tree))
 }
 
+#[pyfunction]
+fn read_project_urls_from_setup_cfg(
+    path: std::path::PathBuf,
+) -> PyResult<Vec<(String, Option<String>)>> {
+    disperse::python::read_project_urls_from_setup_cfg(path.as_path())
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+        .map(|urls| {
+            urls.into_iter()
+                .map(|(url, branch)| (url.to_string(), branch))
+                .collect()
+        })
+}
+
+#[pyfunction]
+fn read_project_urls_from_pyproject_toml(
+    path: std::path::PathBuf,
+) -> PyResult<Vec<(String, Option<String>)>> {
+    disperse::python::read_project_urls_from_pyproject_toml(path.as_path())
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+        .map(|urls| {
+            urls.into_iter()
+                .map(|(url, branch)| (url.to_string(), branch))
+                .collect()
+        })
+}
+
 #[pymodule]
 fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -153,5 +179,7 @@ fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(find_name_in_pyproject_toml))?;
     m.add_wrapped(wrap_pyfunction!(pyproject_uses_hatch_vcs))?;
     m.add_wrapped(wrap_pyfunction!(find_hatch_vcs_version))?;
+    m.add_wrapped(wrap_pyfunction!(read_project_urls_from_setup_cfg))?;
+    m.add_wrapped(wrap_pyfunction!(read_project_urls_from_pyproject_toml))?;
     Ok(())
 }
