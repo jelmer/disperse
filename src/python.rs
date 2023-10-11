@@ -7,8 +7,7 @@ use std::error::Error;
 
 use std::path::Path;
 
-use std::path::PathBuf;
-use std::process::{exit, Command};
+use std::process::Command;
 use url::Url;
 use xmlrpc::Request;
 
@@ -279,4 +278,61 @@ pub fn upload_python_artifacts(
             retcode: None,
         }),
     }
+}
+
+pub fn create_setup_py_artifacts(
+    local_tree: &WorkingTree,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    pyo3::Python::with_gil(|py| {
+        // Initialize an empty vector to store pypi_paths
+        let mut pypi_paths: Vec<String> = Vec::new();
+
+        // Import required Python modules
+        let os = py.import("os")?;
+        let run_setup = py.import("distutils.core")?.getattr("run_setup")?;
+        let _setuptools = py.import("setuptools")?;
+
+        // Save the original directory
+        let orig_dir = os.call_method0("getcwd")?;
+
+        // Change to the setup.py directory
+        let setup_dir = local_tree.abspath(Path::new(".")).unwrap();
+        os.call_method1("chdir", (setup_dir.clone(),))?;
+
+        let result = {
+            // Attempt to run setup.py
+            let run_setup_result =
+                run_setup.call1((local_tree.abspath(Path::new("setup.py")).unwrap(), "config"))?;
+            // Change back to the original directory
+            os.call_method1("chdir", (orig_dir,))?;
+
+            run_setup_result
+        };
+
+        // Check for C libraries and extension modules
+        let is_pure = !result.call_method0("has_c_libraries")?.extract::<bool>()?
+            && !result.call_method0("has_ext_modules")?.extract::<bool>()?;
+
+        let builder = py
+            .import("build")?
+            .call_method1("ProjectBuilder", (setup_dir,))?;
+
+        if is_pure {
+            let wheels = builder.call_method1(
+                "build",
+                ("wheel", local_tree.abspath(Path::new("dist")).unwrap()),
+            )?;
+            pypi_paths.push(wheels.extract::<String>()?);
+        } else {
+            log::warn!("python module is not pure; not uploading binary wheels");
+        }
+
+        let sdist_path = builder.call_method1(
+            "build",
+            ("sdist", local_tree.abspath(Path::new("dist")).unwrap()),
+        )?;
+        pypi_paths.push(sdist_path.extract::<String>()?);
+
+        Ok(pypi_paths)
+    })
 }

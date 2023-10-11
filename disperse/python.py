@@ -31,8 +31,6 @@ __all__ = [
 ]
 
 from build import ProjectBuilder, BuildBackendException
-import logging
-import os
 
 from . import DistCreationFailed
 from ._disperse_rs import (
@@ -46,43 +44,8 @@ from ._disperse_rs import (
     read_project_urls_from_pyproject_toml,
     upload_python_artifacts,
     UploadCommandFailed,
+    create_setup_py_artifacts,
 )
-
-
-def create_setup_py_artifacts(local_tree):
-    # Import setuptools, just in case it tries to replace distutils
-    from distutils.core import run_setup
-
-    import setuptools  # noqa: F401
-
-    orig_dir = os.getcwd()
-    try:
-        os.chdir(local_tree.abspath('.'))
-        result = run_setup(
-            local_tree.abspath("setup.py"), stop_after="config")
-    finally:
-        os.chdir(orig_dir)
-    pypi_paths = []
-    is_pure = (
-        not result.has_c_libraries()  # type: ignore
-        and not result.has_ext_modules())  # type: ignore
-    builder = ProjectBuilder(local_tree.abspath('.'))
-    if is_pure:
-        try:
-            wheels = builder.build("wheel", output_directory=local_tree.abspath("dist"))
-        except BuildBackendException as e:
-            raise DistCreationFailed(e)
-        pypi_paths.append(wheels)
-    else:
-        logging.warning(
-            'python module is not pure; not uploading binary wheels')
-    try:
-        sdist_path = builder.build(
-            "sdist", output_directory=local_tree.abspath("dist"))
-    except BuildBackendException as e:
-        raise DistCreationFailed(e)
-    pypi_paths.append(sdist_path)
-    return pypi_paths
 
 
 def create_python_artifacts(local_tree) -> list[str]:

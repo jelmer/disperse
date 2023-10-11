@@ -819,7 +819,7 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,  # noqa: C
             failed.append((url, e))
             ret = 1
         except UploadCommandFailed as e:
-            logging.error('Upload command (%s) failed to run.', e.command)
+            logging.error('Upload command (%s) failed to run.', e.args[0])
             failed.append((url, e))
             ret = 1
         except ReleaseTagExists as e:
