@@ -42,6 +42,13 @@ fn expand_tag(template: &str, version: Version) -> PyResult<String> {
 }
 
 #[pyfunction]
+fn unexpand_tag(template: &str, tag: &str) -> PyResult<Version> {
+    disperse::version::unexpand_tag(template, tag).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("unexpand_tag failed: {}", e))
+    })
+}
+
+#[pyfunction]
 fn get_owned_crates(user: &str) -> PyResult<Vec<String>> {
     disperse::cargo::get_owned_crates(user).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("get_owned_crates failed: {}", e))
@@ -85,6 +92,7 @@ fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(update_version_in_cargo))?;
     m.add_wrapped(wrap_pyfunction!(get_owned_crates))?;
     m.add_wrapped(wrap_pyfunction!(expand_tag))?;
+    m.add_wrapped(wrap_pyfunction!(unexpand_tag))?;
     m.add_wrapped(wrap_pyfunction!(increase_version))?;
     m.add_wrapped(wrap_pyfunction!(check_new_revisions))?;
     m.add_wrapped(wrap_pyfunction!(update_version_in_manpage))?;

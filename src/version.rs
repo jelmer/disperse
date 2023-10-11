@@ -30,6 +30,18 @@ pub fn expand_tag(tag_template: &str, version: Version) -> String {
     tag_template.replace("$VERSION", version.0.as_str())
 }
 
+pub fn unexpand_tag(tag_template: &str, tag: &str) -> Result<Version, String> {
+    let tag_re = regex::Regex::new(tag_template.replace("$VERSION", "(.*)").as_str()).unwrap();
+    if let Some(m) = tag_re.captures(tag) {
+        Ok(Version(m.get(1).unwrap().as_str().to_string()))
+    } else {
+        Err(format!(
+            "Tag {} does not match template {}",
+            tag, tag_template
+        ))
+    }
+}
+
 pub fn increase_version(version: &mut Version, idx: isize) {
     // Split the version string by '.' and collect each part into a Vec<i32>
     // The `unwrap_or(0)` is there to handle the case where the string is not a valid integer.

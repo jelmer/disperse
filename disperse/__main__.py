@@ -22,7 +22,7 @@ import subprocess
 import sys
 from datetime import datetime
 from glob import glob
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable
 from urllib.parse import urlparse
 
 import breezy.bzr  # noqa: F401
@@ -205,7 +205,7 @@ def _version_part(v, i):
     return parts[i]
 
 
-version_variables = {
+version_variables: dict[str, Callable[[str, str | None], str]] = {
     'TUPLED_VERSION': lambda v, s: "(%s)" % ", ".join(v.split(".")),
     'STATUS_TUPLED_VERSION': _status_tupled_version,
     'VERSION': lambda v, s: v,
@@ -324,14 +324,7 @@ def find_last_version(tree: WorkingTree, cfg) -> Tuple[str, Optional[str]]:
 check_new_revisions = _disperse_rs.check_new_revisions
 
 expand_tag = _disperse_rs.expand_tag
-
-
-def unexpand_tag(tag_template, tag) -> str:
-    tag_re = re.compile(tag_template.replace("$VERSION", "(.*)"))
-    m = tag_re.match(tag)
-    if not m:
-        raise ValueError(f"Tag {tag} does not match template {tag_template}")
-    return m.group(1)
+unexpand_tag = _disperse_rs.unexpand_tag
 
 
 def release_project(   # noqa: C901
