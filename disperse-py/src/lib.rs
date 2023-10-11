@@ -116,6 +116,25 @@ fn find_last_version_in_tags(
     (version, status)
 }
 
+#[pyfunction]
+fn find_name_in_pyproject_toml(tree: PyObject) -> PyResult<Option<String>> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    Ok(disperse::python::find_name_in_pyproject_toml(&tree))
+}
+
+#[pyfunction]
+fn pyproject_uses_hatch_vcs(tree: PyObject) -> PyResult<bool> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    disperse::python::pyproject_uses_hatch_vcs(&tree)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[pyfunction]
+fn find_hatch_vcs_version(tree: PyObject) -> PyResult<Option<Version>> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    Ok(disperse::python::find_hatch_vcs_version(&tree))
+}
+
 #[pymodule]
 fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -131,5 +150,8 @@ fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(find_last_version_in_tags))?;
     m.add_wrapped(wrap_pyfunction!(update_version_in_pyproject_toml))?;
     m.add_wrapped(wrap_pyfunction!(pypi_discover_urls))?;
+    m.add_wrapped(wrap_pyfunction!(find_name_in_pyproject_toml))?;
+    m.add_wrapped(wrap_pyfunction!(pyproject_uses_hatch_vcs))?;
+    m.add_wrapped(wrap_pyfunction!(find_hatch_vcs_version))?;
     Ok(())
 }

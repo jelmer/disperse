@@ -5,12 +5,10 @@ use serde_json::Value;
 
 use std::error::Error;
 
-
-
 use std::path::Path;
 
 use url::Url;
-use xmlrpc::{Request};
+use xmlrpc::Request;
 
 pub fn update_version_in_pyproject_toml(
     tree: &WorkingTree,
@@ -106,4 +104,63 @@ pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<String>, Box<dyn std::e
     }
 
     Ok(ret)
+}
+
+pub fn pyproject_uses_hatch_vcs(tree: &dyn Tree) -> Result<bool, Box<dyn std::error::Error>> {
+    let content = match tree.get_file_text(Path::new("pyproject.toml")) {
+        Ok(v) => v,
+        Err(_) => return Ok(false),
+    };
+
+    let parsed_toml: toml_edit::Document = String::from_utf8_lossy(content.as_slice()).parse()?;
+
+    Ok(parsed_toml
+        .as_table()
+        .get("tool")
+        .and_then(|v| v.as_table())
+        .and_then(|v| v.get("hatch"))
+        .and_then(|v| v.as_table())
+        .and_then(|v| v.get("version"))
+        .and_then(|v| v.as_table())
+        .and_then(|v| v.get("source"))
+        .and_then(|v| v.as_str())
+        == Some("vcs"))
+}
+
+pub fn find_name_in_pyproject_toml(tree: &dyn Tree) -> Option<String> {
+    let content = tree.get_file_text(Path::new("pyproject.toml")).ok()?;
+
+    let parsed_toml: toml_edit::Document =
+        String::from_utf8_lossy(content.as_slice()).parse().ok()?;
+
+    parsed_toml
+        .as_table()
+        .get("project")
+        .and_then(|v| v.as_table())
+        .and_then(|v| v.get("name"))
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string())
+}
+
+pub fn find_hatch_vcs_version(tree: &WorkingTree) -> Option<Version> {
+    let cwd = tree.abspath(Path::new(".")).unwrap();
+
+    // run "hatchling version"
+    let output = std::process::Command::new("hatchling")
+        .arg("version")
+        .current_dir(&cwd)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    Some(Version(
+        String::from_utf8_lossy(&output.stdout)
+            .split('.')
+            .take(3)
+            .collect::<Vec<_>>()
+            .join("."),
+    ))
 }

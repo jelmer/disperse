@@ -30,19 +30,19 @@ __all__ = [
     'find_hatch_vcs_version',
 ]
 
-from breezy.tree import Tree
-from breezy.workingtree import WorkingTree
 from build import ProjectBuilder, BuildBackendException
 import logging
 import os
 import subprocess
-from typing import Optional
 
 from . import DistCreationFailed
 from ._disperse_rs import (
     update_version_in_pyproject_toml,
     pypi_discover_urls,
     find_version_in_pyproject_toml,
+    find_name_in_pyproject_toml,
+    pyproject_uses_hatch_vcs,
+    find_hatch_vcs_version,
 )
 
 
@@ -137,24 +137,3 @@ def read_project_urls_from_setup_cfg(path):
             yield (project_urls[key], 'HEAD')
         except KeyError:
             pass
-
-
-def find_name_in_pyproject_toml(tree: Tree) -> Optional[str]:
-    from toml.decoder import loads
-    d = loads(tree.get_file_text('pyproject.toml').decode('utf-8'))
-    return d.get('project', {}).get('name')
-
-
-def pyproject_uses_hatch_vcs(tree: Tree) -> bool:
-    from toml.decoder import loads
-    d = loads(tree.get_file_text('pyproject.toml').decode('utf-8'))
-    source = d.get('tool', {}).get('hatch', {}).get('version', {}).get("source")
-    return source == "vcs"
-
-
-def find_hatch_vcs_version(tree: WorkingTree) -> Optional[str]:
-    cwd = tree.abspath(".")
-    output = subprocess.check_output(["hatchling", "version"], cwd=cwd)
-    version = output.strip().decode()
-    tupled_version = tuple(int(x) for x in version.split(".")[:3])
-    return "%d.%d.%d" % tupled_version
