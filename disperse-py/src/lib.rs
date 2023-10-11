@@ -5,6 +5,13 @@ use pyo3::prelude::*;
 use std::path::Path;
 
 #[pyfunction]
+fn pypi_discover_urls(pypi_user: &str) -> PyResult<Vec<String>> {
+    disperse::python::pypi_discover_urls(pypi_user).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("discover_urls failed: {}", e))
+    })
+}
+
+#[pyfunction]
 fn update_version_in_manpage(
     tree: PyObject,
     path: std::path::PathBuf,
@@ -116,5 +123,6 @@ fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(update_version_in_manpage))?;
     m.add_wrapped(wrap_pyfunction!(find_last_version_in_tags))?;
     m.add_wrapped(wrap_pyfunction!(update_version_in_pyproject_toml))?;
+    m.add_wrapped(wrap_pyfunction!(pypi_discover_urls))?;
     Ok(())
 }

@@ -42,7 +42,10 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from . import version_string, DistCreationFailed
-from ._disperse_rs import update_version_in_pyproject_toml
+from ._disperse_rs import (
+    update_version_in_pyproject_toml,
+    pypi_discover_urls,
+)
 
 
 class UploadCommandFailed(Exception):
@@ -50,33 +53,6 @@ class UploadCommandFailed(Exception):
     def __init__(self, command, retcode):
         self.command = command
         self.retcode = retcode
-
-
-def pypi_discover_urls(pypi_user):
-    import xmlrpc.client
-    client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
-    ret = []
-    for _relation, package in client.user_packages(pypi_user):  # type: ignore
-        assert isinstance(package, str)
-        req = Request(
-            f'https://pypi.org/pypi/{package}/json',
-            headers={'Content-Type': f'disperse/{version_string}'})
-        with urlopen(req) as f:
-            data = json.load(f)
-        project_urls = data['info']['project_urls']
-        if project_urls is None:
-            logging.warning(f'Project {package} does not have project URLs')
-            continue
-        for key, url in project_urls.items():
-            if key == 'Repository':
-                ret.append(url)
-                break
-            parsed_url = urlparse(url)
-            if (parsed_url.hostname == 'github.com'
-                    and parsed_url.path.strip('/').count('/') == 1):
-                ret.append(url)
-                break
-    return ret
 
 
 def upload_python_artifacts(local_tree, pypi_paths):
