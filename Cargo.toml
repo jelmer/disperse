@@ -10,9 +10,12 @@ homepage = "https://github.com/jelmer/disperse"
 
 [dependencies]
 breezyshim = "0.1.20"
+chrono = "0.4.31"
 crates_io_api = "0.8.1"
 lazy-regex = "3.0.1"
 pyo3 = { workspace = true, optional = true }
+regex = "1.10.0"
+shlex = "1.2.0"
 toml_edit = "0.20.2"
 
 [workspace]

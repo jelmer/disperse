@@ -1,8 +1,26 @@
 use breezyshim::branch::Branch;
-use breezyshim::tree::{Tree, WorkingTree};
+use breezyshim::tree::{MutableTree, Tree, WorkingTree};
 use disperse::Version;
 use pyo3::prelude::*;
 use std::path::Path;
+
+#[pyfunction]
+fn update_version_in_manpage(
+    tree: PyObject,
+    path: std::path::PathBuf,
+    new_version: &str,
+    release_date: chrono::DateTime<chrono::Utc>,
+) -> PyResult<()> {
+    let mut tree = WorkingTree::new(tree).unwrap();
+
+    disperse::update_version::update_version_in_manpage(
+        &mut tree,
+        path.as_path(),
+        new_version,
+        release_date,
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
 
 #[pyfunction]
 fn check_new_revisions(branch: PyObject, news_file: Option<std::path::PathBuf>) -> PyResult<bool> {
@@ -69,5 +87,6 @@ fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(expand_tag))?;
     m.add_wrapped(wrap_pyfunction!(increase_version))?;
     m.add_wrapped(wrap_pyfunction!(check_new_revisions))?;
+    m.add_wrapped(wrap_pyfunction!(update_version_in_manpage))?;
     Ok(())
 }

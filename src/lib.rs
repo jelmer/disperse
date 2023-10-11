@@ -1,4 +1,5 @@
 pub mod cargo;
+pub mod update_version;
 use breezyshim::branch::Branch;
 #[cfg(feature = "pyo3")]
 use pyo3::prelude::*;

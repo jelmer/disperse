@@ -256,41 +256,7 @@ def update_version_in_file(
     tree.put_file_bytes_non_atomic(update_cfg.path, b"".join(lines))
 
 
-def update_version_in_manpage(
-        tree: MutableTree, path, new_version: str,
-        release_date: datetime) -> None:
-    with tree.get_file(path) as f:
-        lines = list(f.readlines())
-    DATE_OPTIONS = [
-        ('20[0-9][0-9]-[0-1][0-9]-[0-3][0-9]', "%Y-%m-%d"),
-        ('[A-Za-z]+ ([0-9]{4})', '%B %Y'),
-    ]
-    VERSION_OPTIONS = [
-        ('([^ ]+) ([0-9a-z.]+)', r'\1 $VERSION'),
-    ]
-    import shlex
-    for i, line in enumerate(lines):
-        if not line.startswith(b'.TH '):
-            continue
-        args = shlex.split(line.decode())
-        for r, f in DATE_OPTIONS:
-            m = re.fullmatch(r, args[3])
-            if m:
-                args[3] = release_date.strftime(f)
-                break
-        else:
-            raise Exception(f'Unable to find format for date {args[3]}')
-        for r, f in VERSION_OPTIONS:
-            m = re.fullmatch(r, args[4])
-            if m:
-                args[4] = re.sub(
-                    r, f.replace('$VERSION', new_version), args[4])
-                break
-        lines[i] = shlex.join(args).encode() + b'\n'
-        break
-    else:
-        raise Exception(f"No matches for date or version in {path}")
-    tree.put_file_bytes_non_atomic(path, b"".join(lines))
+update_version_in_manpage = _disperse_rs.update_version_in_manpage
 
 
 def check_release_age(branch: Branch, cfg: ProjectConfig, now: datetime) -> None:
