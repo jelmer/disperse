@@ -1,5 +1,6 @@
 pub mod cargo;
 pub mod project_config;
+pub mod python;
 pub mod update_version;
 pub mod version;
 use breezyshim::branch::Branch;

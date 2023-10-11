@@ -23,6 +23,14 @@ fn update_version_in_manpage(
 }
 
 #[pyfunction]
+fn update_version_in_pyproject_toml(tree: PyObject, new_version: Version) -> PyResult<bool> {
+    let tree = WorkingTree::new(tree).unwrap();
+
+    disperse::python::update_version_in_pyproject_toml(&tree, &new_version)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[pyfunction]
 fn check_new_revisions(branch: PyObject, news_file: Option<std::path::PathBuf>) -> PyResult<bool> {
     let branch = breezyshim::branch::RegularBranch::new(branch);
     disperse::check_new_revisions(&branch, news_file.as_ref().map(Path::new))
@@ -107,5 +115,6 @@ fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(check_new_revisions))?;
     m.add_wrapped(wrap_pyfunction!(update_version_in_manpage))?;
     m.add_wrapped(wrap_pyfunction!(find_last_version_in_tags))?;
+    m.add_wrapped(wrap_pyfunction!(update_version_in_pyproject_toml))?;
     Ok(())
 }

@@ -15,6 +15,20 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+__all__ = [
+    'pypi_discover_urls',
+    'UploadCommandFailed',
+    'upload_python_artifacts',
+    'create_setup_py_artifacts',
+    'create_python_artifacts',
+    'read_project_urls_from_pyproject_toml',
+    'read_project_urls_from_setup_cfg',
+    'update_version_in_pyproject_toml',
+    'find_name_in_pyproject_toml',
+    'find_version_in_pyproject_toml',
+    'pyproject_uses_hatch_vcs',
+    'find_hatch_vcs_version',
+]
 
 from breezy.tree import Tree
 from breezy.workingtree import WorkingTree
@@ -28,6 +42,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from . import version_string, DistCreationFailed
+from ._disperse_rs import update_version_in_pyproject_toml
 
 
 class UploadCommandFailed(Exception):
@@ -148,26 +163,6 @@ def read_project_urls_from_setup_cfg(path):
             yield (project_urls[key], 'HEAD')
         except KeyError:
             pass
-
-
-def update_version_in_pyproject_toml(tree: WorkingTree, new_version: str) -> bool:
-    from toml.decoder import TomlPreserveCommentDecoder, loads
-    from toml.encoder import TomlPreserveCommentEncoder, dumps
-
-    text = tree.get_file_text('pyproject.toml')
-    d = loads(text.decode(), decoder=TomlPreserveCommentDecoder())
-    if 'project' not in d:
-        return False
-    if 'version' in d['project'].get('dynamic', []):
-        return False
-    if 'version' not in d['project']:
-        logging.warning("pyproject.toml does not have a version")
-        return False
-    d['project']['version'] = new_version
-    tree.put_file_bytes_non_atomic(
-        'pyproject.toml',
-        dumps(d, encoder=TomlPreserveCommentEncoder()).encode())  # type: ignore
-    return True
 
 
 def find_name_in_pyproject_toml(tree: Tree) -> Optional[str]:
