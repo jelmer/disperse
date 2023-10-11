@@ -7,6 +7,7 @@ description = "automation for creation of releases"
 license = "GPL-3.0+"
 repository = "https://github.com/jelmer/disperse.git"
 homepage = "https://github.com/jelmer/disperse"
+build = "build.rs"
 
 [dependencies]
 breezyshim = "0.1.20"
@@ -17,6 +18,11 @@ pyo3 = { workspace = true, optional = true }
 regex = "1.10.0"
 shlex = "1.2.0"
 toml_edit = "0.20.2"
+protobuf = "3"
+
+[build-dependencies]
+protobuf-codegen = "3"
+protoc-rust = "^2.0"
 
 [workspace]
 members = ["disperse-py"]

@@ -8,7 +8,7 @@ use std::path::Path;
 fn update_version_in_manpage(
     tree: PyObject,
     path: std::path::PathBuf,
-    new_version: &str,
+    new_version: Version,
     release_date: chrono::DateTime<chrono::Utc>,
 ) -> PyResult<()> {
     let mut tree = WorkingTree::new(tree).unwrap();
@@ -16,7 +16,7 @@ fn update_version_in_manpage(
     disperse::update_version::update_version_in_manpage(
         &mut tree,
         path.as_path(),
-        new_version,
+        &new_version,
         release_date,
     )
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -32,13 +32,13 @@ fn check_new_revisions(branch: PyObject, news_file: Option<std::path::PathBuf>) 
 #[pyfunction]
 fn increase_version(mut version: Version, part: Option<isize>) -> PyResult<Version> {
     let part = part.unwrap_or(-1);
-    disperse::increase_version(&mut version, part);
+    disperse::version::increase_version(&mut version, part);
     Ok(version)
 }
 
 #[pyfunction]
 fn expand_tag(template: &str, version: Version) -> PyResult<String> {
-    Ok(disperse::expand_tag(template, version))
+    Ok(disperse::version::expand_tag(template, version))
 }
 
 #[pyfunction]
