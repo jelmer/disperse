@@ -1,15 +1,16 @@
+use crate::Version;
 use breezyshim::tree::MutableTree;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use std::error::Error;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 pub fn update_version_in_manpage(
     tree: &mut dyn MutableTree,
     path: &Path,
-    new_version: &str,
+    new_version: &Version,
     release_date: DateTime<Utc>,
 ) -> Result<(), Box<dyn Error>> {
     let file = tree.get_file(path)?;
@@ -38,7 +39,7 @@ pub fn update_version_in_manpage(
         // Iterate through date options
         for (r, f) in &date_options {
             let re = Regex::new(r)?;
-            if let Some(captures) = re.captures(&args[3]) {
+            if let Some(_captures) = re.captures(&args[3]) {
                 let formatted_date = release_date.format(f).to_string();
                 args[3] = formatted_date;
                 break;
@@ -50,7 +51,8 @@ pub fn update_version_in_manpage(
             let re = Regex::new(r)?;
             if let Some(captures) = re.captures(&args[4]) {
                 let version_str = captures.get(0).unwrap().as_str();
-                let formatted_version = re.replace(version_str, f.replace("$VERSION", new_version));
+                let formatted_version =
+                    re.replace(version_str, f.replace("$VERSION", new_version.0.as_str()));
                 args[4] = formatted_version.to_string();
                 break;
             }

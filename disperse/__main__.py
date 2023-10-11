@@ -22,7 +22,7 @@ import subprocess
 import sys
 from datetime import datetime
 from glob import glob
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable
 from urllib.parse import urlparse
 
 import breezy.bzr  # noqa: F401
@@ -205,7 +205,7 @@ def _version_part(v, i):
     return parts[i]
 
 
-version_variables = {
+version_variables: dict[str, Callable[[str, Optional[str]], str]] = {
     'TUPLED_VERSION': lambda v, s: "(%s)" % ", ".join(v.split(".")),
     'STATUS_TUPLED_VERSION': _status_tupled_version,
     'VERSION': lambda v, s: v,
@@ -324,14 +324,7 @@ def find_last_version(tree: WorkingTree, cfg) -> Tuple[str, Optional[str]]:
 check_new_revisions = _disperse_rs.check_new_revisions
 
 expand_tag = _disperse_rs.expand_tag
-
-
-def unexpand_tag(tag_template, tag) -> str:
-    tag_re = re.compile(tag_template.replace("$VERSION", "(.*)"))
-    m = tag_re.match(tag)
-    if not m:
-        raise ValueError(f"Tag {tag} does not match template {tag_template}")
-    return m.group(1)
+unexpand_tag = _disperse_rs.unexpand_tag
 
 
 def release_project(   # noqa: C901
@@ -446,7 +439,7 @@ def release_project(   # noqa: C901
                             raise
                     break
                 elif hostname == 'launchpad.net':
-                    parts = parsed_url.strip('/').split('/')[0]
+                    parts = parsed_url.path.strip('/').split('/')[0]
                     launchpad_project = get_launchpad_project(parts[0])
                     if len(parts) > 1 and not parts[1].startswith('+'):
                         launchpad_series = parts[1]
@@ -473,7 +466,7 @@ def release_project(   # noqa: C901
                         ws.local_tree, cfg)
                 except NotImplementedError:
                     last_version, last_version_status = find_last_version_in_tags(
-                        ws.local_tree.branch, cfg)
+                        ws.local_tree.branch, cfg.tag_name)
                 last_version_tag_name = expand_tag(cfg.tag_name, last_version)
                 if ws.local_tree.branch.tags.has_tag(last_version_tag_name):
                     new_version = increase_version(last_version)
@@ -663,12 +656,6 @@ def release_project(   # noqa: C901
     return name, new_version
 
 
-def get_release_revision(wt, cfg, version):
-    tag_name = expand_tag(cfg.tag_name, version)
-    revid = wt.branch.tags.lookup_tag(tag_name)
-    return wt.branch.repository.get_revision(revid)
-
-
 def info_many(urls):
     from breezy.controldir import ControlDir
     try:
@@ -703,31 +690,7 @@ def info_many(urls):
     return ret
 
 
-def find_last_version_in_tags(branch, cfg):
-    rev_tag_dict = branch.tags.get_reverse_tag_dict()
-    graph = branch.repository.get_graph()
-
-    for revid in graph.iter_lefthand_ancestry(branch.last_revision()):
-        if revid in rev_tag_dict:
-            tags = rev_tag_dict[revid]
-            break
-    else:
-        raise NotImplementedError
-
-    for tag in tags:
-        try:
-            release = unexpand_tag(cfg.tag_name, tag)
-        except ValueError:
-            continue
-        if revid == branch.last_revision():
-            status = 'final'
-        else:
-            status = 'dev'
-        return release, status
-
-    logging.warning(
-        "Unable to find any tags matching %s", cfg.tag_name)
-    return None, None
+find_last_version_in_tags = _disperse_rs.find_last_version_in_tags
 
 
 def info(wt):
@@ -856,7 +819,7 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,  # noqa: C
             failed.append((url, e))
             ret = 1
         except UploadCommandFailed as e:
-            logging.error('Upload command (%s) failed to run.', e.command)
+            logging.error('Upload command (%s) failed to run.', e.args[0])
             failed.append((url, e))
             ret = 1
         except ReleaseTagExists as e:

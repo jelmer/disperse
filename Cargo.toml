@@ -7,22 +7,33 @@ description = "automation for creation of releases"
 license = "GPL-3.0+"
 repository = "https://github.com/jelmer/disperse.git"
 homepage = "https://github.com/jelmer/disperse"
+build = "build.rs"
 
 [dependencies]
 breezyshim = "0.1.20"
 chrono = "0.4.31"
 crates_io_api = "0.8.1"
 lazy-regex = "3.0.1"
-pyo3 = { workspace = true, optional = true }
+pyo3 = { workspace = true }
 regex = "1.10.0"
 shlex = "1.2.0"
 toml_edit = "0.20.2"
+protobuf = "3"
+log = "0.4.20"
+xmlrpc = "0.15.1"
+reqwest = "0.11.22"
+url = "2.4.1"
+serde_json = "1.0.107"
+
+[build-dependencies]
+protobuf-codegen = "3"
+protoc-rust = "^2.0"
 
 [workspace]
 members = ["disperse-py"]
 
 [features]
-pyo3 = ["dep:pyo3"]
+pyo3 = []
 
 [workspace.dependencies]
-pyo3 = { version = "0.19" }
+pyo3 = { version = "0.19", features = ["serde"] }

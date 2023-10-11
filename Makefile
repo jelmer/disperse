@@ -17,7 +17,7 @@ check:: flake8
 
 check:: test
 
-test: build
+test: build-inplace
 	PYTHONPATH=. pytest tests
 
 flake8: build
