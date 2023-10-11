@@ -336,3 +336,33 @@ pub fn create_setup_py_artifacts(
         Ok(pypi_paths)
     })
 }
+
+pub fn create_python_artifacts(
+    local_tree: &WorkingTree,
+) -> Result<Vec<std::path::PathBuf>, Box<dyn std::error::Error>> {
+    pyo3::Python::with_gil(|py| {
+        let mut pypi_paths = Vec::new();
+
+        let project_builder = py.import("build")?.call_method1(
+            "ProjectBuilder",
+            (local_tree.abspath(Path::new(".")).unwrap(),),
+        )?;
+
+        // Wrap Python exception handling using PyResult
+        let wheels = project_builder.call_method1(
+            "build",
+            ("wheel", local_tree.abspath(Path::new("dist")).unwrap()),
+        )?;
+
+        pypi_paths.push(std::path::PathBuf::from(wheels.extract::<String>()?));
+
+        let sdist_path = project_builder.call_method1(
+            "build",
+            ("source", local_tree.abspath(Path::new("dist")).unwrap()),
+        )?;
+
+        pypi_paths.push(std::path::PathBuf::from(sdist_path.extract::<String>()?));
+
+        Ok(pypi_paths)
+    })
+}

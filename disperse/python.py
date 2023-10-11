@@ -30,9 +30,6 @@ __all__ = [
     'find_hatch_vcs_version',
 ]
 
-from build import ProjectBuilder, BuildBackendException
-
-from . import DistCreationFailed
 from ._disperse_rs import (
     update_version_in_pyproject_toml,
     pypi_discover_urls,
@@ -45,21 +42,5 @@ from ._disperse_rs import (
     upload_python_artifacts,
     UploadCommandFailed,
     create_setup_py_artifacts,
+    create_python_artifacts,
 )
-
-
-def create_python_artifacts(local_tree) -> list[str]:
-    pypi_paths = []
-    builder = ProjectBuilder(local_tree.abspath('.'))
-    try:
-        wheels = builder.build("wheel", output_directory=local_tree.abspath("dist"))
-    except BuildBackendException as e:
-        raise DistCreationFailed(e)
-    pypi_paths.append(wheels)
-    try:
-        sdist_path = builder.build(
-            "source", output_directory=local_tree.abspath("dist"))
-    except BuildBackendException as e:
-        raise DistCreationFailed(e)
-    pypi_paths.append(sdist_path)
-    return pypi_paths

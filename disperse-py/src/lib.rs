@@ -191,6 +191,14 @@ fn create_setup_py_artifacts(tree: PyObject) -> PyResult<Vec<String>> {
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
+#[pyfunction]
+fn create_python_artifacts(tree: PyObject) -> PyResult<Vec<std::path::PathBuf>> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+
+    disperse::python::create_python_artifacts(&tree)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
 #[pymodule]
 fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -213,6 +221,7 @@ fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(read_project_urls_from_pyproject_toml))?;
     m.add_wrapped(wrap_pyfunction!(upload_python_artifacts))?;
     m.add_wrapped(wrap_pyfunction!(create_setup_py_artifacts))?;
+    m.add_wrapped(wrap_pyfunction!(create_python_artifacts))?;
     m.add("UploadCommandFailed", py.get_type::<UploadCommandFailed>())?;
     Ok(())
 }
