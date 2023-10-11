@@ -205,7 +205,7 @@ def _version_part(v, i):
     return parts[i]
 
 
-version_variables: dict[str, Callable[[str, str | None], str]] = {
+version_variables: dict[str, Callable[[str, Optional[str]], str]] = {
     'TUPLED_VERSION': lambda v, s: "(%s)" % ", ".join(v.split(".")),
     'STATUS_TUPLED_VERSION': _status_tupled_version,
     'VERSION': lambda v, s: v,
