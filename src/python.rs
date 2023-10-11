@@ -7,6 +7,8 @@ use std::error::Error;
 
 use std::path::Path;
 
+use std::path::PathBuf;
+use std::process::{exit, Command};
 use url::Url;
 use xmlrpc::Request;
 
@@ -231,4 +233,50 @@ pub fn read_project_urls_from_setup_cfg(
 
         Ok(result)
     })
+}
+
+#[derive(Debug)]
+pub struct UploadCommandFailed {
+    pub command: Vec<String>,
+    pub retcode: Option<i32>,
+}
+
+impl std::fmt::Display for UploadCommandFailed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "`{}` failed", self.command.join(" "))
+    }
+}
+
+impl std::error::Error for UploadCommandFailed {}
+
+pub fn upload_python_artifacts(
+    local_tree: &WorkingTree,
+    pypi_paths: &[&str],
+) -> Result<(), UploadCommandFailed> {
+    let mut command = vec!["twine", "upload", "--non-interactive"];
+    command.extend(pypi_paths);
+
+    let abs_path = local_tree.abspath(Path::new(".")).unwrap();
+
+    let output = Command::new("twine")
+        .args(&command[1..])
+        .current_dir(&abs_path)
+        .status();
+
+    match output {
+        Ok(status) => {
+            if status.success() {
+                Ok(())
+            } else {
+                Err(UploadCommandFailed {
+                    command: command.iter().map(|v| v.to_string()).collect(),
+                    retcode: status.code(),
+                })
+            }
+        }
+        Err(_) => Err(UploadCommandFailed {
+            command: command.iter().map(|v| v.to_string()).collect(),
+            retcode: None,
+        }),
+    }
 }

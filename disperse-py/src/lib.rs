@@ -1,6 +1,7 @@
 use breezyshim::branch::Branch;
 use breezyshim::tree::{MutableTree, Tree, WorkingTree};
 use disperse::Version;
+use pyo3::create_exception;
 use pyo3::prelude::*;
 use std::path::Path;
 
@@ -20,7 +21,7 @@ fn update_version_in_manpage(
 ) -> PyResult<()> {
     let mut tree = WorkingTree::new(tree).unwrap();
 
-    disperse::update_version::update_version_in_manpage(
+    disperse::manpage::update_version_in_manpage(
         &mut tree,
         path.as_path(),
         &new_version,
@@ -161,8 +162,29 @@ fn read_project_urls_from_pyproject_toml(
         })
 }
 
+create_exception!(
+    disperse.python,
+    UploadCommandFailed,
+    pyo3::exceptions::PyRuntimeError
+);
+
+#[pyfunction]
+fn upload_python_artifacts(tree: PyObject, pypi_paths: Vec<String>) -> PyResult<()> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+
+    disperse::python::upload_python_artifacts(
+        &tree,
+        pypi_paths
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .as_slice(),
+    )
+    .map_err(|e| UploadCommandFailed::new_err(format!("upload_python_artifacts failed: {}", e)))
+}
+
 #[pymodule]
-fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
     m.add_wrapped(wrap_pyfunction!(find_version_in_cargo))?;
     m.add_wrapped(wrap_pyfunction!(find_version_in_pyproject_toml))?;
@@ -181,5 +203,7 @@ fn _disperse_rs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(find_hatch_vcs_version))?;
     m.add_wrapped(wrap_pyfunction!(read_project_urls_from_setup_cfg))?;
     m.add_wrapped(wrap_pyfunction!(read_project_urls_from_pyproject_toml))?;
+    m.add_wrapped(wrap_pyfunction!(upload_python_artifacts))?;
+    m.add("UploadCommandFailed", py.get_type::<UploadCommandFailed>())?;
     Ok(())
 }

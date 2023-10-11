@@ -33,7 +33,6 @@ __all__ = [
 from build import ProjectBuilder, BuildBackendException
 import logging
 import os
-import subprocess
 
 from . import DistCreationFailed
 from ._disperse_rs import (
@@ -45,23 +44,9 @@ from ._disperse_rs import (
     find_hatch_vcs_version,
     read_project_urls_from_setup_cfg,
     read_project_urls_from_pyproject_toml,
+    upload_python_artifacts,
+    UploadCommandFailed,
 )
-
-
-class UploadCommandFailed(Exception):
-
-    def __init__(self, command, retcode):
-        self.command = command
-        self.retcode = retcode
-
-
-def upload_python_artifacts(local_tree, pypi_paths):
-    command = [
-        "twine", "upload", "--non-interactive"] + pypi_paths
-    try:
-        subprocess.check_call(command, cwd=local_tree.abspath("."))
-    except subprocess.CalledProcessError as e:
-        raise UploadCommandFailed(command, e.returncode)
 
 
 def create_setup_py_artifacts(local_tree):
