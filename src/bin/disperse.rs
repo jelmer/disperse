@@ -1,4 +1,6 @@
+use breezyshim::tree::Tree;
 use clap::Parser;
+use maplit::hashmap;
 use pyo3::prelude::*;
 use std::io::Write;
 use url::Url;
@@ -98,20 +100,71 @@ struct InfoArgs {
     path: std::path::PathBuf,
 }
 
-fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
+fn info(
+    tree: &dyn breezyshim::tree::Tree,
+    branch: &dyn breezyshim::branch::Branch,
+) -> pyo3::PyResult<i32> {
     pyo3::Python::with_gil(|py| {
         let m = py.import("disperse.__main__")?;
-        let info_many = m.getattr("info_many")?;
+        let info = m.getattr("info")?;
         let kwargs = pyo3::types::PyDict::new(py);
-        kwargs.set_item(
-            "urls",
-            urls.iter().map(|u| u.to_string()).collect::<Vec<_>>(),
-        )?;
-        info_many
+        kwargs.set_item("tree", tree)?;
+        kwargs.set_item("branch", branch)?;
+        Ok(info
             .call((), Some(kwargs))?
-            .extract::<Option<i32>>()
-            .map(|x| x.unwrap_or(0))
+            .extract::<Option<i32>>()?
+            .unwrap_or(0))
     })
+}
+
+fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
+    let mut ret = 0;
+
+    for url in urls {
+        if url.to_string() != "." {
+            log::info!("Processing {}", url);
+        }
+
+        let (local_wt, branch) =
+            match breezyshim::controldir::ControlDir::open_tree_or_branch(url, None) {
+                Ok(x) => x,
+                Err(e) => {
+                    ret = 1;
+                    log::error!("Unable to open {}: {}", url, e);
+                    continue;
+                }
+            };
+
+        if let Some(wt) = local_wt {
+            let lock = wt.lock_read();
+            ret += info(&wt, wt.branch().as_ref()).unwrap_or(0);
+            std::mem::drop(lock);
+        } else {
+            let lock = branch.lock_read().unwrap();
+            match info(&branch.basis_tree().unwrap(), branch.as_ref()) {
+                Ok(_) => {
+                    std::mem::drop(lock);
+                }
+                Err(e) => {
+                    // TODO(jelmer): Just handle UnsupporedOperation
+                    let ws = silver_platter::workspace::Workspace::from_url(
+                        url,
+                        None,
+                        None,
+                        hashmap! {},
+                        hashmap! {},
+                        None,
+                        None,
+                        None,
+                    );
+                    let lock = ws.local_tree().lock_read();
+                    ret += info(&ws.local_tree(), ws.local_tree().branch().as_ref()).unwrap_or(0);
+                    std::mem::drop(lock);
+                }
+            }
+        }
+    }
+    Ok(ret)
 }
 
 fn release_many(
@@ -148,16 +201,6 @@ fn validate_config(path: &std::path::Path) -> pyo3::PyResult<i32> {
         kwargs.set_item("path", path)?;
         validate_config
             .call((), Some(kwargs))?
-            .extract::<Option<i32>>()
-            .map(|x| x.unwrap_or(0))
-    })
-}
-
-fn info(working_tree: breezyshim::tree::WorkingTree) -> pyo3::PyResult<i32> {
-    pyo3::Python::with_gil(|py| {
-        let m = py.import("disperse.__main__")?;
-        let info = m.getattr("info")?;
-        info.call1((working_tree.to_object(py),))?
             .extract::<Option<i32>>()
             .map(|x| x.unwrap_or(0))
     })
@@ -264,7 +307,7 @@ fn main() {
         Commands::Validate(args) => validate_config(&args.path).unwrap(),
         Commands::Info(args) => {
             let wt = breezyshim::tree::WorkingTree::open(args.path.as_ref()).unwrap();
-            info(wt).unwrap()
+            info(&wt, wt.branch().as_ref()).unwrap()
         }
     });
 }

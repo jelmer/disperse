@@ -652,48 +652,10 @@ def release_project(   # noqa: C901
     return name, new_version
 
 
-def info_many(urls):
-    from breezy.controldir import ControlDir
-    try:
-        from breezy.errors import ConnectionError  # type: ignore
-    except ImportError:
-        pass
-    from breezy.errors import UnsupportedOperation
-
-
-    ret = 0
-
-    for url in urls:
-        if url != ".":
-            logging.info('Processing %s', url)
-
-        try:
-            local_wt, branch = ControlDir.open_tree_or_branch(url)
-        except ConnectionError as e:
-            ret = 1
-            logging.error('Unable to connect to %s: %s', url, e)
-            continue
-
-        if local_wt is not None:
-            with local_wt.lock_read():
-                info(local_wt, local_wt.branch)
-        else:
-            try:
-                with branch.lock_read():
-                    info(branch.basis_tree(), branch)
-            except UnsupportedOperation:
-                with Workspace(branch) as ws:
-                    with ws.local_tree.lock_read():
-                        info(ws.local_tree, ws.local_tree.branch)
-
-    return ret
-
-
 find_last_version_in_tags = _disperse_rs.find_last_version_in_tags
 
 
 def info(tree, branch):
-
     try:
         cfg = read_project_with_fallback(tree)
     except NoSuchFile:
