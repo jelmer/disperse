@@ -1,7 +1,7 @@
 use serde::Deserialize;
-use std::env;
+
 use std::fs;
-use std::path::PathBuf;
+
 use toml;
 
 const CONFIG_FILE_NAME: &str = "disperse.toml";
@@ -18,7 +18,14 @@ const CONFIG_FILE_NAME: &str = "disperse.toml";
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct Config {
     pub pypi: Option<PypiConfig>,
+    #[serde(rename = "crates.io")]
     pub crates_io: Option<CratesIoConfig>,
+    pub repositories: Option<RepositoriesConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RepositoriesConfig {
+    pub owned: Option<Vec<url::Url>>,
 }
 
 #[derive(Debug, Deserialize)]

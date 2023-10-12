@@ -10,6 +10,8 @@ use log::warn;
 
 pub use version::Version;
 
+pub const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     Final,

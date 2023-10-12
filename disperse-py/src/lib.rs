@@ -7,9 +7,14 @@ use std::path::Path;
 
 #[pyfunction]
 fn pypi_discover_urls(pypi_user: &str) -> PyResult<Vec<String>> {
-    disperse::python::pypi_discover_urls(pypi_user).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("discover_urls failed: {}", e))
-    })
+    disperse::python::pypi_discover_urls(pypi_user)
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "discover_urls failed: {}",
+                e
+            ))
+        })
+        .map(|urls| urls.into_iter().map(|url| url.to_string()).collect())
 }
 
 #[pyfunction]
@@ -66,9 +71,19 @@ fn unexpand_tag(template: &str, tag: &str) -> PyResult<Version> {
 
 #[pyfunction]
 fn get_owned_crates(user: &str) -> PyResult<Vec<String>> {
-    disperse::cargo::get_owned_crates(user).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("get_owned_crates failed: {}", e))
-    })
+    disperse::cargo::get_owned_crates(user)
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "get_owned_crates failed: {}",
+                e
+            ))
+        })
+        .map(|crates| {
+            crates
+                .into_iter()
+                .map(|crate_| crate_.to_string())
+                .collect()
+        })
 }
 
 #[pyfunction]
