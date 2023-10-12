@@ -289,7 +289,7 @@ def reverse_version(
     return None, None
 
 
-def find_last_version(tree: WorkingTree, cfg) -> Tuple[str, Optional[str]]:
+def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
     if tree.has_filename("Cargo.toml"):
         logging.debug("Reading version from Cargo.toml")
         return find_version_in_cargo(tree), None
@@ -675,13 +675,16 @@ def info_many(urls):
             continue
 
         if local_wt is not None:
-            info(local_wt)
+            with local_wt.lock_read():
+                info(local_wt, local_wt.branch)
         else:
             try:
-                info(branch.basis_tree())
+                with branch.lock_read():
+                    info(branch.basis_tree(), branch)
             except UnsupportedOperation:
                 with Workspace(branch) as ws:
-                    info(ws.local_tree)
+                    with ws.local_tree.lock_read():
+                        info(ws.local_tree, ws.local_tree.branch)
 
     return ret
 
@@ -689,10 +692,10 @@ def info_many(urls):
 find_last_version_in_tags = _disperse_rs.find_last_version_in_tags
 
 
-def info(wt):
+def info(tree, branch):
 
     try:
-        cfg = read_project_with_fallback(wt)
+        cfg = read_project_with_fallback(tree)
     except NoSuchFile:
         logging.info("No configuration found")
         return
@@ -701,41 +704,41 @@ def info(wt):
 
     if cfg.name:
         name = cfg.name
-    elif wt.has_filename('pyproject.toml'):
-        name = find_name_in_pyproject_toml(wt)
+    elif tree.has_filename('pyproject.toml'):
+        name = find_name_in_pyproject_toml(tree)
     else:
         name = None
 
     logging.info("Project: %s", name)
 
     try:
-        last_version, last_version_status = find_last_version(wt, cfg)
+        last_version, last_version_status = find_last_version(tree, cfg)
     except NotImplementedError:
-        last_version, last_version_status = find_last_version_in_tags(wt.branch, cfg)
+        last_version, last_version_status = find_last_version_in_tags(branch, cfg.tag_name)
     logging.info("Last release: %s", last_version)
     if last_version_status:
         logging.info("  status: %s", last_version_status)
 
     tag_name = expand_tag(cfg.tag_name, last_version)
     try:
-        release_revid = wt.branch.tags.lookup_tag(tag_name)
+        release_revid = branch.tags.lookup_tag(tag_name)
     except NoSuchTag:
         logging.info("  tag %s for previous release not found", tag_name)
     else:
         logging.info("  tag name: %s (%s)", tag_name, release_revid.decode('utf-8'))
 
-        rev = wt.branch.repository.get_revision(release_revid)
+        rev = branch.repository.get_revision(release_revid)
         logging.info("  date: %s", datetime.fromtimestamp(rev.timestamp))
 
-        if rev.revision_id != wt.branch.last_revision():
-            graph = wt.branch.repository.get_graph()
+        if rev.revision_id != branch.last_revision():
+            graph = branch.repository.get_graph()
             missing = list(
                 graph.iter_lefthand_ancestry(
-                    wt.branch.last_revision(), [release_revid]))
+                    branch.last_revision(), [release_revid]))
             if missing[-1] == NULL_REVISION:
                 logging.info("  last release not found in ancestry")
             else:
-                first = wt.branch.repository.get_revision(missing[-1])
+                first = branch.repository.get_revision(missing[-1])
                 first_age = datetime.now() - datetime.fromtimestamp(first.timestamp)
                 logging.info("  %d revisions since last release. First is %d days old.",
                              len(missing), first_age.days)
@@ -743,7 +746,7 @@ def info(wt):
             logging.info("  no revisions since last release")
 
     try:
-        new_version = find_pending_version(wt, cfg)
+        new_version = find_pending_version(tree, cfg)
     except NotImplementedError:
         logging.info("No pending version found; would use %s",
                      increase_version(last_version, -1))
