@@ -199,6 +199,19 @@ fn create_python_artifacts(tree: PyObject) -> PyResult<Vec<std::path::PathBuf>> 
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
+#[pyfunction]
+fn check_date(date: &str) -> PyResult<bool> {
+    Ok(disperse::news_file::check_date(date))
+}
+
+pyo3::import_exception!(disperse.news_file, OddVersion);
+
+#[pyfunction]
+fn check_version(version: &str) -> PyResult<bool> {
+    disperse::news_file::check_version(version)
+        .map_err(|e| OddVersion::new_err(format!("check_version failed: {}", e)))
+}
+
 #[pymodule]
 fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -223,5 +236,7 @@ fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(create_setup_py_artifacts))?;
     m.add_wrapped(wrap_pyfunction!(create_python_artifacts))?;
     m.add("UploadCommandFailed", py.get_type::<UploadCommandFailed>())?;
+    m.add_wrapped(wrap_pyfunction!(check_date))?;
+    m.add_wrapped(wrap_pyfunction!(check_version))?;
     Ok(())
 }

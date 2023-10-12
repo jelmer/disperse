@@ -1,5 +1,6 @@
 pub mod cargo;
 pub mod manpage;
+pub mod news_file;
 pub mod project_config;
 pub mod python;
 pub mod version;
