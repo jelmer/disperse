@@ -282,6 +282,14 @@ fn update_version_in_file(
     .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
 }
 
+#[pyfunction]
+fn news_find_pending(tree: PyObject, path: std::path::PathBuf) -> PyResult<Option<String>> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+
+    disperse::news_file::news_find_pending(&tree, path.as_path())
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
 #[pymodule]
 fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -313,5 +321,6 @@ fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(extract_version))?;
     m.add_wrapped(wrap_pyfunction!(reverse_version))?;
     m.add_wrapped(wrap_pyfunction!(update_version_in_file))?;
+    m.add_wrapped(wrap_pyfunction!(news_find_pending))?;
     Ok(())
 }

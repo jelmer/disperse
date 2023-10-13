@@ -29,7 +29,6 @@ import breezy.plugins.launchpad  # noqa: F401
 from breezy.branch import Branch
 from breezy.errors import NoSuchTag
 from breezy.git.remote import ProtectedBranchHookDeclined
-from breezy.mutabletree import MutableTree
 from breezy.revision import NULL_REVISION
 from breezy.transport import NoSuchFile
 from breezy.tree import Tree

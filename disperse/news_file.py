@@ -18,7 +18,8 @@
 __all__ = [
     'NewsFile',
     'check_date',
-    'check_version'
+    'check_version',
+    'news_find_pending',
 ]
 
 import re
@@ -26,11 +27,10 @@ from datetime import datetime
 from typing import Optional, Tuple
 
 from breezy.mutabletree import MutableTree
-from breezy.tree import Tree
 
 from . import NoUnreleasedChanges
 
-from ._disperse_rs import check_date, check_version
+from ._disperse_rs import check_date, check_version, news_find_pending
 
 
 class NewsFile:
@@ -162,20 +162,3 @@ def parse_version_line(line: bytes) -> Tuple[
         return (
             version.decode() if not date_is_placeholder else None, None,
             '%(version)s', pending)
-
-
-def news_find_pending(tree: Tree, path: str) -> Optional[str]:
-    """Find pending version in news file.
-
-    Args:
-      tree: Tree object
-      path: Path to news file in tree
-    Returns:
-      version string
-    """
-    lines = tree.get_file_lines(path)
-    i = skip_header(lines)
-    (version, date, line_format, pending) = parse_version_line(lines[i])
-    if not pending:
-        raise NoUnreleasedChanges()
-    return version
