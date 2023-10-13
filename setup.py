@@ -8,4 +8,4 @@ setup(
     rust_extensions=[RustExtension("disperse._disperse_rs",
                                    "disperse-py/Cargo.toml",
                                    binding=Binding.PyO3),
-                     RustBin("disperse", "Cargo.toml", features = ["cli"])])
+                     RustBin("disperse", "Cargo.toml", features=["cli"])])

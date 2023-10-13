@@ -1,6 +1,6 @@
 use crate::Version;
 use breezyshim::tree::{Tree, WorkingTree};
-use reqwest::header;
+
 use serde_json::Value;
 
 use std::error::Error;

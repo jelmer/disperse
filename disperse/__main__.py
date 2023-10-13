@@ -16,10 +16,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 import logging
-import os
 import re
 import subprocess
-import sys
 from datetime import datetime
 from glob import glob
 from typing import List, Optional, Tuple, Callable
@@ -37,15 +35,13 @@ from breezy.transport import NoSuchFile
 from breezy.tree import Tree
 from breezy.urlutils import split_segment_parameters
 from breezy.workingtree import WorkingTree
-from prometheus_client import CollectorRegistry, Counter, push_to_gateway
+from prometheus_client import CollectorRegistry, Counter
 from silver_platter.workspace import Workspace
 
 from . import _disperse_rs
 from . import NoUnreleasedChanges, DistCreationFailed
 from .cargo import (
-    cargo_publish, update_version_in_cargo, find_version_in_cargo,
-    get_owned_crates)
-from .config import load_config
+    cargo_publish, update_version_in_cargo, find_version_in_cargo)
 from .project_config import read_project_with_fallback, ProjectConfig
 from .github import (GitHubStatusFailed, GitHubStatusPending,
                      check_gh_repo_action_status, get_github_repo,
@@ -57,7 +53,7 @@ from .launchpad import get_project as get_launchpad_project
 from .news_file import NewsFile, news_find_pending, OddVersion as OddNewsVersion
 from .python import (UploadCommandFailed,
                      create_python_artifacts, create_setup_py_artifacts,
-                     pypi_discover_urls, read_project_urls_from_setup_cfg,
+                     read_project_urls_from_setup_cfg,
                      read_project_urls_from_pyproject_toml,
                      upload_python_artifacts,
                      find_version_in_pyproject_toml, update_version_in_pyproject_toml,
@@ -871,6 +867,3 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,  # noqa: C
         logging.info('%s successfully released, %s skipped, %s failed',
                      len(success), len(skipped), len(failed))
     return ret
-
-
-
