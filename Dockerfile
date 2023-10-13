@@ -3,5 +3,5 @@ RUN apt -y update && apt -y install python3-venv brz --no-install-recommends gnu
 ADD . /code
 RUN python3 -m venv /code && /code/bin/pip3 install /code keyring
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-ENTRYPOINT ["/code/bin/python3", "-m", "disperse"]
+ENTRYPOINT ["/code/bin/disperse"]
 CMD ["discover", "--try"]

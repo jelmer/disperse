@@ -1,16 +1,12 @@
 use breezyshim::tree::{MutableTree, Tree, WorkingTree};
 use std::error::Error;
 
-
-
 use std::path::Path;
 use std::process::Command;
 
-pub fn get_owned_crates(user: &str) -> Result<Vec<String>, Box<dyn Error>> {
-    let client = crates_io_api::SyncClient::new(
-        "disperse (jelmer@jelmer.uk)",
-        std::time::Duration::from_millis(1000),
-    )?;
+pub fn get_owned_crates(user: &str) -> Result<Vec<url::Url>, Box<dyn Error>> {
+    let client =
+        crates_io_api::SyncClient::new(crate::USER_AGENT, std::time::Duration::from_millis(1000))?;
 
     let user = client.user(user)?;
 
@@ -22,7 +18,8 @@ pub fn get_owned_crates(user: &str) -> Result<Vec<String>, Box<dyn Error>> {
         .crates
         .into_iter()
         .filter_map(|c| c.repository)
-        .collect::<Vec<String>>())
+        .map(|r| url::Url::parse(r.as_str()).unwrap())
+        .collect::<Vec<url::Url>>())
 }
 
 // Define a function to publish a Rust package using Cargo

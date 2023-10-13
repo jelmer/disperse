@@ -7,9 +7,14 @@ use std::path::Path;
 
 #[pyfunction]
 fn pypi_discover_urls(pypi_user: &str) -> PyResult<Vec<String>> {
-    disperse::python::pypi_discover_urls(pypi_user).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("discover_urls failed: {}", e))
-    })
+    disperse::python::pypi_discover_urls(pypi_user)
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "discover_urls failed: {}",
+                e
+            ))
+        })
+        .map(|urls| urls.into_iter().map(|url| url.to_string()).collect())
 }
 
 #[pyfunction]
@@ -66,9 +71,19 @@ fn unexpand_tag(template: &str, tag: &str) -> PyResult<Version> {
 
 #[pyfunction]
 fn get_owned_crates(user: &str) -> PyResult<Vec<String>> {
-    disperse::cargo::get_owned_crates(user).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("get_owned_crates failed: {}", e))
-    })
+    disperse::cargo::get_owned_crates(user)
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "get_owned_crates failed: {}",
+                e
+            ))
+        })
+        .map(|crates| {
+            crates
+                .into_iter()
+                .map(|crate_| crate_.to_string())
+                .collect()
+        })
 }
 
 #[pyfunction]
@@ -199,6 +214,19 @@ fn create_python_artifacts(tree: PyObject) -> PyResult<Vec<std::path::PathBuf>> 
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
+#[pyfunction]
+fn check_date(date: &str) -> PyResult<bool> {
+    Ok(disperse::news_file::check_date(date))
+}
+
+pyo3::import_exception!(disperse.news_file, OddVersion);
+
+#[pyfunction]
+fn check_version(version: &str) -> PyResult<bool> {
+    disperse::news_file::check_version(version)
+        .map_err(|e| OddVersion::new_err(format!("check_version failed: {}", e)))
+}
+
 #[pymodule]
 fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -223,5 +251,7 @@ fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(create_setup_py_artifacts))?;
     m.add_wrapped(wrap_pyfunction!(create_python_artifacts))?;
     m.add("UploadCommandFailed", py.get_type::<UploadCommandFailed>())?;
+    m.add_wrapped(wrap_pyfunction!(check_date))?;
+    m.add_wrapped(wrap_pyfunction!(check_version))?;
     Ok(())
 }

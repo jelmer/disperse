@@ -1,5 +1,7 @@
 pub mod cargo;
+pub mod config;
 pub mod manpage;
+pub mod news_file;
 pub mod project_config;
 pub mod python;
 pub mod version;
@@ -7,6 +9,8 @@ use breezyshim::branch::Branch;
 use log::warn;
 
 pub use version::Version;
+
+pub const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {

@@ -15,6 +15,12 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+__all__ = [
+    'NewsFile',
+    'check_date',
+    'check_version'
+]
+
 import re
 from datetime import datetime
 from typing import Optional, Tuple
@@ -23,6 +29,8 @@ from breezy.mutabletree import MutableTree
 from breezy.tree import Tree
 
 from . import NoUnreleasedChanges
+
+from ._disperse_rs import check_date, check_version
 
 
 class NewsFile:
@@ -112,22 +120,6 @@ class OddVersion(Exception):
 
     def __init__(self, version):
         self.version = version
-
-
-def check_version(v: str) -> bool:
-    """Returns whether the version is a placeholder."""
-    import re
-    if v == "UNRELEASED" or v == "%(version)s" or v == 'NEXT':
-        return True
-    if not re.fullmatch(r'[0-9\.]+', v):
-        raise OddVersion(v)
-    return False
-
-
-def check_date(d):
-    if d == "UNRELEASED" or d.startswith('NEXT '):
-        return True
-    return False
 
 
 def parse_version_line(line: bytes) -> Tuple[

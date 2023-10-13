@@ -16,10 +16,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 import logging
-import os
 import re
 import subprocess
-import sys
 from datetime import datetime
 from glob import glob
 from typing import List, Optional, Tuple, Callable
@@ -37,15 +35,13 @@ from breezy.transport import NoSuchFile
 from breezy.tree import Tree
 from breezy.urlutils import split_segment_parameters
 from breezy.workingtree import WorkingTree
-from prometheus_client import CollectorRegistry, Counter, push_to_gateway
+from prometheus_client import CollectorRegistry, Counter
 from silver_platter.workspace import Workspace
 
 from . import _disperse_rs
 from . import NoUnreleasedChanges, DistCreationFailed
 from .cargo import (
-    cargo_publish, update_version_in_cargo, find_version_in_cargo,
-    get_owned_crates)
-from .config import load_config
+    cargo_publish, update_version_in_cargo, find_version_in_cargo)
 from .project_config import read_project_with_fallback, ProjectConfig
 from .github import (GitHubStatusFailed, GitHubStatusPending,
                      check_gh_repo_action_status, get_github_repo,
@@ -57,7 +53,7 @@ from .launchpad import get_project as get_launchpad_project
 from .news_file import NewsFile, news_find_pending, OddVersion as OddNewsVersion
 from .python import (UploadCommandFailed,
                      create_python_artifacts, create_setup_py_artifacts,
-                     pypi_discover_urls, read_project_urls_from_setup_cfg,
+                     read_project_urls_from_setup_cfg,
                      read_project_urls_from_pyproject_toml,
                      upload_python_artifacts,
                      find_version_in_pyproject_toml, update_version_in_pyproject_toml,
@@ -871,121 +867,3 @@ def release_many(urls, *, force=False, dry_run=False, discover=False,  # noqa: C
         logging.info('%s successfully released, %s skipped, %s failed',
                      len(success), len(skipped), len(failed))
     return ret
-
-
-def main(argv=None):  # noqa: C901
-    import argparse
-
-    parser = argparse.ArgumentParser("disperse")
-    parser.add_argument(
-        "--debug", action="store_true")
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="Dry run, don't actually create a release.")
-    parser.add_argument(
-        "--prometheus", type=str,
-        help="Prometheus pushgateway to export to")
-    subparsers = parser.add_subparsers(dest="command")
-    release_parser = subparsers.add_parser("release")
-    release_parser.add_argument("url", nargs="*", type=str)
-    release_parser.add_argument(
-        "--new-version", type=str, help='New version to release.')
-    release_parser.add_argument(
-        "--ignore-ci", action="store_true",
-        help='Release, even if the CI is not passing.')
-    discover_parser = subparsers.add_parser("discover")
-    default_pypi_username = os.environ.get('PYPI_USERNAME', '').split(',')
-    default_pypi_username.remove('')
-    default_crates_io_username = os.environ.get('CRATES_IO_USERNAME', '')
-    discover_parser.add_argument(
-        "--pypi-user", type=str, action="append",
-        help="Pypi users to upload for",
-        default=default_pypi_username or None)
-    discover_parser.add_argument(
-        "--crates-io-user", type=str, action="append",
-        help="Crates.io users to upload for",
-        default=default_crates_io_username or None)
-    discover_parser.add_argument(
-        "--force", action="store_true",
-        help='Force a new release, even if timeout is not reached.')
-    discover_parser.add_argument(
-        "--info", action="store_true",
-        help='Display status only, do not create new releases.')
-    discover_parser.add_argument(
-        "--try", action="store_true",
-        help="Do not exit with non-zero if projects failed to be released.")
-    validate_parser = subparsers.add_parser("validate")
-    validate_parser.add_argument("path", type=str, nargs="?", default=".")
-    info_parser = subparsers.add_parser("info")
-    info_parser.add_argument("path", type=str, nargs="?", default=".")
-    args = parser.parse_args()
-
-    os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
-
-    if args.debug:
-        level = logging.DEBUG
-    else:
-        level = logging.INFO
-
-    logging.basicConfig(level=level, format='%(message)s')
-
-    config = load_config()
-
-    if args.command == "release":
-        if args.url:
-            urls = args.url
-        else:
-            urls = ["."]
-        return release_many(urls, force=True, dry_run=args.dry_run,
-                            discover=False, new_version=args.new_version,
-                            ignore_ci=args.ignore_ci)
-    elif args.command == "discover":
-        pypi_usernames = args.pypi_user
-        if pypi_usernames is None:
-            pypi_config = config.get('pypi', {})
-            username = pypi_config.get('username')
-            if username:
-                pypi_usernames = [username]
-
-        crates_io_user = args.crates_io_user
-        if crates_io_user is None:
-            crates_io_config = config.get('crates.io', {})
-            username = crates_io_config.get('username')
-            if username:
-                pass
-
-        urls = []
-        for pypi_username in pypi_usernames:
-            urls.extend(pypi_discover_urls(pypi_username))
-        if crates_io_user is not None:
-            urls.extend(get_owned_crates(crates_io_user))
-        repositories = config.get('repositories', {})
-        if repositories:
-            for url in repositories.get('owned', []):
-                urls.append(url)
-        if not urls:
-            logging.error(
-                "No projects found. Specify --pypi-username or PYPI_USERNAME?")
-            return 0
-        if args.info:
-            ret = info_many(urls)
-        else:
-            ret = release_many(
-                urls, force=args.force, dry_run=args.dry_run, discover=True)
-        if args.prometheus:
-            push_to_gateway(args.prometheus, job='disperse',
-                            registry=registry)
-        if getattr(args, 'try'):
-            return 0
-        return ret
-    elif args.command == "validate":
-        return validate_config(args.path)
-    elif args.command == "info":
-        wt = WorkingTree.open(args.path)
-        return info(wt)
-    else:
-        parser.print_usage()
-
-
-if __name__ == "__main__":
-    sys.exit(main())

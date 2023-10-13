@@ -1,6 +1,6 @@
 use crate::Version;
 use breezyshim::tree::{Tree, WorkingTree};
-use reqwest::header;
+
 use serde_json::Value;
 
 use std::error::Error;
@@ -57,23 +57,22 @@ pub fn find_version_in_pyproject_toml(tree: &dyn Tree) -> Option<Version> {
         .map(|v| Version(v.to_string()))
 }
 
-pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Box<dyn std::error::Error>> {
     let request = Request::new("user_packages").arg(pypi_user);
 
     let response = request.call_url("https://pypi.org/pypi")?;
 
     let mut ret = vec![];
 
+    let client = reqwest::blocking::ClientBuilder::new()
+        .user_agent(crate::USER_AGENT)
+        .build()?;
+
     for package in response.as_array().unwrap().iter() {
         let package_str = package.as_array().unwrap()[1].as_str().unwrap();
 
-        let version_string = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
         let req_url = format!("https://pypi.org/pypi/{}/json", package_str);
-        let client = reqwest::blocking::Client::new();
-        let resp = client
-            .get(&req_url)
-            .header(header::USER_AGENT, format!("disperse/{}", version_string))
-            .send()?;
+        let resp = client.get(&req_url).send()?;
 
         let data: Value = resp.json()?;
         if let Some(project_urls) = data["info"]["project_urls"].as_object() {
@@ -83,8 +82,11 @@ pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<String>, Box<dyn std::e
             }
 
             for (key, url) in project_urls.iter() {
+                if url == "UNKNOWN" {
+                    continue;
+                }
                 if key == "Repository" {
-                    ret.push(url.as_str().unwrap().to_string());
+                    ret.push(url.as_str().unwrap().parse()?);
                     break;
                 }
                 let parsed_url = match Url::parse(url.as_str().unwrap()) {
@@ -97,7 +99,7 @@ pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<String>, Box<dyn std::e
                 if parsed_url.host_str() == Some("github.com")
                     && parsed_url.path().trim_matches('/').matches('/').count() == 1
                 {
-                    ret.push(url.as_str().unwrap().to_string());
+                    ret.push(url.as_str().unwrap().parse()?);
                     break;
                 }
             }
@@ -187,6 +189,9 @@ pub fn read_project_urls_from_pyproject_toml(
     let mut result = vec![];
     for key in &["GitHub", "Source Code", "Repository"] {
         if let Some(url) = project_urls.get(key).and_then(|v| v.as_str()) {
+            if url == "UNKNOWN" {
+                continue;
+            }
             let parsed_url = match url::Url::parse(url) {
                 Ok(v) => v,
                 Err(e) => {
