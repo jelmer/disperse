@@ -290,6 +290,20 @@ fn news_find_pending(tree: PyObject, path: std::path::PathBuf) -> PyResult<Optio
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
+create_exception!(
+    disperse.news_file,
+    PendingExists,
+    pyo3::exceptions::PyRuntimeError
+);
+
+#[pyfunction]
+fn news_add_pending(tree: PyObject, path: std::path::PathBuf, version: Version) -> PyResult<()> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+
+    disperse::news_file::news_add_pending(&tree, path.as_path(), &version)
+        .map_err(|e| PendingExists::new_err(format!("news_add_pending failed: {}", e)))
+}
+
 #[pymodule]
 fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -322,5 +336,7 @@ fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(reverse_version))?;
     m.add_wrapped(wrap_pyfunction!(update_version_in_file))?;
     m.add_wrapped(wrap_pyfunction!(news_find_pending))?;
+    m.add("PendingExists", py.get_type::<PendingExists>())?;
+    m.add_wrapped(wrap_pyfunction!(news_add_pending))?;
     Ok(())
 }

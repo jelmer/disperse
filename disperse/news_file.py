@@ -26,11 +26,9 @@ import re
 from datetime import datetime
 from typing import Optional, Tuple
 
-from breezy.mutabletree import MutableTree
-
 from . import NoUnreleasedChanges
 
-from ._disperse_rs import check_date, check_version, news_find_pending
+from ._disperse_rs import check_date, check_version, news_find_pending, news_add_pending
 
 
 class NewsFile:
@@ -79,25 +77,6 @@ def news_mark_released(
         'date': release_date.strftime("%Y-%m-%d")}).encode() + b'\n'
     tree.put_file_bytes_non_atomic(path, b"".join(lines))
     return ''.join(change_lines)
-
-
-class PendingExists(Exception):
-    """Last item is already pending."""
-
-
-def news_add_pending(tree: MutableTree, path: str, new_version: str):
-    assert new_version
-    lines = tree.get_file_lines(path)
-    i = skip_header(lines)
-    unused_version, unused_date, line_format, pending = (
-        parse_version_line(lines[i]))
-    if pending:
-        raise PendingExists(unused_version, unused_date)
-    lines.insert(i, b'\n')
-    lines.insert(i, (line_format % {
-        'version': new_version,
-        'date': 'UNRELEASED'}).encode() + b"\n")
-    tree.put_file_bytes_non_atomic(path, b"".join(lines))
 
 
 def skip_header(lines):

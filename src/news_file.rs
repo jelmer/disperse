@@ -1,3 +1,4 @@
+use crate::Version;
 use lazy_regex::regex_is_match;
 
 #[derive(Debug)]
@@ -27,15 +28,17 @@ pub fn check_version(v: &str) -> Result<bool, OddVersion> {
     Ok(false)
 }
 
-pub fn expand_template(template: &str, version: &str, date: &str) -> String {
+pub fn expand_template(template: &str, version: &Version, date: &str) -> String {
     template
-        .replace("%(version)s", version)
+        .replace("%(version)s", version.to_string().as_str())
         .replace("%(date)s", date)
 }
 
-pub fn skip_header<'a>(lines: &mut impl Iterator<Item = &'a [u8]>) {
+pub fn skip_header<'a>(lines: &mut impl Iterator<Item = &'a [u8]>) -> usize {
     let mut iter = lines.peekable();
+    let mut i: isize = -1;
     while let Some(line) = iter.peek() {
+        i += 1;
         if line.starts_with(b"Changelog for ") {
             continue;
         }
@@ -50,7 +53,27 @@ pub fn skip_header<'a>(lines: &mut impl Iterator<Item = &'a [u8]>) {
         }
         break;
     }
+    i as usize
 }
+
+#[derive(Debug)]
+struct PendingExists {
+    last_version: Version,
+    last_date: chrono::DateTime<chrono::Utc>,
+}
+
+impl std::fmt::Display for PendingExists {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "Pending version already exists: {} {}",
+            self.last_version.to_string(),
+            self.last_date.to_rfc3339()
+        )
+    }
+}
+
+impl std::error::Error for PendingExists {}
 
 /// Find pending version in news file.
 ///
@@ -156,4 +179,34 @@ fn parse_version_line(
         "%(version)s".to_string(),
         pending,
     ))
+}
+
+pub fn news_add_pending(
+    tree: &dyn breezyshim::tree::MutableTree,
+    path: &std::path::Path,
+    new_version: &crate::Version,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut lines = tree.get_file_lines(path)?;
+    let mut line_iter = lines.iter().map(|x| x.as_slice());
+    let i = skip_header(&mut line_iter);
+
+    let line = String::from_utf8(line_iter.next().unwrap().to_vec())?;
+
+    let (last_version, last_date, line_format, pending) = parse_version_line(line.as_str())?;
+    if pending {
+        return Err(Box::new(PendingExists {
+            last_version: last_version.unwrap().parse()?,
+            last_date: last_date.unwrap().parse()?,
+        }));
+    }
+    lines.insert(i, b"\n".to_vec());
+
+    let mut new_version_line = expand_template(line_format.as_str(), new_version, "UNRELEASED")
+        .as_bytes()
+        .to_vec();
+    new_version_line.push(b'\n');
+
+    lines.insert(i, new_version_line);
+    tree.put_file_bytes_non_atomic(path, lines.concat().as_slice())?;
+    Ok(())
 }
