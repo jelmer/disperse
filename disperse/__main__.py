@@ -193,28 +193,7 @@ def find_pending_version(tree: Tree, cfg) -> Optional[str]:
 version_line_re = _disperse_rs.version_line_re
 expand_version_vars = _disperse_rs.expand_version_vars
 
-
-def update_version_in_file(
-        tree: MutableTree, update_cfg, new_version: str, status: str) -> None:
-    with tree.get_file(update_cfg.path) as f:
-        lines = list(f.readlines())
-    matches = 0
-    if not update_cfg.match:
-        r = version_line_re(update_cfg.new_line)
-    else:
-        r = re.compile(update_cfg.match.encode())
-    for i, line in enumerate(lines):
-        if not r.match(line):
-            continue
-        new_line = expand_version_vars(
-            update_cfg.new_line, new_version, status).encode()
-        lines[i] = new_line + b"\n"
-        matches += 1
-    if matches == 0:
-        raise Exception(
-            f"No matches for {update_cfg.match} in {update_cfg.path}")
-    tree.put_file_bytes_non_atomic(update_cfg.path, b"".join(lines))
-
+update_version_in_file = _disperse_rs.update_version_in_file
 
 update_version_in_manpage = _disperse_rs.update_version_in_manpage
 
@@ -441,7 +420,7 @@ def release_project(   # noqa: C901
             news_file = None
             release_changes = None
         for update_version in cfg.update_version:
-            update_version_in_file(ws.local_tree, update_version, new_version, "final")
+            update_version_in_file(ws.local_tree, update_version.path, update_version.new_line, update_version.match, new_version, "final")
         for update_manpage in cfg.update_manpages:
             for path in glob(ws.local_tree.abspath(update_manpage)):
                 update_version_in_manpage(

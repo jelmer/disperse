@@ -156,3 +156,42 @@ pub fn reverse_version(new_line: &str, lines: &[&str]) -> (Option<Version>, Opti
     }
     (None, None)
 }
+
+pub fn update_version_in_file(
+    tree: &dyn breezyshim::tree::MutableTree,
+    path: &std::path::Path,
+    new_line: &str,
+    r#match: Option<&str>,
+    new_version: &Version,
+    status: Status,
+) -> Result<(), String> {
+    let mut lines = tree.get_file_lines(path).unwrap();
+    let mut matches = 0;
+    let r = if let Some(m) = r#match {
+        regex::Regex::new(m).unwrap()
+    } else {
+        version_line_re(new_line)
+    };
+    for oline in lines.iter_mut() {
+        let line = match String::from_utf8(oline.to_vec()) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if !r.is_match(line.as_str()) {
+            continue;
+        }
+        let new_line = expand_version_vars(line.as_str(), new_version, status).unwrap();
+        *oline = vec![new_line, "\n".to_string()].concat().into_bytes();
+        matches += 1;
+    }
+    if matches == 0 {
+        return Err(format!(
+            "No matches for {} in {}",
+            r.as_str(),
+            path.display()
+        ));
+    }
+    tree.put_file_bytes_non_atomic(path, lines.concat().as_slice())
+        .unwrap();
+    Ok(())
+}

@@ -260,6 +260,28 @@ fn reverse_version(
     disperse::custom::reverse_version(new_line, lines.as_slice())
 }
 
+#[pyfunction]
+fn update_version_in_file(
+    tree: PyObject,
+    path: std::path::PathBuf,
+    new_line: &str,
+    r#match: Option<&str>,
+    new_version: Version,
+    status: disperse::Status,
+) -> PyResult<()> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+
+    disperse::custom::update_version_in_file(
+        &tree,
+        path.as_path(),
+        new_line,
+        r#match,
+        &new_version,
+        status,
+    )
+    .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+}
+
 #[pymodule]
 fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -290,5 +312,6 @@ fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(expand_version_vars))?;
     m.add_wrapped(wrap_pyfunction!(extract_version))?;
     m.add_wrapped(wrap_pyfunction!(reverse_version))?;
+    m.add_wrapped(wrap_pyfunction!(update_version_in_file))?;
     Ok(())
 }
