@@ -50,10 +50,6 @@ content-type = "text/markdown"
 Homepage = "https://github.com/jelmer/disperse"
 Repository = "https://github.com/jelmer/disperse.git"
 
-[project.scripts]
-disperse = "disperse.__main__:main"
-releaser = "disperse.__main__:main"
-
 [tool.setuptools]
 packages = ["disperse"]
 include-package-data = false
