@@ -219,12 +219,106 @@ fn check_date(date: &str) -> PyResult<bool> {
     Ok(disperse::news_file::check_date(date))
 }
 
-pyo3::import_exception!(disperse.news_file, OddVersion);
+create_exception!(
+    disperse.news_file,
+    OddVersion,
+    pyo3::exceptions::PyRuntimeError
+);
 
 #[pyfunction]
 fn check_version(version: &str) -> PyResult<bool> {
     disperse::news_file::check_version(version)
         .map_err(|e| OddVersion::new_err(format!("check_version failed: {}", e)))
+}
+
+#[pyfunction]
+fn version_line_re(py: Python, new_line: &str) -> PyObject {
+    let re = disperse::custom::version_line_re(new_line);
+
+    let m = py.import("re").unwrap();
+    m.call_method1("compile", (re.as_str(),))
+        .unwrap()
+        .to_object(py)
+}
+
+#[pyfunction]
+fn expand_version_vars(
+    text: &str,
+    new_version: Version,
+    status: disperse::Status,
+) -> PyResult<String> {
+    disperse::custom::expand_version_vars(text, &new_version, status)
+        .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+}
+
+#[pyfunction]
+fn extract_version(text: &str) -> PyResult<(Option<Version>, Option<disperse::Status>)> {
+    Ok(disperse::custom::extract_version(text))
+}
+
+#[pyfunction]
+fn reverse_version(
+    new_line: &str,
+    lines: Vec<&str>,
+) -> (Option<Version>, Option<disperse::Status>) {
+    disperse::custom::reverse_version(new_line, lines.as_slice())
+}
+
+#[pyfunction]
+fn update_version_in_file(
+    tree: PyObject,
+    path: std::path::PathBuf,
+    new_line: &str,
+    r#match: Option<&str>,
+    new_version: Version,
+    status: disperse::Status,
+) -> PyResult<()> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+
+    disperse::custom::update_version_in_file(
+        &tree,
+        path.as_path(),
+        new_line,
+        r#match,
+        &new_version,
+        status,
+    )
+    .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+}
+
+#[pyfunction]
+fn news_find_pending(tree: PyObject, path: std::path::PathBuf) -> PyResult<Option<String>> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+
+    disperse::news_file::news_find_pending(&tree, path.as_path())
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+create_exception!(
+    disperse.news_file,
+    PendingExists,
+    pyo3::exceptions::PyRuntimeError
+);
+
+#[pyfunction]
+fn news_add_pending(tree: PyObject, path: std::path::PathBuf, version: Version) -> PyResult<()> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+
+    disperse::news_file::news_add_pending(&tree, path.as_path(), &version)
+        .map_err(|e| PendingExists::new_err(format!("news_add_pending failed: {}", e)))
+}
+
+#[pyfunction]
+fn news_mark_released(
+    tree: PyObject,
+    path: std::path::PathBuf,
+    version: Version,
+    release_date: chrono::DateTime<chrono::Utc>,
+) -> PyResult<String> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+
+    disperse::news_file::news_mark_released(&tree, path.as_path(), &version, &release_date)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 #[pymodule]
@@ -253,5 +347,15 @@ fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add("UploadCommandFailed", py.get_type::<UploadCommandFailed>())?;
     m.add_wrapped(wrap_pyfunction!(check_date))?;
     m.add_wrapped(wrap_pyfunction!(check_version))?;
+    m.add_wrapped(wrap_pyfunction!(version_line_re))?;
+    m.add_wrapped(wrap_pyfunction!(expand_version_vars))?;
+    m.add_wrapped(wrap_pyfunction!(extract_version))?;
+    m.add_wrapped(wrap_pyfunction!(reverse_version))?;
+    m.add_wrapped(wrap_pyfunction!(update_version_in_file))?;
+    m.add_wrapped(wrap_pyfunction!(news_find_pending))?;
+    m.add("PendingExists", py.get_type::<PendingExists>())?;
+    m.add_wrapped(wrap_pyfunction!(news_add_pending))?;
+    m.add_wrapped(wrap_pyfunction!(news_mark_released))?;
+    m.add("OddVersion", py.get_type::<OddVersion>())?;
     Ok(())
 }

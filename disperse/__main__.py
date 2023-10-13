@@ -20,7 +20,7 @@ import re
 import subprocess
 from datetime import datetime
 from glob import glob
-from typing import List, Optional, Tuple, Callable
+from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
 import breezy.bzr  # noqa: F401
@@ -29,7 +29,6 @@ import breezy.plugins.launchpad  # noqa: F401
 from breezy.branch import Branch
 from breezy.errors import NoSuchTag
 from breezy.git.remote import ProtectedBranchHookDeclined
-from breezy.mutabletree import MutableTree
 from breezy.revision import NULL_REVISION
 from breezy.transport import NoSuchFile
 from breezy.tree import Tree
@@ -185,72 +184,15 @@ def find_pending_version(tree: Tree, cfg) -> Optional[str]:
         try:
             return news_find_pending(tree, cfg.news_file)
         except OddNewsVersion as e:
-            raise OddPendingVersion(e.version) from e
+            raise OddPendingVersion(e.args[0]) from e
     else:
         raise NotImplementedError
 
 
-def _status_tupled_version(v, s):
-    return "(%s)" % ", ".join(v.split(".") + [repr(s), '0'])
+version_line_re = _disperse_rs.version_line_re
+expand_version_vars = _disperse_rs.expand_version_vars
 
-
-def _version_part(v, i):
-    parts = v.split(".")
-    if len(parts) <= i:
-        return None
-    return parts[i]
-
-
-version_variables: dict[str, Callable[[str, Optional[str]], str]] = {
-    'TUPLED_VERSION': lambda v, s: "(%s)" % ", ".join(v.split(".")),
-    'STATUS_TUPLED_VERSION': _status_tupled_version,
-    'VERSION': lambda v, s: v,
-    'MAJOR_VERSION': lambda v, s: _version_part(v, 0),
-    'MINOR_VERSION': lambda v, s: _version_part(v, 1),
-    'MICRO_VERSION': lambda v, s: _version_part(v, 2),
-}
-
-
-def _version_line_re(new_line: str) -> re.Pattern:
-    ps = []
-    ver_match = '|'.join([f'\\${k}' for k in version_variables])
-    for p in re.split(r'(' + ver_match + r')', new_line):
-        if p and p[0] == '$' and p[1:] in version_variables:
-            ps.append('(?P<' + p[1:].lower() + '>.*)')
-        else:
-            ps.append(re.escape(p))
-
-    return re.compile(''.join(ps).encode())
-
-
-def update_version_in_file(
-        tree: MutableTree, update_cfg, new_version: str, status: str) -> None:
-    with tree.get_file(update_cfg.path) as f:
-        lines = list(f.readlines())
-    matches = 0
-    if not update_cfg.match:
-        r = _version_line_re(update_cfg.new_line)
-    else:
-        r = re.compile(update_cfg.match.encode())
-    for i, line in enumerate(lines):
-        if not r.match(line):
-            continue
-        new_line = update_cfg.new_line.encode()
-        for k, vfn in version_variables.items():
-            v = vfn(new_version, status)
-            if v is not None:
-                new_line = new_line.replace(b"$" + k.encode(), v.encode())
-            else:
-                if (b'$' + k.encode()) in new_line:
-                    raise ValueError(
-                        f'no expansion for variable ${k} used in {new_line}')
-        lines[i] = new_line + b"\n"
-        matches += 1
-    if matches == 0:
-        raise Exception(
-            f"No matches for {update_cfg.match} in {update_cfg.path}")
-    tree.put_file_bytes_non_atomic(update_cfg.path, b"".join(lines))
-
+update_version_in_file = _disperse_rs.update_version_in_file
 
 update_version_in_manpage = _disperse_rs.update_version_in_manpage
 
@@ -264,32 +206,10 @@ def check_release_age(branch: Branch, cfg: ProjectConfig, now: datetime) -> None
             raise RecentCommits(time_delta.days, cfg.timeout_days)
 
 
-def reverse_version(
-        update_cfg, lines: List[bytes]) -> Tuple[Optional[str], Optional[str]]:
-    r = _version_line_re(update_cfg.new_line)
-    for line in lines:
-        m = r.match(line)
-        if not m:
-            continue
-        try:
-            return m.group('version').decode(), None
-        except IndexError:
-            pass
-        try:
-            return (
-                '.'.join(map(str, eval(m.group('tupled_version').decode()))),
-                None)
-        except IndexError:
-            pass
-        try:
-            val = eval(m.group('status_tupled_version').decode())
-            return '.'.join(map(str, val[:-2])), val[-2]
-        except IndexError:
-            pass
-    return None, None
+reverse_version = _disperse_rs.reverse_version
 
 
-def find_last_version(tree: WorkingTree, cfg) -> Tuple[str, Optional[str]]:
+def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
     if tree.has_filename("Cargo.toml"):
         logging.debug("Reading version from Cargo.toml")
         return find_version_in_cargo(tree), None
@@ -309,7 +229,7 @@ def find_last_version(tree: WorkingTree, cfg) -> Tuple[str, Optional[str]]:
             logging.debug("Reading version from %s", update_cfg.path)
             with tree.get_file(update_cfg.path) as f:
                 lines = list(f.readlines())
-            v, s = reverse_version(update_cfg, lines)
+            v, s = reverse_version(update_cfg.new_line, lines)
             if v:
                 return v, s
         raise KeyError
@@ -499,7 +419,7 @@ def release_project(   # noqa: C901
             news_file = None
             release_changes = None
         for update_version in cfg.update_version:
-            update_version_in_file(ws.local_tree, update_version, new_version, "final")
+            update_version_in_file(ws.local_tree, update_version.path, update_version.new_line, update_version.match, new_version, "final")
         for update_manpage in cfg.update_manpages:
             for path in glob(ws.local_tree.abspath(update_manpage)):
                 update_version_in_manpage(
@@ -652,47 +572,12 @@ def release_project(   # noqa: C901
     return name, new_version
 
 
-def info_many(urls):
-    from breezy.controldir import ControlDir
-    try:
-        from breezy.errors import ConnectionError  # type: ignore
-    except ImportError:
-        pass
-    from breezy.errors import UnsupportedOperation
-
-
-    ret = 0
-
-    for url in urls:
-        if url != ".":
-            logging.info('Processing %s', url)
-
-        try:
-            local_wt, branch = ControlDir.open_tree_or_branch(url)
-        except ConnectionError as e:
-            ret = 1
-            logging.error('Unable to connect to %s: %s', url, e)
-            continue
-
-        if local_wt is not None:
-            info(local_wt)
-        else:
-            try:
-                info(branch.basis_tree())
-            except UnsupportedOperation:
-                with Workspace(branch) as ws:
-                    info(ws.local_tree)
-
-    return ret
-
-
 find_last_version_in_tags = _disperse_rs.find_last_version_in_tags
 
 
-def info(wt):
-
+def info(tree, branch):
     try:
-        cfg = read_project_with_fallback(wt)
+        cfg = read_project_with_fallback(tree)
     except NoSuchFile:
         logging.info("No configuration found")
         return
@@ -701,41 +586,41 @@ def info(wt):
 
     if cfg.name:
         name = cfg.name
-    elif wt.has_filename('pyproject.toml'):
-        name = find_name_in_pyproject_toml(wt)
+    elif tree.has_filename('pyproject.toml'):
+        name = find_name_in_pyproject_toml(tree)
     else:
         name = None
 
     logging.info("Project: %s", name)
 
     try:
-        last_version, last_version_status = find_last_version(wt, cfg)
+        last_version, last_version_status = find_last_version(tree, cfg)
     except NotImplementedError:
-        last_version, last_version_status = find_last_version_in_tags(wt.branch, cfg)
+        last_version, last_version_status = find_last_version_in_tags(branch, cfg.tag_name)
     logging.info("Last release: %s", last_version)
     if last_version_status:
         logging.info("  status: %s", last_version_status)
 
     tag_name = expand_tag(cfg.tag_name, last_version)
     try:
-        release_revid = wt.branch.tags.lookup_tag(tag_name)
+        release_revid = branch.tags.lookup_tag(tag_name)
     except NoSuchTag:
         logging.info("  tag %s for previous release not found", tag_name)
     else:
         logging.info("  tag name: %s (%s)", tag_name, release_revid.decode('utf-8'))
 
-        rev = wt.branch.repository.get_revision(release_revid)
+        rev = branch.repository.get_revision(release_revid)
         logging.info("  date: %s", datetime.fromtimestamp(rev.timestamp))
 
-        if rev.revision_id != wt.branch.last_revision():
-            graph = wt.branch.repository.get_graph()
+        if rev.revision_id != branch.last_revision():
+            graph = branch.repository.get_graph()
             missing = list(
                 graph.iter_lefthand_ancestry(
-                    wt.branch.last_revision(), [release_revid]))
+                    branch.last_revision(), [release_revid]))
             if missing[-1] == NULL_REVISION:
                 logging.info("  last release not found in ancestry")
             else:
-                first = wt.branch.repository.get_revision(missing[-1])
+                first = branch.repository.get_revision(missing[-1])
                 first_age = datetime.now() - datetime.fromtimestamp(first.timestamp)
                 logging.info("  %d revisions since last release. First is %d days old.",
                              len(missing), first_age.days)
@@ -743,7 +628,7 @@ def info(wt):
             logging.info("  no revisions since last release")
 
     try:
-        new_version = find_pending_version(wt, cfg)
+        new_version = find_pending_version(tree, cfg)
     except NotImplementedError:
         logging.info("No pending version found; would use %s",
                      increase_version(last_version, -1))
@@ -770,7 +655,7 @@ def validate_config(path):
     if cfg.update_version:
         for update_cfg in cfg.update_version:
             if not update_cfg.match:
-                r = _version_line_re(update_cfg.new_line)
+                r = version_line_re(update_cfg.new_line)
             else:
                 r = re.compile(update_cfg.match.encode())
             with wt.get_file(update_cfg.path) as f:

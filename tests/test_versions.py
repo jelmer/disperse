@@ -16,10 +16,10 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 
-from disperse.__main__ import _version_line_re
+from disperse.__main__ import version_line_re
 
 
 def test_version_line_re():
-    assert _version_line_re(
+    assert version_line_re(
         "__version__ = $TUPLED_VERSION").pattern == \
-        b'__version__\\ =\\ (?P<tupled_version>.*)'
+        '__version__ = (?P<tupled_version>.*)'

@@ -51,8 +51,10 @@ pub fn update_version_in_manpage(
             let re = Regex::new(r)?;
             if let Some(captures) = re.captures(&args[4]) {
                 let version_str = captures.get(0).unwrap().as_str();
-                let formatted_version =
-                    re.replace(version_str, f.replace("$VERSION", new_version.0.as_str()));
+                let formatted_version = re.replace(
+                    version_str,
+                    f.replace("$VERSION", new_version.to_string().as_str()),
+                );
                 args[4] = formatted_version.to_string();
                 break;
             }
