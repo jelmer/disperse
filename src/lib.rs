@@ -1,6 +1,7 @@
 pub mod cargo;
 pub mod config;
 pub mod custom;
+pub mod github;
 pub mod manpage;
 pub mod news_file;
 pub mod project_config;
