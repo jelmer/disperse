@@ -53,6 +53,9 @@ impl Version {
     }
 
     pub fn from_tupled(text: &str) -> Result<(Self, Option<crate::Status>), String> {
+        if text.starts_with('(') && text.ends_with(')') {
+            return Self::from_tupled(&text[1..text.len() - 1]);
+        }
         let parts: Vec<&str> = text.split(',').collect();
         let major = parts[0].parse::<i32>().unwrap();
         let minor = parts.get(1).and_then(|x| x.parse::<i32>().ok());
