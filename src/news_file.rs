@@ -1,4 +1,5 @@
 use crate::Version;
+use breezyshim::tree::MutableTree;
 use lazy_regex::regex_is_match;
 
 #[derive(Debug)]
@@ -209,4 +210,58 @@ pub fn news_add_pending(
     lines.insert(i, new_version_line);
     tree.put_file_bytes_non_atomic(path, lines.concat().as_slice())?;
     Ok(())
+}
+
+#[derive(Debug)]
+pub struct NoUnreleasedChanges();
+
+impl std::fmt::Display for NoUnreleasedChanges {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "No unreleased changes")
+    }
+}
+
+impl std::error::Error for NoUnreleasedChanges {}
+
+pub fn news_mark_released(
+    tree: &dyn MutableTree,
+    path: &std::path::Path,
+    expected_version: &Version,
+    release_date: &chrono::DateTime<chrono::Utc>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut lines = tree.get_file_lines(path)?;
+    let mut iter = lines.iter().map(|x| x.as_slice());
+    let i = skip_header(&mut iter);
+    let line = String::from_utf8(iter.next().unwrap().to_vec())?;
+    let (version, _date, line_format, pending) = parse_version_line(line.as_str())?;
+    if !pending {
+        return Err(Box::new(NoUnreleasedChanges()));
+    }
+    if let Some(version) = version {
+        assert_eq!(
+            expected_version.to_string().as_str(),
+            version,
+            "unexpected version: {} != {}",
+            expected_version.to_string(),
+            version
+        );
+    }
+    let mut change_lines = Vec::new();
+    for line in lines[i + 1..].iter() {
+        let line = String::from_utf8(line.to_vec())?;
+        if line.trim().is_empty() || line.starts_with(' ') || line.starts_with('\t') {
+            change_lines.push(line);
+        } else {
+            break;
+        }
+    }
+    let new_line = expand_template(
+        line_format.as_str(),
+        expected_version,
+        release_date.format("%Y-%m-%d").to_string().as_str(),
+    ) + "\n";
+    lines[i] = new_line.into_bytes();
+
+    tree.put_file_bytes_non_atomic(path, lines.concat().as_slice())?;
+    Ok(change_lines.concat())
 }

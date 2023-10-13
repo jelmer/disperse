@@ -184,7 +184,7 @@ def find_pending_version(tree: Tree, cfg) -> Optional[str]:
         try:
             return news_find_pending(tree, cfg.news_file)
         except OddNewsVersion as e:
-            raise OddPendingVersion(e.version) from e
+            raise OddPendingVersion(e.args[0]) from e
     else:
         raise NotImplementedError
 

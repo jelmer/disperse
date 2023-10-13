@@ -219,7 +219,11 @@ fn check_date(date: &str) -> PyResult<bool> {
     Ok(disperse::news_file::check_date(date))
 }
 
-pyo3::import_exception!(disperse.news_file, OddVersion);
+create_exception!(
+    disperse.news_file,
+    OddVersion,
+    pyo3::exceptions::PyRuntimeError
+);
 
 #[pyfunction]
 fn check_version(version: &str) -> PyResult<bool> {
@@ -304,6 +308,19 @@ fn news_add_pending(tree: PyObject, path: std::path::PathBuf, version: Version) 
         .map_err(|e| PendingExists::new_err(format!("news_add_pending failed: {}", e)))
 }
 
+#[pyfunction]
+fn news_mark_released(
+    tree: PyObject,
+    path: std::path::PathBuf,
+    version: Version,
+    release_date: chrono::DateTime<chrono::Utc>,
+) -> PyResult<String> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+
+    disperse::news_file::news_mark_released(&tree, path.as_path(), &version, &release_date)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
 #[pymodule]
 fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -338,5 +355,7 @@ fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(news_find_pending))?;
     m.add("PendingExists", py.get_type::<PendingExists>())?;
     m.add_wrapped(wrap_pyfunction!(news_add_pending))?;
+    m.add_wrapped(wrap_pyfunction!(news_mark_released))?;
+    m.add("OddVersion", py.get_type::<OddVersion>())?;
     Ok(())
 }
