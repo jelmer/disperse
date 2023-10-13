@@ -493,6 +493,7 @@ dependencies = [
  "crates_io_api",
  "env_logger",
  "lazy-regex",
+ "lazy_static",
  "log",
  "maplit",
  "prometheus",

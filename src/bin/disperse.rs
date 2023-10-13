@@ -1,7 +1,6 @@
 use breezyshim::tree::Tree;
 use clap::Parser;
 use maplit::hashmap;
-use pyo3::prelude::*;
 use std::io::Write;
 use url::Url;
 
@@ -145,7 +144,7 @@ fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
                 Ok(_) => {
                     std::mem::drop(lock);
                 }
-                Err(e) => {
+                Err(_e) => {
                     // TODO(jelmer): Just handle UnsupporedOperation
                     let ws = silver_platter::workspace::Workspace::from_url(
                         url,

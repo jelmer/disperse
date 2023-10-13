@@ -2,12 +2,10 @@ use crate::Version;
 use breezyshim::tree::{Tree, WorkingTree};
 
 use serde_json::Value;
-
 use std::error::Error;
-
 use std::path::Path;
-
 use std::process::Command;
+use std::str::FromStr;
 use url::Url;
 use xmlrpc::Request;
 
@@ -36,7 +34,7 @@ pub fn update_version_in_pyproject_toml(
             return Ok(false);
         }
 
-        project["version"] = toml_edit::value(&new_version.0);
+        project["version"] = toml_edit::value(new_version.to_string());
     }
 
     Ok(true)
@@ -54,7 +52,7 @@ pub fn find_version_in_pyproject_toml(tree: &dyn Tree) -> Option<Version> {
         .and_then(|v| v.as_table())
         .and_then(|v| v.get("version"))
         .and_then(|v| v.as_str())
-        .map(|v| Version(v.to_string()))
+        .map(|v| Version::from_str(v).unwrap())
 }
 
 pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Box<dyn std::error::Error>> {
@@ -159,13 +157,15 @@ pub fn find_hatch_vcs_version(tree: &WorkingTree) -> Option<Version> {
         return None;
     }
 
-    Some(Version(
-        String::from_utf8_lossy(&output.stdout)
-            .split('.')
-            .take(3)
-            .collect::<Vec<_>>()
-            .join("."),
-    ))
+    let output = String::from_utf8(output.stdout).unwrap();
+
+    let parts = output.split('.').take(3).collect::<Vec<_>>();
+
+    Some(Version {
+        major: parts[0].parse().unwrap(),
+        minor: parts.get(1).map(|v| v.parse().unwrap()),
+        micro: parts.get(2).map(|v| v.parse().unwrap()),
+    })
 }
 
 pub fn read_project_urls_from_pyproject_toml(
