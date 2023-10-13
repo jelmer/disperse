@@ -1,5 +1,6 @@
 pub mod cargo;
 pub mod config;
+pub mod custom;
 pub mod manpage;
 pub mod news_file;
 pub mod project_config;

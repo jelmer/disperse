@@ -20,7 +20,7 @@ import re
 import subprocess
 from datetime import datetime
 from glob import glob
-from typing import List, Optional, Tuple, Callable
+from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
 import breezy.bzr  # noqa: F401
@@ -190,37 +190,8 @@ def find_pending_version(tree: Tree, cfg) -> Optional[str]:
         raise NotImplementedError
 
 
-def _status_tupled_version(v, s):
-    return "(%s)" % ", ".join(v.split(".") + [repr(s), '0'])
-
-
-def _version_part(v, i):
-    parts = v.split(".")
-    if len(parts) <= i:
-        return None
-    return parts[i]
-
-
-version_variables: dict[str, Callable[[str, Optional[str]], str]] = {
-    'TUPLED_VERSION': lambda v, s: "(%s)" % ", ".join(v.split(".")),
-    'STATUS_TUPLED_VERSION': _status_tupled_version,
-    'VERSION': lambda v, s: v,
-    'MAJOR_VERSION': lambda v, s: _version_part(v, 0),
-    'MINOR_VERSION': lambda v, s: _version_part(v, 1),
-    'MICRO_VERSION': lambda v, s: _version_part(v, 2),
-}
-
-
-def _version_line_re(new_line: str) -> re.Pattern:
-    ps = []
-    ver_match = '|'.join([f'\\${k}' for k in version_variables])
-    for p in re.split(r'(' + ver_match + r')', new_line):
-        if p and p[0] == '$' and p[1:] in version_variables:
-            ps.append('(?P<' + p[1:].lower() + '>.*)')
-        else:
-            ps.append(re.escape(p))
-
-    return re.compile(''.join(ps).encode())
+version_line_re = _disperse_rs.version_line_re
+expand_version_vars = _disperse_rs.expand_version_vars
 
 
 def update_version_in_file(
@@ -229,21 +200,14 @@ def update_version_in_file(
         lines = list(f.readlines())
     matches = 0
     if not update_cfg.match:
-        r = _version_line_re(update_cfg.new_line)
+        r = version_line_re(update_cfg.new_line)
     else:
         r = re.compile(update_cfg.match.encode())
     for i, line in enumerate(lines):
         if not r.match(line):
             continue
-        new_line = update_cfg.new_line.encode()
-        for k, vfn in version_variables.items():
-            v = vfn(new_version, status)
-            if v is not None:
-                new_line = new_line.replace(b"$" + k.encode(), v.encode())
-            else:
-                if (b'$' + k.encode()) in new_line:
-                    raise ValueError(
-                        f'no expansion for variable ${k} used in {new_line}')
+        new_line = expand_version_vars(
+            update_cfg.new_line, new_version, status).encode()
         lines[i] = new_line + b"\n"
         matches += 1
     if matches == 0:
@@ -264,29 +228,7 @@ def check_release_age(branch: Branch, cfg: ProjectConfig, now: datetime) -> None
             raise RecentCommits(time_delta.days, cfg.timeout_days)
 
 
-def reverse_version(
-        update_cfg, lines: List[bytes]) -> Tuple[Optional[str], Optional[str]]:
-    r = _version_line_re(update_cfg.new_line)
-    for line in lines:
-        m = r.match(line)
-        if not m:
-            continue
-        try:
-            return m.group('version').decode(), None
-        except IndexError:
-            pass
-        try:
-            return (
-                '.'.join(map(str, eval(m.group('tupled_version').decode()))),
-                None)
-        except IndexError:
-            pass
-        try:
-            val = eval(m.group('status_tupled_version').decode())
-            return '.'.join(map(str, val[:-2])), val[-2]
-        except IndexError:
-            pass
-    return None, None
+reverse_version = _disperse_rs.reverse_version
 
 
 def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
@@ -309,7 +251,7 @@ def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
             logging.debug("Reading version from %s", update_cfg.path)
             with tree.get_file(update_cfg.path) as f:
                 lines = list(f.readlines())
-            v, s = reverse_version(update_cfg, lines)
+            v, s = reverse_version(update_cfg.new_line, lines)
             if v:
                 return v, s
         raise KeyError
@@ -735,7 +677,7 @@ def validate_config(path):
     if cfg.update_version:
         for update_cfg in cfg.update_version:
             if not update_cfg.match:
-                r = _version_line_re(update_cfg.new_line)
+                r = version_line_re(update_cfg.new_line)
             else:
                 r = re.compile(update_cfg.match.encode())
             with wt.get_file(update_cfg.path) as f:

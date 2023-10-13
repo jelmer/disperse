@@ -51,6 +51,22 @@ impl Version {
     pub fn micro(&self) -> Option<i32> {
         self.micro
     }
+
+    pub fn from_tupled(text: &str) -> Result<(Self, Option<crate::Status>), String> {
+        let parts: Vec<&str> = text.split(',').collect();
+        let major = parts[0].parse::<i32>().unwrap();
+        let minor = parts.get(1).and_then(|x| x.parse::<i32>().ok());
+        let micro = parts.get(2).and_then(|x| x.parse::<i32>().ok());
+        let status = parts.get(3).and_then(|x| x.parse::<crate::Status>().ok());
+        Ok((
+            Version {
+                major,
+                minor,
+                micro,
+            },
+            status,
+        ))
+    }
 }
 
 #[cfg(feature = "pyo3")]
@@ -71,9 +87,8 @@ impl IntoPy<pyo3::PyObject> for Version {
 impl FromPyObject<'_> for Version {
     fn extract(ob: &pyo3::PyAny) -> pyo3::PyResult<Self> {
         let s = ob.extract::<String>()?;
-        Version::from_str(s.as_str()).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(format!("Invalid version: {}", e))
-        })
+        Version::from_str(s.as_str())
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid version: {}", e)))
     }
 }
 

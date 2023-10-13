@@ -227,6 +227,39 @@ fn check_version(version: &str) -> PyResult<bool> {
         .map_err(|e| OddVersion::new_err(format!("check_version failed: {}", e)))
 }
 
+#[pyfunction]
+fn version_line_re(py: Python, new_line: &str) -> PyObject {
+    let re = disperse::custom::version_line_re(new_line);
+
+    let m = py.import("re").unwrap();
+    m.call_method1("compile", (re.as_str(),))
+        .unwrap()
+        .to_object(py)
+}
+
+#[pyfunction]
+fn expand_version_vars(
+    text: &str,
+    new_version: Version,
+    status: disperse::Status,
+) -> PyResult<String> {
+    disperse::custom::expand_version_vars(text, &new_version, status)
+        .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+}
+
+#[pyfunction]
+fn extract_version(text: &str) -> PyResult<(Option<Version>, Option<disperse::Status>)> {
+    Ok(disperse::custom::extract_version(text))
+}
+
+#[pyfunction]
+fn reverse_version(
+    new_line: &str,
+    lines: Vec<&str>,
+) -> (Option<Version>, Option<disperse::Status>) {
+    disperse::custom::reverse_version(new_line, lines.as_slice())
+}
+
 #[pymodule]
 fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -253,5 +286,9 @@ fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add("UploadCommandFailed", py.get_type::<UploadCommandFailed>())?;
     m.add_wrapped(wrap_pyfunction!(check_date))?;
     m.add_wrapped(wrap_pyfunction!(check_version))?;
+    m.add_wrapped(wrap_pyfunction!(version_line_re))?;
+    m.add_wrapped(wrap_pyfunction!(expand_version_vars))?;
+    m.add_wrapped(wrap_pyfunction!(extract_version))?;
+    m.add_wrapped(wrap_pyfunction!(reverse_version))?;
     Ok(())
 }
