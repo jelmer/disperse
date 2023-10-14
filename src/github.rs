@@ -1,10 +1,25 @@
-use log::{error, info};
+use breezyshim::github::retrieve_github_token;
+use log::{debug, error, info};
 use octocrab::params::repos::Commitish;
 use octocrab::Octocrab;
 use std::time::Duration;
 use url::Url;
 
 const DEFAULT_GITHUB_CI_TIMEOUT: u64 = 60 * 24;
+
+pub fn init_github() -> Result<Octocrab, Box<dyn std::error::Error>> {
+    let github_token = match std::env::var("GITHUB_TOKEN") {
+        Ok(token) => token,
+        Err(_) => {
+            debug!("GITHUB_TOKEN environment variable not set");
+            retrieve_github_token()
+        }
+    };
+
+    let instance = Octocrab::builder().personal_token(github_token).build()?;
+
+    Ok(instance)
+}
 
 pub async fn get_github_repo(
     instance: &Octocrab,
