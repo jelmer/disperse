@@ -49,7 +49,7 @@ enum Commands {
 #[derive(clap::Args)]
 struct ReleaseArgs {
     #[clap(default_value = ".")]
-    url: Vec<Url>,
+    url: Vec<String>,
 
     /// New version to release
     #[clap(long)]
@@ -167,7 +167,7 @@ fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
 }
 
 fn release_many(
-    urls: &[Url],
+    urls: &[String],
     new_version: Option<String>,
     ignore_ci: bool,
     dry_run: bool,
@@ -291,7 +291,16 @@ fn main() {
                     );
                     0
                 } else {
-                    release_many(urls.as_slice(), None, false, false).unwrap()
+                    release_many(
+                        urls.iter()
+                            .map(|x| x.to_string())
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                        None,
+                        false,
+                        false,
+                    )
+                    .unwrap()
                 };
                 if let Some(prometheus) = args.prometheus {
                     push_to_gateway(prometheus.as_str()).unwrap();
