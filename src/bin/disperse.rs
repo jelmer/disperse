@@ -25,12 +25,15 @@ fn push_to_gateway(prometheus_url: &str) -> Result<(), Box<dyn std::error::Error
 
 #[derive(Parser)]
 struct Args {
+    /// Print debug output
     #[clap(long)]
     debug: bool,
 
+    /// Do not actually do anything
     #[clap(long)]
     dry_run: bool,
 
+    /// Prometheus push gateway URL
     #[clap(long)]
     prometheus: Option<String>,
 
@@ -40,9 +43,16 @@ struct Args {
 
 #[derive(clap::Subcommand)]
 enum Commands {
+    /// Release a new version of a project
     Release(ReleaseArgs),
+
+    /// Discover projects that need to be released
     Discover(DiscoverArgs),
+
+    /// Validate disperse configuration
     Validate(ValidateArgs),
+
+    /// Show information about a project
     Info(InfoArgs),
 }
 
@@ -89,12 +99,14 @@ struct DiscoverArgs {
 
 #[derive(clap::Args)]
 struct ValidateArgs {
+    /// Path or URL for project
     #[clap(default_value = ".")]
     path: std::path::PathBuf,
 }
 
 #[derive(clap::Args)]
 struct InfoArgs {
+    /// Path or URL for project
     #[clap(default_value = ".")]
     path: std::path::PathBuf,
 }
