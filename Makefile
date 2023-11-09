@@ -13,15 +13,21 @@ build-inplace:
 clean:
 	rm disperse/*_pb2.py
 
-check:: flake8
+check:: ruff
 
 check:: test
 
 test: build-inplace
 	PYTHONPATH=. pytest tests
 
-flake8: build
-	$(PYTHON) -m flake8
+ruff:
+	ruff check .
+
+fix::
+	ruff check --fix .
+
+format::
+	ruff format .
 
 check:: typing
 

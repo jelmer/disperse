@@ -39,26 +39,34 @@ from silver_platter.workspace import Workspace
 
 from . import _disperse_rs
 from . import NoUnreleasedChanges, DistCreationFailed
-from .cargo import (
-    cargo_publish, update_version_in_cargo, find_version_in_cargo)
+from .cargo import cargo_publish, update_version_in_cargo, find_version_in_cargo
 from .project_config import read_project_with_fallback, ProjectConfig
-from .github import (GitHubStatusFailed, GitHubStatusPending,
-                     check_gh_repo_action_status, get_github_repo,
-                     create_github_release, wait_for_gh_actions)
+from .github import (
+    GitHubStatusFailed,
+    GitHubStatusPending,
+    check_gh_repo_action_status,
+    get_github_repo,
+    create_github_release,
+    wait_for_gh_actions,
+)
 from .launchpad import add_release_files as add_launchpad_release_files
 from .launchpad import create_milestone as create_launchpad_milestone
 from .launchpad import ensure_release as ensure_launchpad_release
 from .launchpad import get_project as get_launchpad_project
 from .news_file import NewsFile, news_find_pending, OddVersion as OddNewsVersion
-from .python import (UploadCommandFailed,
-                     create_python_artifacts, create_setup_py_artifacts,
-                     read_project_urls_from_setup_cfg,
-                     read_project_urls_from_pyproject_toml,
-                     upload_python_artifacts,
-                     find_version_in_pyproject_toml, update_version_in_pyproject_toml,
-                     pyproject_uses_hatch_vcs, find_hatch_vcs_version,
-                     find_name_in_pyproject_toml,
-                     )
+from .python import (
+    UploadCommandFailed,
+    create_python_artifacts,
+    create_setup_py_artifacts,
+    read_project_urls_from_setup_cfg,
+    read_project_urls_from_pyproject_toml,
+    upload_python_artifacts,
+    find_version_in_pyproject_toml,
+    update_version_in_pyproject_toml,
+    pyproject_uses_hatch_vcs,
+    find_hatch_vcs_version,
+    find_name_in_pyproject_toml,
+)
 
 DEFAULT_CI_TIMEOUT = 7200
 
@@ -66,62 +74,66 @@ DEFAULT_CI_TIMEOUT = 7200
 registry = CollectorRegistry()
 
 ci_ignored_count = Counter(
-    'ci_ignored',
-    'CI was failing but ignored per user request',
+    "ci_ignored",
+    "CI was failing but ignored per user request",
     registry=registry,
-    labelnames=['project'])
+    labelnames=["project"],
+)
 
 no_disperse_config = Counter(
-    'no_disperse_config',
-    'No disperse configuration present',
-    registry=registry)
+    "no_disperse_config", "No disperse configuration present", registry=registry
+)
 
 recent_commits_count = Counter(
-    'recent_commits',
-    'There were recent commits, so no release was done',
+    "recent_commits",
+    "There were recent commits, so no release was done",
     registry=registry,
-    labelnames=['project'])
+    labelnames=["project"],
+)
 
 pre_dist_command_failed = Counter(
-    'pre_dist_command_failed',
-    'The pre-dist command failed to run',
+    "pre_dist_command_failed",
+    "The pre-dist command failed to run",
     registry=registry,
-    labelnames=['project'])
+    labelnames=["project"],
+)
 
 
 verify_command_failed = Counter(
-    'verify_command_failed',
-    'The verify command failed to run',
+    "verify_command_failed",
+    "The verify command failed to run",
     registry=registry,
-    labelnames=['project'])
+    labelnames=["project"],
+)
 
 
 branch_protected_count = Counter(
-    'branch_protected',
-    'The branch was protected',
+    "branch_protected",
+    "The branch was protected",
     registry=registry,
-    labelnames=['project'])
+    labelnames=["project"],
+)
 
 
 released_count = Counter(
-    'released',
-    'Released projects',
-    registry=registry,
-    labelnames=['project'])
+    "released", "Released projects", registry=registry, labelnames=["project"]
+)
 
 
 no_unreleased_changes_count = Counter(
-    'no_unreleased_changes',
-    'There were no unreleased changes',
+    "no_unreleased_changes",
+    "There were no unreleased changes",
     registry=registry,
-    labelnames=['project'])
+    labelnames=["project"],
+)
 
 
 release_tag_exists = Counter(
-    'release_tag_exists',
-    'A release tag already exists',
+    "release_tag_exists",
+    "A release tag already exists",
     registry=registry,
-    labelnames=['project'])
+    labelnames=["project"],
+)
 
 
 class RepositoryUnavailable(Exception):
@@ -141,14 +153,12 @@ class RecentCommits(Exception):
 
 
 class VerifyCommandFailed(Exception):
-
     def __init__(self, command, retcode):
         self.command = command
         self.retcode = retcode
 
 
 class PreDistCommandFailed(Exception):
-
     def __init__(self, command, retcode):
         self.command = command
         self.retcode = retcode
@@ -159,7 +169,6 @@ class NodisperseConfig(Exception):
 
 
 class ReleaseTagExists(Exception):
-
     def __init__(self, project, version, tag_name):
         self.project = project
         self.version = version
@@ -174,9 +183,7 @@ class OddPendingVersion(Exception):
 
     def __init__(self, version):
         self.version = version
-        super().__init__(
-            f"Pending version {self.version} is odd."
-        )
+        super().__init__(f"Pending version {self.version} is odd.")
 
 
 def find_pending_version(tree: Tree, cfg) -> Optional[str]:
@@ -222,7 +229,8 @@ def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
             version = find_hatch_vcs_version(tree)
             if not version:
                 raise NotImplementedError(
-                    "hatch in use but unable to find hatch vcs version")
+                    "hatch in use but unable to find hatch vcs version"
+                )
             return version, None
     if cfg.update_version:
         for update_cfg in cfg.update_version:
@@ -243,12 +251,17 @@ expand_tag = _disperse_rs.expand_tag
 unexpand_tag = _disperse_rs.unexpand_tag
 
 
-def release_project(   # noqa: C901
-        repo_url: str, *, force: bool = False,
-        new_version: Optional[str] = None,
-        dry_run: bool = False, ignore_ci: bool = False):
+def release_project(  # noqa: C901
+    repo_url: str,
+    *,
+    force: bool = False,
+    new_version: Optional[str] = None,
+    dry_run: bool = False,
+    ignore_ci: bool = False,
+):
     from breezy.controldir import ControlDir
     from breezy.transport.local import LocalTransport
+
     try:
         from breezy.errors import ConnectionError  # type: ignore
     except ImportError:
@@ -270,18 +283,19 @@ def release_project(   # noqa: C901
         public_repo_url = branch.get_public_branch()
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
-        logging.info('Using public branch %s', public_repo_url)
-    elif (branch.get_submit_branch()
-            and not branch.get_submit_branch().startswith('file:')):
+        logging.info("Using public branch %s", public_repo_url)
+    elif branch.get_submit_branch() and not branch.get_submit_branch().startswith(
+        "file:"
+    ):
         public_repo_url = branch.get_submit_branch()
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
-        logging.info('Using public branch %s', public_repo_url)
+        logging.info("Using public branch %s", public_repo_url)
     else:
         public_repo_url = branch.get_push_location()
         public_branch = Branch.open(public_repo_url)
         local_branch = branch
-        logging.info('Using public branch %s', public_repo_url)
+        logging.info("Using public branch %s", public_repo_url)
 
     if public_repo_url:
         public_repo_url = split_segment_parameters(public_repo_url)[0]
@@ -289,7 +303,7 @@ def release_project(   # noqa: C901
         public_repo_url = None
 
     if public_repo_url:
-        logging.info('Found public repository URL: %s', public_repo_url)
+        logging.info("Found public repository URL: %s", public_repo_url)
 
     with Workspace(public_branch, resume_branch=local_branch) as ws:
         try:
@@ -301,7 +315,7 @@ def release_project(   # noqa: C901
         name: Optional[str]
         if cfg.name:
             name = cfg.name
-        elif ws.local_tree.has_filename('pyproject.toml'):
+        elif ws.local_tree.has_filename("pyproject.toml"):
             name = find_name_in_pyproject_toml(ws.local_tree)
         else:
             name = None
@@ -319,45 +333,46 @@ def release_project(   # noqa: C901
         if cfg.github_url:
             gh_repo = get_github_repo(cfg.github_url)
             try:
-                check_gh_repo_action_status(
-                    gh_repo, cfg.github_branch or 'HEAD')
+                check_gh_repo_action_status(gh_repo, cfg.github_branch or "HEAD")
             except (GitHubStatusFailed, GitHubStatusPending) as e:
                 if ignore_ci:
                     ci_ignored_count.labels(project=name).inc()
-                    logging.warning('Ignoring failing CI: %s', e)
+                    logging.warning("Ignoring failing CI: %s", e)
                 else:
                     raise
         else:
             possible_urls = []
-            if ws.local_tree.has_filename('setup.cfg'):
+            if ws.local_tree.has_filename("setup.cfg"):
                 possible_urls.extend(
-                    read_project_urls_from_setup_cfg(
-                        ws.local_tree.abspath('setup.cfg')))
-            if ws.local_tree.has_filename('pyproject.toml'):
+                    read_project_urls_from_setup_cfg(ws.local_tree.abspath("setup.cfg"))
+                )
+            if ws.local_tree.has_filename("pyproject.toml"):
                 possible_urls.extend(
                     read_project_urls_from_pyproject_toml(
-                        ws.local_tree.abspath('pyproject.toml')))
+                        ws.local_tree.abspath("pyproject.toml")
+                    )
+                )
             if public_repo_url is not None:
                 possible_urls.append((public_repo_url, public_branch.name))
 
             for url, branch_name in possible_urls:
                 parsed_url = urlparse(url)
                 hostname = parsed_url.hostname
-                if hostname == 'github.com':
+                if hostname == "github.com":
                     gh_repo = get_github_repo(url)
                     try:
                         check_gh_repo_action_status(gh_repo, branch_name)
                     except (GitHubStatusFailed, GitHubStatusPending) as e:
                         if ignore_ci:
-                            logging.warning('Ignoring failing CI: %s', e)
+                            logging.warning("Ignoring failing CI: %s", e)
                             ci_ignored_count.labels(project=name).inc()
                         else:
                             raise
                     break
-                elif hostname == 'launchpad.net':
-                    parts = parsed_url.path.strip('/').split('/')[0]
+                elif hostname == "launchpad.net":
+                    parts = parsed_url.path.strip("/").split("/")[0]
                     launchpad_project = get_launchpad_project(parts[0])
-                    if len(parts) > 1 and not parts[1].startswith('+'):
+                    if len(parts) > 1 and not parts[1].startswith("+"):
                         launchpad_series = parts[1]
             else:
                 gh_repo = None
@@ -379,25 +394,27 @@ def release_project(   # noqa: C901
             if new_version is None:
                 try:
                     last_version, last_version_status = find_last_version(
-                        ws.local_tree, cfg)
+                        ws.local_tree, cfg
+                    )
                 except NotImplementedError:
                     last_version, last_version_status = find_last_version_in_tags(
-                        ws.local_tree.branch, cfg.tag_name)
+                        ws.local_tree.branch, cfg.tag_name
+                    )
                 last_version_tag_name = expand_tag(cfg.tag_name, last_version)
                 if ws.local_tree.branch.tags.has_tag(last_version_tag_name):
                     new_version = increase_version(last_version)
                 else:
                     new_version = last_version
             assert new_version
-            logging.info('Picked new version: %s', new_version)
+            logging.info("Picked new version: %s", new_version)
 
         assert " " not in str(new_version), "Invalid version %r" % new_version
 
         if cfg.pre_dist_command:
             try:
                 subprocess.check_call(
-                    cfg.pre_dist_command, cwd=ws.local_tree.abspath('.'),
-                    shell=True)
+                    cfg.pre_dist_command, cwd=ws.local_tree.abspath("."), shell=True
+                )
             except subprocess.CalledProcessError as e:
                 pre_dist_command_failed.labels(project=name).inc()
                 raise PreDistCommandFailed(cfg.pre_dist_command, e.returncode)
@@ -405,7 +422,7 @@ def release_project(   # noqa: C901
         if cfg.verify_command:
             verify_command = cfg.verify_command
         else:
-            if ws.local_tree.has_filename('tox.ini'):
+            if ws.local_tree.has_filename("tox.ini"):
                 verify_command = "tox"
             else:
                 verify_command = None
@@ -419,12 +436,19 @@ def release_project(   # noqa: C901
             news_file = None
             release_changes = None
         for update_version in cfg.update_version:
-            update_version_in_file(ws.local_tree, update_version.path, update_version.new_line, update_version.match, new_version, "final")
+            update_version_in_file(
+                ws.local_tree,
+                update_version.path,
+                update_version.new_line,
+                update_version.match,
+                new_version,
+                "final",
+            )
         for update_manpage in cfg.update_manpages:
             for path in glob(ws.local_tree.abspath(update_manpage)):
                 update_version_in_manpage(
-                    ws.local_tree, ws.local_tree.relpath(path), new_version,
-                    now)
+                    ws.local_tree, ws.local_tree.relpath(path), new_version, now
+                )
         if ws.local_tree.has_filename("Cargo.toml"):
             update_version_in_cargo(ws.local_tree, new_version)
         if ws.local_tree.has_filename("pyproject.toml"):
@@ -434,8 +458,7 @@ def release_project(   # noqa: C901
         if verify_command:
             try:
                 subprocess.check_call(
-                    verify_command, cwd=ws.local_tree.abspath("."),
-                    shell=True
+                    verify_command, cwd=ws.local_tree.abspath("."), shell=True
                 )
             except subprocess.CalledProcessError as e:
                 verify_command_failed.labels(project=name).inc()
@@ -448,16 +471,14 @@ def release_project(   # noqa: C901
             # TODO(jelmer): Do some more verification. Expect: release tag
             # has one additional revision that's not on our branch.
             raise ReleaseTagExists(name, new_version, tag_name)
-        logging.info('Creating tag %s', tag_name)
-        if hasattr(ws.local_tree.branch.repository, '_git'):
+        logging.info("Creating tag %s", tag_name)
+        if hasattr(ws.local_tree.branch.repository, "_git"):
             subprocess.check_call(
-                ["git", "tag", "-as", tag_name,
-                 "-m", f"Release {new_version}"],
+                ["git", "tag", "-as", tag_name, "-m", f"Release {new_version}"],
                 cwd=ws.local_tree.abspath("."),
             )
         else:
-            ws.local_tree.branch.tags.set_tag(
-                tag_name, ws.local_tree.last_revision())
+            ws.local_tree.branch.tags.set_tag(tag_name, ws.local_tree.last_revision())
         if ws.local_tree.has_filename("setup.py"):
             pypi_paths = create_setup_py_artifacts(ws.local_tree)
         elif ws.local_tree.has_filename("pyproject.toml"):
@@ -467,17 +488,20 @@ def release_project(   # noqa: C901
 
         artifacts = []
         if not dry_run:
-            ws.push_tags(tags={
-                tag_name: ws.local_tree.branch.tags.lookup_tag(tag_name)})
+            ws.push_tags(
+                tags={tag_name: ws.local_tree.branch.tags.lookup_tag(tag_name)}
+            )
         try:
             # Wait for CI to go green
             if gh_repo:
                 if dry_run:
-                    logging.info('In dry-run mode, so unable to wait for CI')
+                    logging.info("In dry-run mode, so unable to wait for CI")
                 else:
                     wait_for_gh_actions(
-                        gh_repo, tag_name,
-                        timeout=(cfg.ci_timeout or DEFAULT_CI_TIMEOUT))
+                        gh_repo,
+                        tag_name,
+                        timeout=(cfg.ci_timeout or DEFAULT_CI_TIMEOUT),
+                    )
 
             if pypi_paths:
                 artifacts.extend(pypi_paths)
@@ -498,7 +522,7 @@ def release_project(   # noqa: C901
                 else:
                     subprocess.check_call(["scp"] + artifacts + [loc])
         except BaseException:
-            logging.info('Deleting remote tag %s', tag_name)
+            logging.info("Deleting remote tag %s", tag_name)
             if not dry_run:
                 ws.main_branch.tags.delete_tag(tag_name)
             raise
@@ -509,59 +533,63 @@ def release_project(   # noqa: C901
                 ws.push()
         except ProtectedBranchHookDeclined:
             branch_protected_count.labels(project=name).inc()
-            logging.info('branch %s is protected; proposing merge instead',
-                         ws.local_tree.branch.name)
+            logging.info(
+                "branch %s is protected; proposing merge instead",
+                ws.local_tree.branch.name,
+            )
             if not dry_run:
                 (mp, _is_new) = ws.propose(
                     description=f"Merge release of {new_version}",
                     tags=[tag_name],
-                    name=f'release-{new_version}', labels=['release'],
-                    commit_message=f"Merge release of {new_version}")
+                    name=f"release-{new_version}",
+                    labels=["release"],
+                    commit_message=f"Merge release of {new_version}",
+                )
             else:
                 mp = None
-            logging.info(f'Created merge proposal: {mp.url}')
+            logging.info(f"Created merge proposal: {mp.url}")
 
-            if getattr(mp, 'supports_auto_merge', False):
+            if getattr(mp, "supports_auto_merge", False):
                 mp.merge(auto=True, message=f"Merge release of {new_version}")
 
         if gh_repo:
             if dry_run:
-                logging.info(
-                    "skipping creation of github release due to dry run mode")
+                logging.info("skipping creation of github release due to dry run mode")
             else:
-                create_github_release(
-                    gh_repo, tag_name, new_version, release_changes)
+                create_github_release(gh_repo, tag_name, new_version, release_changes)
 
         if launchpad_project:
             if dry_run:
-                logging.info(
-                    "skipping upload of tarball to Launchpad")
+                logging.info("skipping upload of tarball to Launchpad")
             else:
                 lp_release = ensure_launchpad_release(
-                    launchpad_project, new_version,
+                    launchpad_project,
+                    new_version,
                     series_name=launchpad_series,
-                    release_notes=release_changes)
+                    release_notes=release_changes,
+                )
                 add_launchpad_release_files(lp_release, artifacts)
 
         # TODO(jelmer): Mark any news bugs in NEWS as fixed [later]
         # * Commit:
         #  * Update NEWS and version strings for next version
         new_pending_version = increase_version(new_version, -1)
-        logging.info('Using new version %s', new_pending_version)
+        logging.info("Using new version %s", new_pending_version)
         if news_file:
             news_file.add_pending(new_pending_version)
-            ws.local_tree.commit(f'Start on {new_pending_version}')
+            ws.local_tree.commit(f"Start on {new_pending_version}")
             if not dry_run:
                 ws.push()
         if launchpad_project:
             if dry_run:
                 logging.info(
-                    'Skipping creation of new milestone %s on Launchpad',
-                    new_pending_version)
+                    "Skipping creation of new milestone %s on Launchpad",
+                    new_pending_version,
+                )
             else:
                 create_launchpad_milestone(
-                    launchpad_project, new_pending_version,
-                    series_name=launchpad_series)
+                    launchpad_project, new_pending_version, series_name=launchpad_series
+                )
     if not dry_run:
         if local_wt is not None:
             local_wt.pull(public_branch)
@@ -586,7 +614,7 @@ def info(tree, branch):
 
     if cfg.name:
         name = cfg.name
-    elif tree.has_filename('pyproject.toml'):
+    elif tree.has_filename("pyproject.toml"):
         name = find_name_in_pyproject_toml(tree)
     else:
         name = None
@@ -596,7 +624,9 @@ def info(tree, branch):
     try:
         last_version, last_version_status = find_last_version(tree, cfg)
     except NotImplementedError:
-        last_version, last_version_status = find_last_version_in_tags(branch, cfg.tag_name)
+        last_version, last_version_status = find_last_version_in_tags(
+            branch, cfg.tag_name
+        )
     logging.info("Last release: %s", last_version)
     if last_version_status:
         logging.info("  status: %s", last_version_status)
@@ -607,7 +637,7 @@ def info(tree, branch):
     except NoSuchTag:
         logging.info("  tag %s for previous release not found", tag_name)
     else:
-        logging.info("  tag name: %s (%s)", tag_name, release_revid.decode('utf-8'))
+        logging.info("  tag name: %s (%s)", tag_name, release_revid.decode("utf-8"))
 
         rev = branch.repository.get_revision(release_revid)
         logging.info("  date: %s", datetime.fromtimestamp(rev.timestamp))
@@ -615,23 +645,27 @@ def info(tree, branch):
         if rev.revision_id != branch.last_revision():
             graph = branch.repository.get_graph()
             missing = list(
-                graph.iter_lefthand_ancestry(
-                    branch.last_revision(), [release_revid]))
+                graph.iter_lefthand_ancestry(branch.last_revision(), [release_revid])
+            )
             if missing[-1] == NULL_REVISION:
                 logging.info("  last release not found in ancestry")
             else:
                 first = branch.repository.get_revision(missing[-1])
                 first_age = datetime.now() - datetime.fromtimestamp(first.timestamp)
-                logging.info("  %d revisions since last release. First is %d days old.",
-                             len(missing), first_age.days)
+                logging.info(
+                    "  %d revisions since last release. First is %d days old.",
+                    len(missing),
+                    first_age.days,
+                )
         else:
             logging.info("  no revisions since last release")
 
     try:
         new_version = find_pending_version(tree, cfg)
     except NotImplementedError:
-        logging.info("No pending version found; would use %s",
-                     increase_version(last_version, -1))
+        logging.info(
+            "No pending version found; would use %s", increase_version(last_version, -1)
+        )
     except NoUnreleasedChanges:
         logging.info("No unreleased changes")
     except OddPendingVersion as e:
@@ -663,92 +697,110 @@ def validate_config(path):
                     if r.match(line):
                         break
                 else:
-                    raise Exception(
-                        f"No matches for {r.pattern} in {update_cfg.path}")
+                    raise Exception(f"No matches for {r.pattern} in {update_cfg.path}")
 
     for update in cfg.update_manpages:
         if not glob(wt.abspath(update)):
             raise Exception("no matches for {update}")
 
 
-def release_many(urls, *, force=False, dry_run=False, discover=False,  # noqa: C901
-                 new_version=None, ignore_ci=False):
+def release_many(
+    urls,
+    *,
+    force=False,
+    dry_run=False,
+    discover=False,  # noqa: C901
+    new_version=None,
+    ignore_ci=False,
+):
     failed: List[Tuple[str, Exception]] = []
     skipped: List[Tuple[str, Exception]] = []
     success = []
     ret = 0
     for url in urls:
         if url != ".":
-            logging.info('Processing %s', url)
+            logging.info("Processing %s", url)
         try:
             release_project(
-                url, force=force, new_version=new_version,
-                dry_run=dry_run, ignore_ci=ignore_ci)
+                url,
+                force=force,
+                new_version=new_version,
+                dry_run=dry_run,
+                ignore_ci=ignore_ci,
+            )
         except RecentCommits as e:
             logging.info(
-                "Recent commits exist (%d < %d)", e.min_commit_age,
-                e.commit_age)
+                "Recent commits exist (%d < %d)", e.min_commit_age, e.commit_age
+            )
             skipped.append((url, e))
             if not discover:
                 ret = 1
         except VerifyCommandFailed as e:
-            logging.error('Verify command (%s) failed to run.', e.command)
+            logging.error("Verify command (%s) failed to run.", e.command)
             failed.append((url, e))
             ret = 1
         except PreDistCommandFailed as e:
-            logging.error('Pre-Dist command (%s) failed to run.', e.command)
+            logging.error("Pre-Dist command (%s) failed to run.", e.command)
             failed.append((url, e))
             ret = 1
         except UploadCommandFailed as e:
-            logging.error('Upload command (%s) failed to run.', e.args[0])
+            logging.error("Upload command (%s) failed to run.", e.args[0])
             failed.append((url, e))
             ret = 1
         except ReleaseTagExists as e:
             logging.warning(
-                '%s: Release tag %s for version %s exists. '
-                'Unmerged release commit?',
-                e.project, e.tag_name, e.version)
+                "%s: Release tag %s for version %s exists. " "Unmerged release commit?",
+                e.project,
+                e.tag_name,
+                e.version,
+            )
             skipped.append((url, e))
             if not discover:
                 ret = 1
         except DistCreationFailed as e:
-            logging.error('Dist creation failed to run: %s', e)
+            logging.error("Dist creation failed to run: %s", e)
             failed.append((url, e))
             ret = 1
         except NoUnreleasedChanges as e:
-            logging.error('No unreleased changes')
+            logging.error("No unreleased changes")
             skipped.append((url, e))
             if not discover:
                 ret = 1
         except NodisperseConfig as e:
-            logging.error('No configuration for disperse')
+            logging.error("No configuration for disperse")
             skipped.append((url, e))
             if not discover:
                 ret = 1
         except GitHubStatusPending as e:
             logging.error(
-                'GitHub checks for commit %s '
-                'not finished yet. See %s', e.sha, e.html_url)
+                "GitHub checks for commit %s " "not finished yet. See %s",
+                e.sha,
+                e.html_url,
+            )
             failed.append((url, e))
             ret = 1
         except GitHubStatusFailed as e:
             logging.error(
-                'GitHub check for commit %s failed. '
-                'See %s', e.sha, e.html_url)
+                "GitHub check for commit %s failed. " "See %s", e.sha, e.html_url
+            )
             failed.append((url, e))
             ret = 1
         except RepositoryUnavailable as e:
-            logging.error('Repository is unavailable: %s', e.args[0])
+            logging.error("Repository is unavailable: %s", e.args[0])
             failed.append((url, e))
             ret = 1
         except OddPendingVersion as e:
-            logging.error('Odd pending version: %s', e.version)
+            logging.error("Odd pending version: %s", e.version)
             failed.append((url, e))
             ret = 1
         else:
             success.append(url)
 
     if discover:
-        logging.info('%s successfully released, %s skipped, %s failed',
-                     len(success), len(skipped), len(failed))
+        logging.info(
+            "%s successfully released, %s skipped, %s failed",
+            len(success),
+            len(skipped),
+            len(failed),
+        )
     return ret

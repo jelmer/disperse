@@ -34,14 +34,17 @@ def find_project_series(project, series_name=None, target_version=None):
         return project.series[0]
     elif len(project.series) > 1:
         possible_series = [
-            s for s in project.series
-            if target_version and target_version.startswith(s.name)]
+            s
+            for s in project.series
+            if target_version and target_version.startswith(s.name)
+        ]
         if len(possible_series) == 1:
             return possible_series[0]
         else:
             logging.warning(
-                'Multiple release series exist, but none specified. '
-                'Assuming development focus')
+                "Multiple release series exist, but none specified. "
+                "Assuming development focus"
+            )
             return project.development_focus
     else:
         raise AssertionError("no release series for %r" % project)
@@ -49,9 +52,8 @@ def find_project_series(project, series_name=None, target_version=None):
 
 def create_milestone(project, version, series_name=None):
     series = find_project_series(project, series_name)
-    release_date = datetime.date.today().strftime('%Y-%m-%d')
-    return series.newMilestone(
-        name=version, date_targeted=release_date)
+    release_date = datetime.date.today().strftime("%Y-%m-%d")
+    return series.newMilestone(name=version, date_targeted=release_date)
 
 
 def get_project(project):
@@ -71,7 +73,7 @@ def find_release(project, release):
 def create_release_from_milestone(project, version):
     for milestone in project.all_milestones:
         if milestone.name == version:
-            today = datetime.date.today().strftime('%Y-%m-%d')
+            today = datetime.date.today().strftime("%Y-%m-%d")
             return milestone.createProductRelease(date_released=today)
     return None
 
@@ -82,7 +84,7 @@ def ensure_release(proj, version, series_name=None, release_notes=None):
         release = create_release_from_milestone(proj, version)
     if not release:
         milestone = create_milestone(proj, version, series_name=series_name)
-        today = datetime.date.today().strftime('%Y-%m-%d')
+        today = datetime.date.today().strftime("%Y-%m-%d")
         return milestone.createProductRelease(date_released=today)
 
     if release_notes:
@@ -92,11 +94,12 @@ def ensure_release(proj, version, series_name=None, release_notes=None):
 
 def add_release_files(release, artifacts):
     for artifact in artifacts:
-        if artifact.endswith('.tar.gz'):
-            with open(artifact, 'rb') as f:
+        if artifact.endswith(".tar.gz"):
+            with open(artifact, "rb") as f:
                 release.add_file(
                     filename=os.path.basename(artifact),
-                    description='release tarball',
-                    content_type='application/x-gzip',
-                    file_type='Code Release Tarball',
-                    file_content=f.read())
+                    description="release tarball",
+                    content_type="application/x-gzip",
+                    file_type="Code Release Tarball",
+                    file_content=f.read(),
+                )

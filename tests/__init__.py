@@ -20,9 +20,9 @@ from typing import List
 
 def test_suite():
     names: List[str] = [
-        'test_versions',
+        "test_versions",
     ]
-    module_names = ['tests.' + name for name in names]
+    module_names = ["tests." + name for name in names]
     result = unittest.TestSuite()
     loader = unittest.TestLoader()
     suite = loader.loadTestsFromNames(module_names)

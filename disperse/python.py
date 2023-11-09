@@ -16,18 +16,18 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 __all__ = [
-    'pypi_discover_urls',
-    'UploadCommandFailed',
-    'upload_python_artifacts',
-    'create_setup_py_artifacts',
-    'create_python_artifacts',
-    'read_project_urls_from_pyproject_toml',
-    'read_project_urls_from_setup_cfg',
-    'update_version_in_pyproject_toml',
-    'find_name_in_pyproject_toml',
-    'find_version_in_pyproject_toml',
-    'pyproject_uses_hatch_vcs',
-    'find_hatch_vcs_version',
+    "pypi_discover_urls",
+    "UploadCommandFailed",
+    "upload_python_artifacts",
+    "create_setup_py_artifacts",
+    "create_python_artifacts",
+    "read_project_urls_from_pyproject_toml",
+    "read_project_urls_from_setup_cfg",
+    "update_version_in_pyproject_toml",
+    "find_name_in_pyproject_toml",
+    "find_version_in_pyproject_toml",
+    "pyproject_uses_hatch_vcs",
+    "find_hatch_vcs_version",
 ]
 
 from ._disperse_rs import (
