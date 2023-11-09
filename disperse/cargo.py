@@ -16,10 +16,10 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 __all__ = [
-    'cargo_publish',
-    'find_version_in_cargo',
-    'update_version_in_cargo',
-    'get_owned_crates',
+    "cargo_publish",
+    "find_version_in_cargo",
+    "update_version_in_cargo",
+    "get_owned_crates",
 ]
 
 from ._disperse_rs import (

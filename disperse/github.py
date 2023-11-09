@@ -27,30 +27,29 @@ DEFAULT_GITHUB_CI_TIMEOUT = 60 * 24
 
 
 def get_github_repo(repo_url: str):
-    if repo_url.endswith('.git'):
+    if repo_url.endswith(".git"):
         repo_url = repo_url[:-4]
     parsed_url = urlparse(repo_url)
-    fullname = '/'.join(parsed_url.path.strip('/').split('/')[:2])
+    fullname = "/".join(parsed_url.path.strip("/").split("/")[:2])
     try:
         token = retrieve_github_token(  # type: ignore
-            parsed_url.scheme, parsed_url.hostname)
+            parsed_url.scheme, parsed_url.hostname
+        )
     except TypeError:
         # Newer versions of retrieve_github_token don't take any arguments
         token = retrieve_github_token()
     gh = Github(token)
-    logging.info('Finding project %s on GitHub', fullname)
+    logging.info("Finding project %s on GitHub", fullname)
     return gh.get_repo(fullname)
 
 
 class GitHubStatusFailed(Exception):
-
     def __init__(self, sha, url):
         self.sha = sha
         self.html_url = url
 
 
 class GitHubStatusPending(Exception):
-
     def __init__(self, sha, url):
         self.sha = sha
         self.html_url = url
@@ -58,10 +57,10 @@ class GitHubStatusPending(Exception):
 
 def check_gh_repo_action_status(repo, committish):
     if not committish:
-        committish = 'HEAD'
+        committish = "HEAD"
     commit = repo.get_commit(committish)
     for check in commit.get_check_runs():
-        if check.conclusion in ('success', 'skipped'):
+        if check.conclusion in ("success", "skipped"):
             continue
         elif check.conclusion is None:
             raise GitHubStatusPending(check.head_sha, check.html_url)
@@ -70,9 +69,9 @@ def check_gh_repo_action_status(repo, committish):
 
 
 def wait_for_gh_actions(repo, committish, *, timeout=DEFAULT_GITHUB_CI_TIMEOUT):
-    logging.info('Waiting for CI for %s on %s to go green', repo, committish)
+    logging.info("Waiting for CI for %s on %s to go green", repo, committish)
     if not committish:
-        committish = 'HEAD'
+        committish = "HEAD"
     commit = repo.get_commit(committish)
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -87,12 +86,16 @@ def wait_for_gh_actions(repo, committish, *, timeout=DEFAULT_GITHUB_CI_TIMEOUT):
         else:
             return
     raise TimeoutError(
-        'timed out waiting for CI after %d seconds' % (
-            time.time() - start_time))
+        "timed out waiting for CI after %d seconds" % (time.time() - start_time)
+    )
 
 
 def create_github_release(repo, tag_name, version, description):
-    logging.info('Creating release on GitHub')
+    logging.info("Creating release on GitHub")
     repo.create_git_release(
-        tag=tag_name, name=version, draft=False, prerelease=False,
-        message=description or (f'Release {version}.'))
+        tag=tag_name,
+        name=version,
+        draft=False,
+        prerelease=False,
+        message=description or (f"Release {version}."),
+    )

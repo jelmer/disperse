@@ -25,7 +25,8 @@ CONFIG_FILE_NAME = "disperse.toml"
 def load_config():
     # Check if XDG_CONFIG_HOME is set, otherwise use the default path
     xdg_config_home = os.environ.get(
-        "XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config"))
+        "XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config")
+    )
 
     config_file_path = os.path.join(xdg_config_home, "disperse", CONFIG_FILE_NAME)
 

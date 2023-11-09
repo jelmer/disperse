@@ -16,27 +16,32 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 __all__ = [
-    'NewsFile',
-    'check_date',
-    'check_version',
-    'news_find_pending',
-    'OddVersion',
+    "NewsFile",
+    "check_date",
+    "check_version",
+    "news_find_pending",
+    "OddVersion",
 ]
 
 from . import NoUnreleasedChanges
 
-from ._disperse_rs import check_date, check_version, news_find_pending, news_add_pending, OddVersion, news_mark_released
+from ._disperse_rs import (
+    check_date,
+    check_version,
+    news_find_pending,
+    news_add_pending,
+    OddVersion,
+    news_mark_released,
+)
 
 
 class NewsFile:
-
     def __init__(self, tree, path):
         self.tree = tree
         self.path = path
 
     def mark_released(self, expected_version, release_date):
-        return news_mark_released(
-            self.tree, self.path, expected_version, release_date)
+        return news_mark_released(self.tree, self.path, expected_version, release_date)
 
     def add_pending(self, new_version):
         return news_add_pending(self.tree, self.path, new_version)

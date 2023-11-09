@@ -20,6 +20,7 @@ from disperse.__main__ import version_line_re
 
 
 def test_version_line_re():
-    assert version_line_re(
-        "__version__ = $TUPLED_VERSION").pattern == \
-        '__version__ = (?P<tupled_version>.*)'
+    assert (
+        version_line_re("__version__ = $TUPLED_VERSION").pattern
+        == "__version__ = (?P<tupled_version>.*)"
+    )
