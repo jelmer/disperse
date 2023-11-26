@@ -187,6 +187,7 @@ fn version_from_capture_matches(cm: regex::CaptureMatches) -> (Option<Version>, 
     }
 }
 
+/// Extracts the version and status from a line of text.
 pub fn extract_version(line: &str) -> (Option<Version>, Option<Status>) {
     let re = version_line_re(line);
 
@@ -205,6 +206,34 @@ pub fn reverse_version(new_line: &str, lines: &[&str]) -> (Option<Version>, Opti
     (None, None)
 }
 
+#[cfg(test)]
+mod reverse_version_tests {
+    use std::str::FromStr;
+
+    #[test]
+    fn test_simple() {
+        let (v, s) = super::reverse_version(
+            "version = $VERSION",
+            &["version = 1.2.3", "version = 1.2.4"],
+        );
+        assert_eq!(v, Some(super::Version::from_str("1.2.3").unwrap()));
+        assert_eq!(s, None);
+    }
+
+    #[test]
+    fn test_status() {
+        let (v, s) = super::reverse_version(
+            "version = $STATUS_TUPLED_VERSION",
+            &[
+                "version = (1, 2, 3, \"dev\", 0)",
+                "version = (1, 2, 3, \"final\", 0)",
+            ],
+        );
+        assert_eq!(v, Some(super::Version::from_str("1.2.3").unwrap()));
+        assert_eq!(s, Some(super::Status::Dev));
+    }
+}
+
 pub fn update_version_in_file(
     tree: &dyn breezyshim::tree::MutableTree,
     path: &std::path::Path,
@@ -220,6 +249,7 @@ pub fn update_version_in_file(
     } else {
         version_line_re(new_line)
     };
+    log::debug!("Expanding {:?} in {:?}", r, path);
     for oline in lines.iter_mut() {
         let line = match std::str::from_utf8(oline) {
             Ok(s) => s,
@@ -245,7 +275,7 @@ pub fn update_version_in_file(
 
 #[cfg(test)]
 mod tests {
-    use breezyshim::tree::{Tree};
+    use breezyshim::tree::Tree;
     #[test]
     fn test_update_version_in_file() {
         breezyshim::init().unwrap();
