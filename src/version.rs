@@ -52,15 +52,28 @@ impl Version {
         self.micro
     }
 
-    pub fn from_tupled(text: &str) -> Result<(Self, Option<crate::Status>), String> {
+    pub fn from_tupled(text: &str) -> Result<(Self, Option<crate::Status>), Error> {
         if text.starts_with('(') && text.ends_with(')') {
             return Self::from_tupled(&text[1..text.len() - 1]);
         }
         let parts: Vec<&str> = text.split(',').collect();
-        let major = parts[0].parse::<i32>().unwrap();
-        let minor = parts.get(1).and_then(|x| x.parse::<i32>().ok());
-        let micro = parts.get(2).and_then(|x| x.parse::<i32>().ok());
-        let status = parts.get(3).and_then(|x| x.parse::<crate::Status>().ok());
+        if parts.len() < 1 || parts.len() > 5 {
+            return Err(Error(format!("invalid version: {}", text)));
+        }
+        let major = parts[0].trim().parse::<i32>().map_err(|e| Error(format!("invalid major version: {}", e)))?;
+        let minor = parts.get(1).map(|x| x.trim().parse::<i32>()).transpose().map_err(|e| Error(format!("invalid minor version: {}", e)))?;
+        let micro = parts.get(2).map(|x| x.trim().parse::<i32>()).transpose().map_err(|e| Error(format!("invalid micro version: {}", e)))?;
+        let status = if let Some(s) = parts.get(3).map(|x| x.trim()) {
+            if s == "\"dev\"" || s == "'dev'" {
+                Some(crate::Status::Dev)
+            } else if s == "\"final\"" || s == "'final'" {
+                Some(crate::Status::Final)
+            } else {
+                return Err(Error(format!("invalid status: {}", s)));
+            }
+        } else {
+            None
+        };
         Ok((
             Version {
                 major,
@@ -69,6 +82,54 @@ impl Version {
             },
             status,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_from_tupled() {
+        assert_eq!(
+            Version::from_tupled("(1, 2, 3, \"dev\", 0)").unwrap(),
+            (Version {
+                major: 1,
+                minor: Some(2),
+                micro: Some(3),
+            }, Some(crate::Status::Dev))
+        );
+        assert_eq!(
+            Version::from_tupled("(1, 2, 3)").unwrap(),
+            (Version {
+                major: 1,
+                minor: Some(2),
+                micro: Some(3),
+            }, None)
+        );
+        assert_eq!(
+            Version::from_tupled("(1, 2)").unwrap(),
+            (Version {
+                major: 1,
+                minor: Some(2),
+                micro: None,
+            }, None)
+        );
+        assert_eq!(
+            Version::from_tupled("(1)").unwrap(),
+            (Version {
+                major: 1,
+                minor: None,
+                micro: None,
+            }, None)
+        );
+        assert_eq!(
+            Version::from_tupled("1").unwrap(),
+            (Version {
+                major: 1,
+                minor: None,
+                micro: None,
+            }, None)
+        );
     }
 }
 
@@ -145,3 +206,21 @@ pub fn increase_version(version: &mut Version, idx: isize) {
         _ => panic!("Invalid index {}", idx),
     }
 }
+
+#[derive(Debug)]
+pub struct Error(pub String);
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.0.fmt(f)?;
+        Ok(())
+    }
+}
+
+impl From<std::num::ParseIntError> for Error {
+    fn from(e: std::num::ParseIntError) -> Self {
+        Error(format!("{}", e))
+    }
+}
+
+impl std::error::Error for Error {}

@@ -54,3 +54,7 @@ pyo3 = { version = "0.19", features = ["serde"] }
 name = "disperse"
 path = "src/bin/disperse.rs"
 required-features = ["cli"]
+
+[dev-dependencies]
+tempfile = "3.8.1"
+pyo3 = { features = ["auto-initialize"] }

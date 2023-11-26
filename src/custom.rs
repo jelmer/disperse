@@ -70,6 +70,31 @@ pub fn expand_version_vars(
     Ok(text)
 }
 
+#[cfg(test)]
+mod expand_version_vars_tests {
+    use std::str::FromStr;
+    use super::expand_version_vars;
+    use crate::{Status, Version};
+
+    #[test]
+    fn test_simple() {
+        let text = "version = $VERSION";
+        let new_version = Version::from_str("1.2.3").unwrap();
+        let status = Status::Final;
+        let expanded = expand_version_vars(text, &new_version, status).unwrap();
+        assert_eq!(expanded, "version = 1.2.3");
+    }
+
+    #[test]
+    fn test_status() {
+        let text = "version = $STATUS_TUPLED_VERSION";
+        let new_version = Version::from_str("1.2.3").unwrap();
+        let status = Status::Dev;
+        let expanded = expand_version_vars(text, &new_version, status).unwrap();
+        assert_eq!(expanded, "version = (1, 2, 3, \"dev\", 0)");
+    }
+}
+
 pub fn version_line_re(new_line: &str) -> regex::Regex {
     regex::Regex::new(
         lazy_regex::regex_replace_all!(
@@ -86,6 +111,29 @@ pub fn version_line_re(new_line: &str) -> regex::Regex {
         .as_ref(),
     )
     .unwrap()
+}
+
+#[cfg(test)]
+mod version_line_re_tests {
+    use std::str::FromStr;
+
+    #[test]
+    fn test_simple() {
+        let re = super::version_line_re("version = $VERSION");
+        let cm = re.captures_iter("version = 1.2.3");
+        let (v, s) = super::version_from_capture_matches(cm);
+        assert_eq!(v, Some(super::Version::from_str("1.2.3").unwrap()));
+        assert_eq!(s, None);
+    }
+
+    #[test]
+    fn test_status() {
+        let re = super::version_line_re("version = $STATUS_TUPLED_VERSION");
+        let cm = re.captures_iter("version = (1, 2, 3, \"dev\", 0)");
+        let (v, s) = super::version_from_capture_matches(cm);
+        assert_eq!(v, Some(super::Version::from_str("1.2.3").unwrap()));
+        assert_eq!(s, Some(super::Status::Dev));
+    }
 }
 
 fn version_from_capture_matches(cm: regex::CaptureMatches) -> (Option<Version>, Option<Status>) {
@@ -173,15 +221,14 @@ pub fn update_version_in_file(
         version_line_re(new_line)
     };
     for oline in lines.iter_mut() {
-        let line = match String::from_utf8(oline.to_vec()) {
+        let line = match std::str::from_utf8(oline) {
             Ok(s) => s,
             Err(_) => continue,
         };
-        if !r.is_match(line.as_str()) {
+        if !r.is_match(line) {
             continue;
         }
-        let new_line = expand_version_vars(line.as_str(), new_version, status).unwrap();
-        *oline = vec![new_line, "\n".to_string()].concat().into_bytes();
+        *oline = expand_version_vars(new_line, new_version, status).unwrap().into_bytes();
         matches += 1;
     }
     if matches == 0 {
@@ -194,4 +241,28 @@ pub fn update_version_in_file(
     tree.put_file_bytes_non_atomic(path, lines.concat().as_slice())
         .unwrap();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use breezyshim::tree::{Tree};
+    #[test]
+    fn test_update_version_in_file() {
+        breezyshim::init().unwrap();
+        let td = tempfile::tempdir().unwrap();
+        let tree = breezyshim::controldir::ControlDir::create_standalone_workingtree(td.path(), None).unwrap();
+        let path = tree.abspath(std::path::Path::new("test")).unwrap();
+        std::fs::write(path.as_path(), b"version = [1.2.3]\n").unwrap();
+        tree.add(&[std::path::Path::new("test")]).unwrap();
+        super::update_version_in_file(
+            &tree,
+            path.as_path(),
+            "version = [$VERSION]\n",
+            None,
+            &super::Version { major: 1, minor: Some(2), micro: Some(4) },
+            super::Status::Final,
+        )
+        .unwrap();
+        assert_eq!(tree.get_file_text(path.as_path()).unwrap(), b"version = [1.2.4]\n");
+    }
 }
