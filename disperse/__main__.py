@@ -31,7 +31,6 @@ from breezy.errors import NoSuchTag
 from breezy.git.remote import ProtectedBranchHookDeclined
 from breezy.revision import NULL_REVISION
 from breezy.transport import NoSuchFile
-from breezy.tree import Tree
 from breezy.urlutils import split_segment_parameters
 from breezy.workingtree import WorkingTree
 from prometheus_client import CollectorRegistry, Counter
@@ -39,7 +38,7 @@ from silver_platter.workspace import Workspace
 
 from . import _disperse_rs
 from . import NoUnreleasedChanges, DistCreationFailed
-from .cargo import cargo_publish, update_version_in_cargo, find_version_in_cargo
+from .cargo import cargo_publish, update_version_in_cargo
 from .project_config import read_project_with_fallback, ProjectConfig
 from .github import (
     GitHubStatusFailed,
@@ -53,7 +52,7 @@ from .launchpad import add_release_files as add_launchpad_release_files
 from .launchpad import create_milestone as create_launchpad_milestone
 from .launchpad import ensure_release as ensure_launchpad_release
 from .launchpad import get_project as get_launchpad_project
-from .news_file import NewsFile, news_find_pending, OddVersion as OddNewsVersion
+from .news_file import NewsFile
 from .python import (
     UploadCommandFailed,
     create_python_artifacts,
@@ -61,10 +60,7 @@ from .python import (
     read_project_urls_from_setup_cfg,
     read_project_urls_from_pyproject_toml,
     upload_python_artifacts,
-    find_version_in_pyproject_toml,
     update_version_in_pyproject_toml,
-    pyproject_uses_hatch_vcs,
-    find_hatch_vcs_version,
     find_name_in_pyproject_toml,
 )
 
@@ -186,16 +182,7 @@ class OddPendingVersion(Exception):
         super().__init__(f"Pending version {self.version} is odd.")
 
 
-def find_pending_version(tree: Tree, cfg) -> Optional[str]:
-    if cfg.news_file:
-        try:
-            return news_find_pending(tree, cfg.news_file)
-        except OddNewsVersion as e:
-            raise OddPendingVersion(e.args[0]) from e
-    else:
-        raise NotImplementedError
-
-
+find_pending_version = _disperse_rs.find_pending_version
 version_line_re = _disperse_rs.version_line_re
 expand_version_vars = _disperse_rs.expand_version_vars
 
@@ -214,35 +201,7 @@ def check_release_age(branch: Branch, cfg: ProjectConfig, now: datetime) -> None
 
 
 reverse_version = _disperse_rs.reverse_version
-
-
-def find_last_version(tree: Tree, cfg) -> Tuple[str, Optional[str]]:
-    if tree.has_filename("Cargo.toml"):
-        logging.debug("Reading version from Cargo.toml")
-        return find_version_in_cargo(tree), None
-    if tree.has_filename("pyproject.toml"):
-        logging.debug("Reading version from pyproject.toml")
-        version = find_version_in_pyproject_toml(tree)
-        if version:
-            return version, None
-        if pyproject_uses_hatch_vcs(tree):
-            version = find_hatch_vcs_version(tree)
-            if not version:
-                raise NotImplementedError(
-                    "hatch in use but unable to find hatch vcs version"
-                )
-            return version, None
-    if cfg.update_version:
-        for update_cfg in cfg.update_version:
-            logging.debug("Reading version from %s", update_cfg.path)
-            with tree.get_file(update_cfg.path) as f:
-                lines = list(f.readlines())
-            v, s = reverse_version(update_cfg.new_line, lines)
-            if v:
-                return v, s
-        raise KeyError
-    else:
-        raise NotImplementedError
+find_last_version = _disperse_rs.find_last_version
 
 
 check_new_revisions = _disperse_rs.check_new_revisions

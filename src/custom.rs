@@ -252,7 +252,7 @@ pub fn update_version_in_file(
     log::debug!("Expanding {:?} in {:?}", r, path);
     for oline in lines.iter_mut() {
         let line = match std::str::from_utf8(oline) {
-            Ok(s) => s,
+            Ok(s) => s.trim_end_matches('\n'),
             Err(_) => continue,
         };
         if !r.is_match(line) {

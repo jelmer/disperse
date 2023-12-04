@@ -287,7 +287,7 @@ pub fn upload_python_artifacts(
 
 pub fn create_setup_py_artifacts(
     local_tree: &WorkingTree,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+) -> pyo3::PyResult<Vec<String>> {
     pyo3::Python::with_gil(|py| {
         // Initialize an empty vector to store pypi_paths
         let mut pypi_paths: Vec<String> = Vec::new();
@@ -315,8 +315,8 @@ pub fn create_setup_py_artifacts(
         };
 
         // Check for C libraries and extension modules
-        let is_pure = !result.call_method0("has_c_libraries")?.extract::<bool>()?
-            && !result.call_method0("has_ext_modules")?.extract::<bool>()?;
+        let is_pure = !result.call_method0("has_c_libraries")?.extract::<Option<bool>>()?.unwrap_or(false)
+            && !result.call_method0("has_ext_modules")?.extract::<Option<bool>>()?.unwrap_or(false);
 
         let builder = py
             .import("build")?
@@ -344,7 +344,7 @@ pub fn create_setup_py_artifacts(
 
 pub fn create_python_artifacts(
     local_tree: &WorkingTree,
-) -> Result<Vec<std::path::PathBuf>, Box<dyn std::error::Error>> {
+) -> pyo3::PyResult<Vec<std::path::PathBuf>> {
     pyo3::Python::with_gil(|py| {
         let mut pypi_paths = Vec::new();
 

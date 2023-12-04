@@ -65,7 +65,7 @@ pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Box<d
 }
 
 // Define a function to find the version in the Cargo.toml file
-pub fn find_version(tree: &dyn Tree) -> Result<String, Box<dyn Error>> {
+pub fn find_version(tree: &dyn Tree) -> Result<crate::version::Version, Box<dyn Error>> {
     // Read the Cargo.toml file
     let cargo_toml_contents = tree.get_file_text(Path::new("Cargo.toml"))?;
 
@@ -82,5 +82,5 @@ pub fn find_version(tree: &dyn Tree) -> Result<String, Box<dyn Error>> {
         .ok_or("Version not found in Cargo.toml")?
         .to_string();
 
-    Ok(version)
+    Ok(version.as_str().parse()?)
 }

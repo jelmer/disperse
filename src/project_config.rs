@@ -3,6 +3,7 @@ use std::path::Path;
 include!(concat!(env!("OUT_DIR"), "/generated/mod.rs"));
 
 pub use config::Project as ProjectConfig;
+pub use config::UpdateVersion as UpdateVersion;
 
 fn read_project(f: &mut dyn std::io::Read) -> ProjectConfig {
     let mut s = String::new();

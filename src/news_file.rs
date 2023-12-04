@@ -3,7 +3,7 @@ use breezyshim::tree::MutableTree;
 use lazy_regex::regex_is_match;
 
 #[derive(Debug)]
-pub struct OddVersion(String);
+pub struct OddVersion(pub String);
 
 impl std::fmt::Display for OddVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -88,7 +88,7 @@ pub fn news_find_pending(
     tree: &dyn breezyshim::tree::Tree,
     path: &std::path::Path,
 ) -> Result<Option<String>, Box<dyn std::error::Error>> {
-    let lines = tree.get_file_lines(path).unwrap();
+    let lines = tree.get_file_lines(path)?;
     let mut iter = lines.iter().map(|x| x.as_slice());
     skip_header(&mut iter);
     let line = String::from_utf8(iter.next().unwrap().to_vec())?;

@@ -241,13 +241,20 @@ fn main() {
     breezyshim::init().unwrap();
 
     std::process::exit(match &args.command {
-        Commands::Release(release_args) => release_many(
+        Commands::Release(release_args) => {
+            match release_many(
             release_args.url.as_slice(),
             release_args.new_version.clone(),
             release_args.ignore_ci,
             args.dry_run,
-        )
-        .unwrap(),
+        ) {
+            Ok(x) => x,
+            Err(e) => {
+                print_py_err(e);
+                1
+            }
+        }
+        }
         Commands::Discover(discover_args) => {
             let pypi_usernames = match discover_args.pypi_user.as_slice() {
                 [] => config
@@ -303,7 +310,7 @@ fn main() {
                     );
                     0
                 } else {
-                    release_many(
+                    match release_many(
                         urls.iter()
                             .map(|x| x.to_string())
                             .collect::<Vec<_>>()
@@ -311,8 +318,13 @@ fn main() {
                         None,
                         false,
                         false,
-                    )
-                    .unwrap()
+                    ) {
+                        Ok(ret) => ret,
+                        Err(e) => {
+                            print_py_err(e);
+                            1
+                        }
+                    }
                 };
                 if let Some(prometheus) = args.prometheus {
                     push_to_gateway(prometheus.as_str()).unwrap();
@@ -330,4 +342,13 @@ fn main() {
             info(&wt, wt.branch().as_ref()).unwrap()
         }
     });
+}
+
+fn print_py_err(e: pyo3::PyErr) {
+    pyo3::Python::with_gil(|py| {
+        if let Some(tb) = e.traceback(py) {
+            println!("{}", tb.format().unwrap());
+        }
+    });
+    panic!("{}", e);
 }
