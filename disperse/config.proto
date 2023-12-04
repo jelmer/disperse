@@ -37,7 +37,3 @@ message Project {
 
     optional string launchpad_series = 15;
 };
-
-message Config {
-    repeated string url = 1;
-};

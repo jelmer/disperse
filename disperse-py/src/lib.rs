@@ -1,5 +1,6 @@
 use breezyshim::branch::Branch;
 use breezyshim::tree::{MutableTree, Tree, WorkingTree};
+use pyo3::exceptions::PyRuntimeError;
 use disperse::Version;
 use pyo3::create_exception;
 use pyo3::prelude::*;
@@ -97,12 +98,12 @@ fn cargo_publish(tree: PyObject, subpath: std::path::PathBuf) -> PyResult<()> {
 #[pyfunction]
 fn find_version_in_cargo(tree: PyObject) -> PyResult<String> {
     let tree = breezyshim::tree::WorkingTree::new(tree)?;
-    disperse::cargo::find_version(&tree).map_err(|e| {
+    Ok(disperse::cargo::find_version(&tree).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
             "find_version_in_cargo failed: {}",
             e
         ))
-    })
+    })?.to_string())
 }
 
 #[pyfunction]
@@ -321,6 +322,64 @@ fn news_mark_released(
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
+fn py_to_project_config(cfg: &PyAny) -> PyResult<disperse::project_config::ProjectConfig> {
+    let mut ret = disperse::project_config::ProjectConfig::new();
+
+    fn extract_string(cfg: &PyAny, name: &str) -> PyResult<Option<String>> {
+        if cfg.call_method1("HasField", (name,))?.extract()? {
+            Ok(Some(cfg.getattr(name)?.extract()?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    ret.name = extract_string(cfg, "name")?;
+
+    ret.tag_name = extract_string(cfg, "tag_name")?;
+    ret.news_file = extract_string(cfg, "news_file")?;
+    ret.tarball_location.extend(cfg.getattr("tarball_location")?.extract::<Vec<String>>()?);
+    ret.timeout_days = cfg.getattr("timeout_days")?.extract()?;
+    ret.verify_command = extract_string(cfg, "verify_command")?;
+    ret.update_manpages.extend(cfg.getattr("update_manpages")?.extract::<Vec<String>>()?);
+    ret.pre_dist_command = extract_string(cfg, "pre_dist_command")?;
+    ret.github_url = extract_string(cfg, "github_url")?;
+    ret.github_branch = extract_string(cfg, "github_branch")?;
+    ret.skip_twine_upload = cfg.getattr("skip_twine_upload")?.extract()?;
+    ret.ci_timeout = cfg.getattr("ci_timeout")?.extract()?;
+    ret.launchpad_project = extract_string(cfg, "launchpad_project")?;
+    ret.launchpad_series = extract_string(cfg, "launchpad_series")?;
+
+    for v in cfg.getattr("update_version")?.extract::<Vec<&PyAny>>()? {
+        let mut u = disperse::project_config::UpdateVersion::new();
+        u.path = extract_string(v, "path")?;
+        u.new_line = extract_string(v, "new_line")?;
+        u.match_ = extract_string(v, "match")?;
+        ret.update_version.push(u);
+    }
+
+    Ok(ret)
+}
+
+#[pyfunction]
+fn find_pending_version(py: Python, tree: PyObject, cfg: PyObject) -> PyResult<Option<String>> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let project_config = py_to_project_config(cfg.as_ref(py))?;
+
+    disperse::find_pending_version(&tree, &project_config)
+        .map_err(|e| PyRuntimeError::new_err(format!("find_pending_version failed: {}", e)))
+        .map(|v| v.map(|v| v.to_string()))
+}
+
+#[pyfunction]
+fn find_last_version(py: Python, tree: PyObject, cfg: PyObject) -> PyResult<(String, Option<String>)> {
+    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let project_config = py_to_project_config(cfg.as_ref(py))?;
+
+    disperse::find_last_version(&tree, &project_config)
+        .map_err(|e| PyRuntimeError::new_err(format!("find_last_version failed: {}", e)))
+        .map(|(v, s)| (v.to_string(), s.map(|s| s.to_string())))
+}
+
 #[pymodule]
 fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(cargo_publish))?;
@@ -353,6 +412,8 @@ fn _disperse_rs(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(reverse_version))?;
     m.add_wrapped(wrap_pyfunction!(update_version_in_file))?;
     m.add_wrapped(wrap_pyfunction!(news_find_pending))?;
+    m.add_wrapped(wrap_pyfunction!(find_pending_version))?;
+    m.add_wrapped(wrap_pyfunction!(find_last_version))?;
     m.add("PendingExists", py.get_type::<PendingExists>())?;
     m.add_wrapped(wrap_pyfunction!(news_add_pending))?;
     m.add_wrapped(wrap_pyfunction!(news_mark_released))?;
