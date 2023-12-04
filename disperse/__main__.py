@@ -224,7 +224,7 @@ def release_project(  # noqa: C901
     try:
         from breezy.errors import ConnectionError  # type: ignore
     except ImportError:
-        pass
+        ConnectionError = __builtins__['ConnectionError'] # type: ignore
 
     now = datetime.now()
     try:
