@@ -164,9 +164,10 @@ pub fn news_add_pending(
 
     let (last_version, last_date, line_format, pending) = parse_version_line(line.as_str())?;
     if pending {
+        let last_date = last_date.map(|x| x.parse().map_err(|_| Error::InvalidData(x.to_string()))).transpose()?;
         return Err(Error::PendingExists {
             last_version: last_version.unwrap().parse().map_err(|_| Error::InvalidData(last_version.unwrap().to_string()))?,
-            last_date: last_date.unwrap().parse().map_err(|_| Error::InvalidData(last_date.unwrap().to_string()))?,
+            last_date
         });
     }
     lines.insert(i, b"\n".to_vec());
@@ -199,7 +200,7 @@ pub enum Error {
     OddVersion(String),
     PendingExists {
         last_version: Version,
-        last_date: chrono::NaiveDate
+        last_date: Option<chrono::NaiveDate>
     },
     InvalidData(String),
 }
@@ -215,7 +216,7 @@ impl std::fmt::Display for Error {
                     f,
                     "Pending version already exists: {} {}",
                     last_version.to_string(),
-                    last_date.format("%Y-%m-%d")
+                    last_date.map_or_else(|| "UNRELEASED".to_string(), |x| x.format("%Y-%m-%d").to_string())
                 )
             }
             Self::InvalidData(s) => write!(f, "Invalid data: {}", s),
