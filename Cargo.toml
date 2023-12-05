@@ -11,7 +11,7 @@ build = "build.rs"
 
 [dependencies]
 breezyshim = "0.1.20"
-chrono = "0.4.31"
+chrono = { workspace = true }
 crates_io_api = "0.8.1"
 lazy-regex = "3.0.1"
 pyo3 = { workspace = true }
@@ -49,6 +49,7 @@ cli = ["dep:clap", "dep:env_logger"]
 
 [workspace.dependencies]
 pyo3 = { version = "0.19", features = ["serde"] }
+chrono = "0.4.31"
 
 [[bin]]
 name = "disperse"

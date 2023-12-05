@@ -23,7 +23,7 @@ fn update_version_in_manpage(
     tree: PyObject,
     path: std::path::PathBuf,
     new_version: Version,
-    release_date: chrono::DateTime<chrono::Utc>,
+    release_date: chrono::NaiveDate
 ) -> PyResult<()> {
     let mut tree = WorkingTree::from(tree);
 
@@ -316,7 +316,7 @@ fn news_mark_released(
     tree: PyObject,
     path: std::path::PathBuf,
     version: Version,
-    release_date: chrono::DateTime<chrono::Utc>,
+    release_date: chrono::NaiveDate,
 ) -> PyResult<String> {
     let tree = breezyshim::tree::WorkingTree::from(tree);
 

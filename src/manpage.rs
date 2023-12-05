@@ -1,6 +1,6 @@
 use crate::Version;
 use breezyshim::tree::MutableTree;
-use chrono::{DateTime, Utc};
+use chrono::{NaiveDate, Utc};
 use regex::Regex;
 
 use std::io::{BufRead, BufReader};
@@ -50,7 +50,7 @@ pub fn update_version_in_manpage(
     tree: &mut dyn MutableTree,
     path: &Path,
     new_version: &Version,
-    release_date: DateTime<Utc>,
+    release_date: NaiveDate,
 ) -> Result<(), Error> {
     let file = tree.get_file(path)?;
 

@@ -24,9 +24,8 @@ pub fn expand_template(template: &str, version: &Version, date: &str) -> String 
         .replace("%(date)s", date)
 }
 
-pub fn skip_header<'a>(lines: &mut impl Iterator<Item = &'a [u8]>) -> usize {
-    let mut iter = lines.peekable();
-    let mut i: isize = -1;
+pub fn skip_header<'a, I: Iterator<Item = &'a [u8]>>(iter: &mut std::iter::Peekable<I>) -> usize {
+    let mut i = 0;
     while let Some(line) = iter.peek() {
         i += 1;
         if line.starts_with(b"Changelog for ") {
@@ -59,7 +58,7 @@ pub fn news_find_pending(
     path: &std::path::Path,
 ) -> Result<Option<String>, Error> {
     let lines = tree.get_file_lines(path)?;
-    let mut iter = lines.iter().map(|x| x.as_slice());
+    let mut iter = lines.iter().map(|x| x.as_slice()).peekable();
     skip_header(&mut iter);
     let line = String::from_utf8(iter.next().unwrap().to_vec()).map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
     let (last_version, _last_date, _line_format, pending) = parse_version_line(line.as_str())?;
@@ -158,7 +157,7 @@ pub fn news_add_pending(
     new_version: &crate::Version,
 ) -> Result<(), Error> {
     let mut lines = tree.get_file_lines(path)?;
-    let mut line_iter = lines.iter().map(|x| x.as_slice());
+    let mut line_iter = lines.iter().map(|x| x.as_slice()).peekable();
     let i = skip_header(&mut line_iter);
 
     let line = String::from_utf8(line_iter.next().unwrap().to_vec()).map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
@@ -200,7 +199,7 @@ pub enum Error {
     OddVersion(String),
     PendingExists {
         last_version: Version,
-        last_date: chrono::DateTime<chrono::Utc>,
+        last_date: chrono::NaiveDate
     },
     InvalidData(String),
 }
@@ -216,7 +215,7 @@ impl std::fmt::Display for Error {
                     f,
                     "Pending version already exists: {} {}",
                     last_version.to_string(),
-                    last_date.to_rfc3339()
+                    last_date.format("%Y-%m-%d")
                 )
             }
             Self::InvalidData(s) => write!(f, "Invalid data: {}", s),
@@ -236,10 +235,10 @@ pub fn news_mark_released(
     tree: &dyn MutableTree,
     path: &std::path::Path,
     expected_version: &Version,
-    release_date: &chrono::DateTime<chrono::Utc>,
+    release_date: &chrono::NaiveDate,
 ) -> Result<String, Error> {
     let mut lines = tree.get_file_lines(path)?;
-    let mut iter = lines.iter().map(|x| x.as_slice());
+    let mut iter = lines.iter().map(|x| x.as_slice()).peekable();
     let i = skip_header(&mut iter);
     let line = String::from_utf8(iter.next().unwrap().to_vec()).map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
     let (version, _date, line_format, pending) = parse_version_line(line.as_str())?;
