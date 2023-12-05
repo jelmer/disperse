@@ -16,7 +16,6 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 import logging
-import re
 import subprocess
 from datetime import datetime
 from glob import glob
@@ -27,12 +26,9 @@ import breezy.bzr  # noqa: F401
 import breezy.git  # noqa: F401
 import breezy.plugins.launchpad  # noqa: F401
 from breezy.branch import Branch
-from breezy.errors import NoSuchTag
 from breezy.git.remote import ProtectedBranchHookDeclined
-from breezy.revision import NULL_REVISION
 from breezy.transport import NoSuchFile
 from breezy.urlutils import split_segment_parameters
-from breezy.workingtree import WorkingTree
 from prometheus_client import CollectorRegistry, Counter
 from silver_platter.workspace import Workspace
 
@@ -560,107 +556,6 @@ def release_project(  # noqa: C901
 
 
 find_last_version_in_tags = _disperse_rs.find_last_version_in_tags
-
-
-def info(tree, branch):
-    try:
-        cfg = read_project_with_fallback(tree)
-    except NoSuchFile:
-        logging.info("No configuration found")
-        return
-
-    name: Optional[str]
-
-    if cfg.name:
-        name = cfg.name
-    elif tree.has_filename("pyproject.toml"):
-        name = find_name_in_pyproject_toml(tree)
-    else:
-        name = None
-
-    logging.info("Project: %s", name)
-
-    try:
-        last_version, last_version_status = find_last_version(tree, cfg)
-    except NotImplementedError:
-        last_version, last_version_status = find_last_version_in_tags(
-            branch, cfg.tag_name
-        )
-    logging.info("Last release: %s", last_version)
-    if last_version_status:
-        logging.info("  status: %s", last_version_status)
-
-    tag_name = expand_tag(cfg.tag_name, last_version)
-    try:
-        release_revid = branch.tags.lookup_tag(tag_name)
-    except NoSuchTag:
-        logging.info("  tag %s for previous release not found", tag_name)
-    else:
-        logging.info("  tag name: %s (%s)", tag_name, release_revid.decode("utf-8"))
-
-        rev = branch.repository.get_revision(release_revid)
-        logging.info("  date: %s", datetime.fromtimestamp(rev.timestamp))
-
-        if rev.revision_id != branch.last_revision():
-            graph = branch.repository.get_graph()
-            missing = list(
-                graph.iter_lefthand_ancestry(branch.last_revision(), [release_revid])
-            )
-            if missing[-1] == NULL_REVISION:
-                logging.info("  last release not found in ancestry")
-            else:
-                first = branch.repository.get_revision(missing[-1])
-                first_age = datetime.now() - datetime.fromtimestamp(first.timestamp)
-                logging.info(
-                    "  %d revisions since last release. First is %d days old.",
-                    len(missing),
-                    first_age.days,
-                )
-        else:
-            logging.info("  no revisions since last release")
-
-    try:
-        new_version = find_pending_version(tree, cfg)
-    except NotImplementedError:
-        logging.info(
-            "No pending version found; would use %s", increase_version(last_version, -1)
-        )
-    except NoUnreleasedChanges:
-        logging.info("No unreleased changes")
-    except OddPendingVersion as e:
-        logging.info("Pending version: %s (odd)", e.version)
-    else:
-        logging.info("Pending version: %s", new_version)
-
-
-def validate_config(path):
-    wt = WorkingTree.open(path)
-
-    try:
-        cfg = read_project_with_fallback(wt)
-    except NoSuchFile as exc:
-        raise NodisperseConfig() from exc
-
-    if cfg.news_file:
-        news_file = NewsFile(wt, cfg.news_file)
-        news_file.validate()
-
-    if cfg.update_version:
-        for update_cfg in cfg.update_version:
-            if not update_cfg.match:
-                r = version_line_re(update_cfg.new_line)
-            else:
-                r = re.compile(update_cfg.match.encode())
-            with wt.get_file(update_cfg.path) as f:
-                for line in f:
-                    if r.match(line):
-                        break
-                else:
-                    raise Exception(f"No matches for {r.pattern} in {update_cfg.path}")
-
-    for update in cfg.update_manpages:
-        if not glob(wt.abspath(update)):
-            raise Exception("no matches for {update}")
 
 
 def release_many(

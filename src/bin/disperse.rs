@@ -3,6 +3,9 @@ use clap::Parser;
 use maplit::hashmap;
 use std::io::Write;
 use url::Url;
+use std::path::Path;
+use disperse::project_config::{read_project_with_fallback, ProjectConfig};
+use disperse::{find_last_version, find_last_version_in_tags};
 
 use prometheus::{default_registry, Encoder, TextEncoder};
 
@@ -111,21 +114,112 @@ struct InfoArgs {
     path: std::path::PathBuf,
 }
 
-fn info(
-    tree: &dyn breezyshim::tree::Tree,
-    branch: &dyn breezyshim::branch::Branch,
-) -> pyo3::PyResult<i32> {
-    pyo3::Python::with_gil(|py| {
-        let m = py.import("disperse.__main__")?;
-        let info = m.getattr("info")?;
-        let kwargs = pyo3::types::PyDict::new(py);
-        kwargs.set_item("tree", tree)?;
-        kwargs.set_item("branch", branch)?;
-        Ok(info
-            .call((), Some(kwargs))?
-            .extract::<Option<i32>>()?
-            .unwrap_or(0))
-    })
+pub fn info(tree: &breezyshim::tree::WorkingTree, branch: &dyn breezyshim::branch::Branch) -> i32 {
+    let cfg = match disperse::project_config::read_project_with_fallback(tree) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            log::info!("Error loading configuration: {}", e);
+            return 1;
+        }
+    };
+
+    let name = if let Some(name) = cfg.name.as_ref() {
+        Some(name.clone())
+    } else if tree.has_filename(Path::new("pyproject.toml")) {
+        disperse::python::find_name_in_pyproject_toml(tree)
+    } else {
+        None
+    };
+
+    if let Some(name) = name {
+        log::info!("Project: {}", name);
+    }
+
+    let (mut last_version, last_version_status) = if let Some((v, s)) = match find_last_version(tree, &cfg) {
+        Ok(v) => v,
+        Err(e) => {
+            log::info!("Error loading last version: {}", e);
+            return 1;
+        }
+    } {
+        (v, s)
+    } else if let Some(tag_name) = cfg.tag_name.as_deref() {
+        let (v, s) = match find_last_version_in_tags(branch, tag_name) {
+            Ok((Some(v), s)) => (v, s),
+            Ok((None, _)) => {
+                log::info!("No version found");
+                return 1;
+            }
+            Err(e) => {
+                log::info!("Error loading tags: {}", e);
+                return 1;
+            }
+        };
+        (v, s)
+    } else {
+        log::info!("No version found");
+        return 1;
+    };
+
+    log::info!("Last release: {}", last_version.to_string());
+    if let Some(status) = last_version_status {
+        log::info!("  status: {}", status.to_string());
+    }
+
+    let tag_name = disperse::version::expand_tag(cfg.tag_name.as_deref().unwrap(), &last_version);
+    match branch.tags().unwrap().lookup_tag(tag_name.as_str()) {
+        Ok(release_revid) => {
+            log::info!("  tag name: {} ({})", tag_name, release_revid);
+
+            let rev = branch.repository().get_revision(&release_revid).unwrap();
+            log::info!("  date: {}", rev.datetime().format("%Y-%m-%d %H:%M:%S"));
+
+            if rev.revision_id != branch.last_revision() {
+                let graph = branch.repository().get_graph();
+                let missing = graph.iter_lefthand_ancestry(&branch.last_revision(), Some(&[release_revid.clone()])).collect::<Result<Vec<_>, _>>().unwrap();
+                if missing.last().map(|r| r.is_null()).unwrap() {
+                    log::info!("  last release not found in ancestry");
+                } else {
+                    use chrono::TimeZone;
+                    let first = branch.repository().get_revision(missing.last().unwrap()).unwrap();
+                    let first_timestamp = chrono::FixedOffset::east(first.timezone).timestamp(first.timestamp as i64, 0);
+                    let first_age = chrono::Utc::now().signed_duration_since(first_timestamp).num_days();
+                    log::info!(
+                        "  {} revisions since last release. First is {} days old.",
+                        missing.len(),
+                        first_age,
+                    );
+                }
+            } else {
+                log::info!("  no revisions since last release");
+            }
+        },
+        Err(NoSuchTag) => {
+            log::info!("  tag {} for previous release not found", tag_name);
+        },
+    };
+
+    match disperse::find_pending_version(tree, &cfg) {
+        Ok(new_version) => {
+            log::info!("Pending version: {}", new_version.to_string());
+            0
+        }
+        Err(disperse::FindPendingVersionError::OddPendingVersion(e)) => {
+            log::info!("Pending version: {} (odd)", e);
+            1
+        }
+        Err(disperse::FindPendingVersionError::NotFound) => {
+            disperse::version::increase_version(&mut last_version, -1);
+            log::info!(
+                "No pending version found; would use {}", last_version.to_string()
+            );
+            0
+        }
+        Err(NoUnreleasedChanges) => {
+            log::info!("No unreleased changes");
+            0
+        }
+    }
 }
 
 fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
@@ -148,31 +242,24 @@ fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
 
         if let Some(wt) = local_wt {
             let lock = wt.lock_read();
-            ret += info(&wt, wt.branch().as_ref()).unwrap_or(0);
+            ret += info(&wt, wt.branch().as_ref());
             std::mem::drop(lock);
         } else {
-            let lock = branch.lock_read().unwrap();
-            match info(&branch.basis_tree().unwrap(), branch.as_ref()) {
-                Ok(_) => {
-                    std::mem::drop(lock);
-                }
-                Err(_e) => {
-                    // TODO(jelmer): Just handle UnsupporedOperation
-                    let ws = silver_platter::workspace::Workspace::from_url(
-                        url,
-                        None,
-                        None,
-                        hashmap! {},
-                        hashmap! {},
-                        None,
-                        None,
-                        None,
-                    );
-                    let lock = ws.local_tree().lock_read();
-                    ret += info(&ws.local_tree(), ws.local_tree().branch().as_ref()).unwrap_or(0);
-                    std::mem::drop(lock);
-                }
-            }
+            // TODO(jelmer): Just handle UnsupporedOperation
+            let ws = silver_platter::workspace::Workspace::from_url(
+                url,
+                None,
+                None,
+                hashmap! {},
+                hashmap! {},
+                None,
+                None,
+                None,
+            );
+            let lock = ws.local_tree().lock_read();
+            let r = info(&ws.local_tree(), ws.local_tree().branch().as_ref());
+            std::mem::drop(lock);
+            ret += r;
         }
     }
     Ok(ret)
@@ -205,16 +292,46 @@ fn release_many(
 }
 
 fn validate_config(path: &std::path::Path) -> pyo3::PyResult<i32> {
-    pyo3::Python::with_gil(|py| {
-        let m = py.import("disperse.__main__")?;
-        let validate_config = m.getattr("validate_config")?;
-        let kwargs = pyo3::types::PyDict::new(py);
-        kwargs.set_item("path", path)?;
-        validate_config
-            .call((), Some(kwargs))?
-            .extract::<Option<i32>>()
-            .map(|x| x.unwrap_or(0))
-    })
+    let wt = breezyshim::tree::WorkingTree::open(path)?;
+
+    let cfg = match read_project_with_fallback(&wt) {
+        Ok(x) => x,
+        Err(e) => {
+            log::error!("Unable to read config: {}", e);
+            return Ok(1);
+        }
+    };
+
+
+    if let Some(news_file) = &cfg.news_file {
+        let news_file = wt.base().join(news_file);
+        if !news_file.exists() {
+            log::error!("News file {} does not exist", news_file.display());
+            return Ok(1);
+        }
+    }
+
+    for update_version in cfg.update_version.iter() {
+        match disperse::custom::validate_update_version(&wt, update_version) {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Invalid update_version: {}", e);
+                return Ok(1);
+            }
+        }
+    }
+
+    for update_manpage in cfg.update_manpages.iter() {
+        match disperse::manpage::validate_update_manpage(&wt, update_manpage) {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Invalid update_manpage: {}", e);
+                return Ok(1);
+            }
+        }
+    }
+
+    Ok(0)
 }
 
 fn main() {
@@ -339,7 +456,7 @@ fn main() {
         Commands::Validate(args) => validate_config(&args.path).unwrap(),
         Commands::Info(args) => {
             let wt = breezyshim::tree::WorkingTree::open(args.path.as_ref()).unwrap();
-            info(&wt, wt.branch().as_ref()).unwrap()
+            info(&wt, wt.branch().as_ref())
         }
     });
 }

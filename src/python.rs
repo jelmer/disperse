@@ -2,21 +2,56 @@ use crate::Version;
 use breezyshim::tree::{Tree, WorkingTree};
 
 use serde_json::Value;
-use std::error::Error;
 use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
 use url::Url;
 use xmlrpc::Request;
 
+#[derive(Debug)]
+pub enum Error {
+    TreeError(breezyshim::tree::Error),
+    VersionError(String),
+    IoError(std::io::Error),
+    Other(String),
+}
+
+impl From<breezyshim::tree::Error> for Error {
+    fn from(e: breezyshim::tree::Error) -> Self {
+        Error::TreeError(e)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Error::IoError(e)
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match &self {
+            Error::TreeError(e) => write!(f, "Tree error: {}", e),
+            Error::VersionError(e) => write!(f, "Version error: {}", e),
+            Error::Other(e) => write!(f, "Other error: {}", e),
+            Error::IoError(e) => write!(f, "IO error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
 pub fn update_version_in_pyproject_toml(
     tree: &WorkingTree,
     new_version: &crate::Version,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<bool, Error> {
     let cargo_toml_contents = tree.get_file_text(Path::new("pyproject.toml"))?;
 
     let mut parsed_toml: toml_edit::Document =
-        String::from_utf8_lossy(cargo_toml_contents.as_slice()).parse()?;
+        String::from_utf8(cargo_toml_contents)
+        .map_err(|e| Error::Other(format!("Invalid UTF-8 in pyproject.toml: {}", e)))?
+        .parse()
+        .map_err(|e| Error::Other(format!("Invalid TOML in pyproject.toml: {}", e)))?;
 
     if let Some(project) = parsed_toml
         .as_table_mut()
@@ -40,11 +75,12 @@ pub fn update_version_in_pyproject_toml(
     Ok(true)
 }
 
-pub fn find_version_in_pyproject_toml(tree: &dyn Tree) -> Option<Version> {
-    let content = tree.get_file_text(Path::new("pyproject.toml")).ok()?;
+pub fn find_version_in_pyproject_toml(tree: &dyn Tree) -> Result<Option<Version>, Error> {
+    let content = tree.get_file_text(Path::new("pyproject.toml"))?;
 
     let parsed_toml: toml_edit::Document =
-        String::from_utf8_lossy(content.as_slice()).parse().ok()?;
+        String::from_utf8(content).map_err(|e| Error::Other(format!("{}", e)))?.parse()
+        .map_err(|e| Error::Other(format!("Unable to parse TOML: {}", e)))?;
 
     parsed_toml
         .as_table()
@@ -52,27 +88,31 @@ pub fn find_version_in_pyproject_toml(tree: &dyn Tree) -> Option<Version> {
         .and_then(|v| v.as_table())
         .and_then(|v| v.get("version"))
         .and_then(|v| v.as_str())
-        .map(|v| Version::from_str(v).unwrap())
+        .map(|v| Version::from_str(v).map_err(|e| Error::VersionError(e))).transpose()
 }
 
-pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Box<dyn std::error::Error>> {
+pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Error> {
     let request = Request::new("user_packages").arg(pypi_user);
 
-    let response = request.call_url("https://pypi.org/pypi")?;
+    let response = request.call_url("https://pypi.org/pypi")
+        .map_err(|e| Error::Other(format!("Error calling PyPI: {}", e)))?;
 
     let mut ret = vec![];
 
     let client = reqwest::blocking::ClientBuilder::new()
         .user_agent(crate::USER_AGENT)
-        .build()?;
+        .build()
+        .map_err(|e| Error::Other(format!("Error building HTTP client: {}", e)))?;
 
     for package in response.as_array().unwrap().iter() {
         let package_str = package.as_array().unwrap()[1].as_str().unwrap();
 
         let req_url = format!("https://pypi.org/pypi/{}/json", package_str);
-        let resp = client.get(&req_url).send()?;
+        let resp = client.get(&req_url).send()
+            .map_err(|e| Error::Other(format!("Error fetching {}: {}", req_url, e)))?;
 
-        let data: Value = resp.json()?;
+        let data: Value = resp.json()
+            .map_err(|e| Error::Other(format!("Error parsing JSON from {}: {}", req_url, e)))?;
         if let Some(project_urls) = data["info"]["project_urls"].as_object() {
             if project_urls.is_empty() {
                 log::debug!("Project {} does not have project URLs", package_str);
@@ -84,7 +124,8 @@ pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Box<dyn std:
                     continue;
                 }
                 if key == "Repository" {
-                    ret.push(url.as_str().unwrap().parse()?);
+                    ret.push(url.as_str().unwrap().parse()
+                        .map_err(|e| Error::Other(format!("Error parsing URL {}: {}", url, e)))?);
                     break;
                 }
                 let parsed_url = match Url::parse(url.as_str().unwrap()) {
@@ -97,7 +138,8 @@ pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Box<dyn std:
                 if parsed_url.host_str() == Some("github.com")
                     && parsed_url.path().trim_matches('/').matches('/').count() == 1
                 {
-                    ret.push(url.as_str().unwrap().parse()?);
+                    ret.push(url.as_str().unwrap().parse()
+                        .map_err(|e| Error::Other(format!("Error parsing URL {}: {}", url, e)))?);
                     break;
                 }
             }
@@ -107,13 +149,16 @@ pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Box<dyn std:
     Ok(ret)
 }
 
-pub fn pyproject_uses_hatch_vcs(tree: &dyn Tree) -> Result<bool, Box<dyn std::error::Error>> {
+pub fn pyproject_uses_hatch_vcs(tree: &dyn Tree) -> Result<bool, Error> {
     let content = match tree.get_file_text(Path::new("pyproject.toml")) {
         Ok(v) => v,
         Err(_) => return Ok(false),
     };
 
-    let parsed_toml: toml_edit::Document = String::from_utf8_lossy(content.as_slice()).parse()?;
+    let parsed_toml: toml_edit::Document = String::from_utf8(content).
+        map_err(|e| Error::Other(format!("Invalid UTF-8 in pyproject.toml: {}", e)))?
+        .parse()
+        .map_err(|e| Error::Other(format!("Invalid TOML in pyproject.toml: {}", e)))?;
 
     Ok(parsed_toml
         .as_table()
@@ -170,10 +215,12 @@ pub fn find_hatch_vcs_version(tree: &WorkingTree) -> Option<Version> {
 
 pub fn read_project_urls_from_pyproject_toml(
     path: &std::path::Path,
-) -> Result<Vec<(url::Url, Option<String>)>, Box<dyn std::error::Error>> {
+) -> Result<Vec<(url::Url, Option<String>)>, Error> {
     let content = std::fs::read(path)?;
 
-    let parsed_toml: toml_edit::Document = String::from_utf8_lossy(&content).parse()?;
+    let parsed_toml: toml_edit::Document = String::from_utf8(content).
+        map_err(|e| Error::Other(format!("Invalid UTF-8 in pyproject.toml: {}", e)))?
+        .parse().map_err(|e| Error::Other(format!("Invalid TOML in pyproject.toml: {}", e)))?;
 
     let project_urls = match parsed_toml
         .as_table()
