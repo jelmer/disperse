@@ -156,7 +156,7 @@ impl FromPyObject<'_> for Version {
     }
 }
 
-pub fn expand_tag(tag_template: &str, version: Version) -> String {
+pub fn expand_tag(tag_template: &str, version: &Version) -> String {
     tag_template.replace("$VERSION", version.to_string().as_str())
 }
 

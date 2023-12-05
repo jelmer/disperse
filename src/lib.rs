@@ -104,8 +104,8 @@ pub fn check_new_revisions(
 pub fn find_last_version_in_tags(
     branch: &dyn breezyshim::branch::Branch,
     tag_name: &str,
-) -> (Option<Version>, Option<Status>) {
-    let rev_tag_dict = branch.tags().unwrap().get_reverse_tag_dict().unwrap();
+) -> Result<(Option<Version>, Option<Status>), Box<dyn std::error::Error>> {
+    let rev_tag_dict = branch.tags()?.get_reverse_tag_dict()?;
     let graph = branch.repository().get_graph();
 
     let (revid, tags) = graph
@@ -126,23 +126,23 @@ pub fn find_last_version_in_tags(
         } else {
             Status::Dev
         };
-        return (Some(release), Some(status));
+        return Ok((Some(release), Some(status)));
     }
 
     warn!("Unable to find any tags matching {}", tag_name);
-    (None, None)
+    Ok((None, None))
 }
 
 
-pub fn find_last_version(tree: &breezyshim::tree::WorkingTree, cfg: &project_config::ProjectConfig) -> Result<(crate::version::Version, Option<Status>), Box<dyn std::error::Error>> {
+pub fn find_last_version(tree: &breezyshim::tree::WorkingTree, cfg: &project_config::ProjectConfig) -> Result<Option<(crate::version::Version, Option<Status>)>, Box<dyn std::error::Error>> {
     if tree.has_filename(Path::new("Cargo.toml")) {
         log::debug!("Reading version from Cargo.toml");
-        return Ok((cargo::find_version(tree)?, None));
+        return Ok(Some((cargo::find_version(tree)?, None)));
     }
     if tree.has_filename(Path::new("pyproject.toml")) {
         log::debug!("Reading version from pyproject.toml");
-        if let Some(version) = python::find_version_in_pyproject_toml(tree) {
-            return Ok((version, None));
+        if let Some(version) = python::find_version_in_pyproject_toml(tree)? {
+            return Ok(Some((version, None)));
         }
         if python::pyproject_uses_hatch_vcs(tree)? {
             let version = match python::find_hatch_vcs_version(tree) {
@@ -151,7 +151,7 @@ pub fn find_last_version(tree: &breezyshim::tree::WorkingTree, cfg: &project_con
                     unimplemented!("hatch in use but unable to find hatch vcs version");
                 }
             };
-            return Ok((version, None));
+            return Ok(Some((version, None)));
         }
     }
     for update_cfg in cfg.update_version.iter() {
@@ -176,33 +176,53 @@ pub fn find_last_version(tree: &breezyshim::tree::WorkingTree, cfg: &project_con
         let lines = buf.lines().map(|l| l.unwrap()).collect::<Vec<_>>();
         let (v, s) = custom::reverse_version(new_line.as_str(), lines.iter().map(|l| l.as_str()).collect::<Vec<_>>().as_slice());
         if let Some(v) = v {
-            return Ok((v, s));
+            return Ok(Some((v, s)));
         }
     }
-    Err("Unable to find version".into())
+    Ok(None)
 }
 
 #[derive(Debug)]
-struct OddPendingVersion(String);
+pub enum FindPendingVersionError {
+    OddPendingVersion(String),
+    Other(Box<dyn std::error::Error>),
+    NotFound
+}
 
-impl std::fmt::Display for OddPendingVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "OddPendingVersion: {}", self.0)
+impl std::fmt::Display for FindPendingVersionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OddPendingVersion(e) => {
+                write!(f, "Odd pending version: {}", e)
+            }
+            Self::NotFound => {
+                write!(f, "No pending version found")
+            }
+            Self::Other(e) => {
+                write!(f, "Other error: {}", e)
+            }
+        }
     }
 }
 
-impl std::error::Error for OddPendingVersion {}
+impl std::error::Error for FindPendingVersionError {}
 
-pub fn find_pending_version(tree: &dyn breezyshim::tree::Tree, cfg: &project_config::ProjectConfig) -> Result<Option<Version>, Box<dyn std::error::Error>> {
+pub fn find_pending_version(tree: &dyn breezyshim::tree::Tree, cfg: &project_config::ProjectConfig) -> Result<Version, FindPendingVersionError> {
     if let Some(news_file) = cfg.news_file.as_ref() {
         match news_file::news_find_pending(tree, Path::new(news_file.as_str())) {
-            Ok(version) => Ok(version.map(|v| v.parse().unwrap())),
-            Err(e) if e.downcast_ref::<news_file::OddVersion>().is_some() => {
-                Err(Box::new(OddPendingVersion(e.to_string())))
+            Ok(Some(version)) => Ok(version.parse().unwrap()),
+            Ok(None) => Err(FindPendingVersionError::NotFound),
+            Err(news_file::Error::OddVersion(e)) => {
+                Err(FindPendingVersionError::OddPendingVersion(e))
             }
-            Err(e) => Err(e),
+            Err(news_file::Error::PendingExists { last_version, last_date }) => {
+                unreachable!();
+            }
+            Err(e) => {
+                Err(FindPendingVersionError::Other(Box::new(e)))
+            }
         }
     } else {
-        Ok(None)
+        Err(FindPendingVersionError::NotFound)
     }
 }

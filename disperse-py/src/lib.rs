@@ -25,7 +25,7 @@ fn update_version_in_manpage(
     new_version: Version,
     release_date: chrono::DateTime<chrono::Utc>,
 ) -> PyResult<()> {
-    let mut tree = WorkingTree::new(tree).unwrap();
+    let mut tree = WorkingTree::from(tree);
 
     disperse::manpage::update_version_in_manpage(
         &mut tree,
@@ -38,7 +38,7 @@ fn update_version_in_manpage(
 
 #[pyfunction]
 fn update_version_in_pyproject_toml(tree: PyObject, new_version: Version) -> PyResult<bool> {
-    let tree = WorkingTree::new(tree).unwrap();
+    let tree = WorkingTree::from(tree);
 
     disperse::python::update_version_in_pyproject_toml(&tree, &new_version)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -60,7 +60,7 @@ fn increase_version(mut version: Version, part: Option<isize>) -> PyResult<Versi
 
 #[pyfunction]
 fn expand_tag(template: &str, version: Version) -> PyResult<String> {
-    Ok(disperse::version::expand_tag(template, version))
+    Ok(disperse::version::expand_tag(template, &version))
 }
 
 #[pyfunction]
@@ -89,7 +89,7 @@ fn get_owned_crates(user: &str) -> PyResult<Vec<String>> {
 
 #[pyfunction]
 fn cargo_publish(tree: PyObject, subpath: std::path::PathBuf) -> PyResult<()> {
-    let tree = WorkingTree::new(tree)?;
+    let tree = WorkingTree::from(tree);
     disperse::cargo::publish(&tree, subpath.as_path()).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("cargo publish failed: {}", e))
     })
@@ -97,7 +97,7 @@ fn cargo_publish(tree: PyObject, subpath: std::path::PathBuf) -> PyResult<()> {
 
 #[pyfunction]
 fn find_version_in_cargo(tree: PyObject) -> PyResult<String> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
     Ok(disperse::cargo::find_version(&tree).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
             "find_version_in_cargo failed: {}",
@@ -108,13 +108,14 @@ fn find_version_in_cargo(tree: PyObject) -> PyResult<String> {
 
 #[pyfunction]
 fn find_version_in_pyproject_toml(tree: PyObject) -> PyResult<Option<Version>> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
-    Ok(disperse::python::find_version_in_pyproject_toml(&tree))
+    let tree = breezyshim::tree::WorkingTree::from(tree);
+    disperse::python::find_version_in_pyproject_toml(&tree)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 #[pyfunction]
 fn update_version_in_cargo(tree: PyObject, version: String) -> PyResult<()> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
     disperse::cargo::update_version(&tree, &version).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
             "update_version_in_cargo failed: {}",
@@ -127,28 +128,29 @@ fn update_version_in_cargo(tree: PyObject, version: String) -> PyResult<()> {
 fn find_last_version_in_tags(
     branch: PyObject,
     tag_name: &str,
-) -> (Option<Version>, Option<disperse::Status>) {
+) -> PyResult<(Option<Version>, Option<disperse::Status>)> {
     let branch = breezyshim::branch::RegularBranch::new(branch);
-    let (version, status) = disperse::find_last_version_in_tags(&branch, tag_name);
-    (version, status)
+    let (version, status) = disperse::find_last_version_in_tags(&branch, tag_name)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+    Ok((version, status))
 }
 
 #[pyfunction]
 fn find_name_in_pyproject_toml(tree: PyObject) -> PyResult<Option<String>> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
     Ok(disperse::python::find_name_in_pyproject_toml(&tree))
 }
 
 #[pyfunction]
 fn pyproject_uses_hatch_vcs(tree: PyObject) -> PyResult<bool> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
     disperse::python::pyproject_uses_hatch_vcs(&tree)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 #[pyfunction]
 fn find_hatch_vcs_version(tree: PyObject) -> PyResult<Option<Version>> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
     Ok(disperse::python::find_hatch_vcs_version(&tree))
 }
 
@@ -186,7 +188,7 @@ create_exception!(
 
 #[pyfunction]
 fn upload_python_artifacts(tree: PyObject, pypi_paths: Vec<String>) -> PyResult<()> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
 
     disperse::python::upload_python_artifacts(
         &tree,
@@ -201,7 +203,7 @@ fn upload_python_artifacts(tree: PyObject, pypi_paths: Vec<String>) -> PyResult<
 
 #[pyfunction]
 fn create_setup_py_artifacts(tree: PyObject) -> PyResult<Vec<String>> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
 
     disperse::python::create_setup_py_artifacts(&tree)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -209,7 +211,7 @@ fn create_setup_py_artifacts(tree: PyObject) -> PyResult<Vec<String>> {
 
 #[pyfunction]
 fn create_python_artifacts(tree: PyObject) -> PyResult<Vec<std::path::PathBuf>> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
 
     disperse::python::create_python_artifacts(&tree)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -274,7 +276,7 @@ fn update_version_in_file(
     new_version: Version,
     status: disperse::Status,
 ) -> PyResult<()> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
 
     disperse::custom::update_version_in_file(
         &tree,
@@ -289,7 +291,7 @@ fn update_version_in_file(
 
 #[pyfunction]
 fn news_find_pending(tree: PyObject, path: std::path::PathBuf) -> PyResult<Option<String>> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
 
     disperse::news_file::news_find_pending(&tree, path.as_path())
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -303,7 +305,7 @@ create_exception!(
 
 #[pyfunction]
 fn news_add_pending(tree: PyObject, path: std::path::PathBuf, version: Version) -> PyResult<()> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
 
     disperse::news_file::news_add_pending(&tree, path.as_path(), &version)
         .map_err(|e| PendingExists::new_err(format!("news_add_pending failed: {}", e)))
@@ -316,7 +318,7 @@ fn news_mark_released(
     version: Version,
     release_date: chrono::DateTime<chrono::Utc>,
 ) -> PyResult<String> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+    let tree = breezyshim::tree::WorkingTree::from(tree);
 
     disperse::news_file::news_mark_released(&tree, path.as_path(), &version, &release_date)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -361,23 +363,28 @@ fn py_to_project_config(cfg: &PyAny) -> PyResult<disperse::project_config::Proje
 }
 
 #[pyfunction]
-fn find_pending_version(py: Python, tree: PyObject, cfg: PyObject) -> PyResult<Option<String>> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+fn find_pending_version(py: Python, tree: PyObject, cfg: PyObject) -> PyResult<String> {
+    let tree = breezyshim::tree::WorkingTree::from(tree);
     let project_config = py_to_project_config(cfg.as_ref(py))?;
 
     disperse::find_pending_version(&tree, &project_config)
-        .map_err(|e| PyRuntimeError::new_err(format!("find_pending_version failed: {}", e)))
-        .map(|v| v.map(|v| v.to_string()))
+        .map_err(|e| match e {
+            disperse::FindPendingVersionError::NotFound => {
+                pyo3::exceptions::PyNotImplementedError::new_err("NoPendingVersion")
+            }
+            _ => PyRuntimeError::new_err(format!("find_pending_version failed: {}", e))
+        })
+        .map(|v| v.to_string())
 }
 
 #[pyfunction]
-fn find_last_version(py: Python, tree: PyObject, cfg: PyObject) -> PyResult<(String, Option<String>)> {
-    let tree = breezyshim::tree::WorkingTree::new(tree)?;
+fn find_last_version(py: Python, tree: PyObject, cfg: PyObject) -> PyResult<Option<(String, Option<String>)>> {
+    let tree = breezyshim::tree::WorkingTree::from(tree);
     let project_config = py_to_project_config(cfg.as_ref(py))?;
 
     disperse::find_last_version(&tree, &project_config)
         .map_err(|e| PyRuntimeError::new_err(format!("find_last_version failed: {}", e)))
-        .map(|(v, s)| (v.to_string(), s.map(|s| s.to_string())))
+        .map(|v| v.map(|(v, r)| (v.to_string(), r.map(|r| r.to_string()))))
 }
 
 #[pymodule]

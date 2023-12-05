@@ -7,7 +7,90 @@ use url::Url;
 
 const DEFAULT_GITHUB_CI_TIMEOUT: u64 = 60 * 24;
 
-pub fn init_github() -> Result<Octocrab, Box<dyn std::error::Error>> {
+#[derive(Debug)]
+pub enum Error {
+    InvalidGitHubUrl(String, String),
+    GitHubError(octocrab::Error),
+    TimedOut
+}
+
+impl From<octocrab::Error> for Error {
+    fn from(err: octocrab::Error) -> Self {
+        Error::GitHubError(err)
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Error::InvalidGitHubUrl(url, msg) => {
+                write!(f, "Invalid GitHub URL {}: {}", url, msg)
+            }
+            Error::GitHubError(err) => write!(f, "GitHub Error: {}", err),
+            Error::TimedOut => write!(f, "Timed out waiting for GitHub"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+pub enum GitHubCIStatus {
+    Ok,
+    Failed {
+        sha: String,
+        html_url: Option<String>,
+    },
+    Pending {
+        sha: String,
+        html_url: Option<String>,
+    },
+}
+
+impl GitHubCIStatus {
+    pub fn is_ok(&self) -> bool {
+        match self {
+            GitHubCIStatus::Ok => true,
+            _ => false,
+        }
+    }
+}
+
+impl std::fmt::Display for GitHubCIStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            GitHubCIStatus::Ok => write!(f, "GitHub CI Status: OK"),
+            GitHubCIStatus::Failed {
+                sha,
+                html_url: Some(url),
+            } => write!(
+                f,
+                "GitHub CI Status: Failed: SHA {}, URL {}",
+                sha,
+                url
+            ),
+            GitHubCIStatus::Failed {
+                sha,
+                html_url: None,
+            } => write!(f, "GitHub CI Status: Failed: SHA {}, URL None", sha),
+            GitHubCIStatus::Pending {
+                sha,
+                html_url: Some(url),
+            } => write!(
+                f,
+                "GitHub CI Status: Pending: SHA {}, URL {}",
+                sha,
+                url
+            ),
+            GitHubCIStatus::Pending {
+                sha,
+                html_url: None,
+            } => write!(f, "GitHub CI Status: Pending: SHA {}, URL None", sha),
+        }
+    }
+}
+
+
+pub fn init_github() -> Result<Octocrab, Error> {
     let github_token = match std::env::var("GITHUB_TOKEN") {
         Ok(token) => token,
         Err(_) => {
@@ -24,11 +107,12 @@ pub fn init_github() -> Result<Octocrab, Box<dyn std::error::Error>> {
 pub async fn get_github_repo(
     instance: &Octocrab,
     repo_url: &str,
-) -> Result<octocrab::models::Repository, Box<dyn std::error::Error>> {
+) -> Result<octocrab::models::Repository, Error> {
     // Remove ".git" from the end of the URL, if present
     let repo_url = repo_url.strip_suffix(".git").unwrap_or(repo_url);
 
-    let parsed_url = Url::parse(repo_url)?;
+    let parsed_url = Url::parse(repo_url)
+        .map_err(|_| Error::InvalidGitHubUrl(repo_url.to_string(), "Invalid URL".to_string()))?;
 
     // Extract the owner and repo name from the URL
     let path_segments: Vec<&str> = parsed_url.path_segments().unwrap().collect();
@@ -42,49 +126,11 @@ pub async fn get_github_repo(
     Ok(instance.repos(owner, repo_name).get().await?)
 }
 
-#[derive(Debug)]
-struct GitHubStatusFailed {
-    sha: String,
-    html_url: Option<String>,
-}
-
-impl std::fmt::Display for GitHubStatusPending {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "(GitHubStatusPending) SHA: {}, URL: {}",
-            self.sha,
-            self.html_url.as_ref().unwrap_or(&"None".to_string())
-        )
-    }
-}
-
-impl std::error::Error for GitHubStatusPending {}
-
-#[derive(Debug)]
-struct GitHubStatusPending {
-    sha: String,
-    html_url: Option<String>,
-}
-
-impl std::fmt::Display for GitHubStatusFailed {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "(GitHubStatusFailed) SHA: {}, URL: {}",
-            self.sha,
-            self.html_url.as_ref().unwrap_or(&"None".to_string())
-        )
-    }
-}
-
-impl std::error::Error for GitHubStatusFailed {}
-
 pub async fn check_gh_repo_action_status(
     instance: &Octocrab,
     repo: octocrab::models::Repository,
     committish: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<GitHubCIStatus, Error> {
     let committish = committish.unwrap_or("HEAD");
     let commit = instance
         .commits(&repo.owner.as_ref().unwrap().login, &repo.name)
@@ -107,10 +153,10 @@ pub async fn check_gh_repo_action_status(
                     check.html_url.as_ref().unwrap_or(&"None".to_string())
                 );
                 error!("{}", error_msg);
-                return Err(Box::new(GitHubStatusFailed {
+                return Ok(GitHubCIStatus::Failed {
                     sha: check.head_sha,
                     html_url: check.html_url,
-                }));
+                });
             }
             None => {
                 let error_msg = format!(
@@ -119,15 +165,15 @@ pub async fn check_gh_repo_action_status(
                     check.html_url.as_ref().unwrap_or(&"None".to_string())
                 );
                 error!("{}", error_msg);
-                return Err(Box::new(GitHubStatusPending {
+                return Ok(GitHubCIStatus::Pending {
                     sha: check.head_sha,
                     html_url: check.html_url.clone(),
-                }));
+                });
             }
         }
     }
 
-    Ok(())
+    Ok(GitHubCIStatus::Ok)
 }
 
 pub async fn wait_for_gh_actions(
@@ -135,7 +181,7 @@ pub async fn wait_for_gh_actions(
     repo: octocrab::models::Repository,
     committish: Option<&str>,
     timeout: Option<u64>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<GitHubCIStatus, Error> {
     let timeout = timeout.unwrap_or(DEFAULT_GITHUB_CI_TIMEOUT);
     info!(
         "Waiting for CI for {} on {} to go green",
@@ -171,10 +217,10 @@ pub async fn wait_for_gh_actions(
                         check.html_url.as_ref().unwrap_or(&"None".to_string())
                     );
                     error!("{}", error_msg);
-                    return Err(Box::new(GitHubStatusFailed {
+                    return Ok(GitHubCIStatus::Failed {
                         sha: check.head_sha,
                         html_url: check.html_url,
-                    }));
+                    });
                 }
                 None => {
                     let error_msg = format!(
@@ -183,19 +229,16 @@ pub async fn wait_for_gh_actions(
                         check.html_url.as_ref().unwrap_or(&"None".to_string())
                     );
                     error!("{}", error_msg);
-                    return Err(Box::new(GitHubStatusPending {
+                    return Ok(GitHubCIStatus::Pending {
                         sha: check.head_sha,
                         html_url: check.html_url,
-                    }));
+                    });
                 }
             }
         }
     }
 
-    Err(Box::new(std::io::Error::new(
-        std::io::ErrorKind::TimedOut,
-        "Timed out waiting for CI",
-    )))
+    Err(Error::TimedOut)
 }
 
 pub async fn create_github_release(
@@ -204,7 +247,7 @@ pub async fn create_github_release(
     tag_name: &str,
     version: &str,
     description: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Error> {
     info!("Creating release on GitHub");
     instance
         .repos(&repo.owner.as_ref().unwrap().login, &repo.name)

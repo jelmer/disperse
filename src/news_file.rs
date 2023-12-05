@@ -2,28 +2,17 @@ use crate::Version;
 use breezyshim::tree::MutableTree;
 use lazy_regex::regex_is_match;
 
-#[derive(Debug)]
-pub struct OddVersion(pub String);
-
-impl std::fmt::Display for OddVersion {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Odd version: {}", self.0)
-    }
-}
-
-impl std::error::Error for OddVersion {}
-
 pub fn check_date(d: &str) -> bool {
     d == "UNRELEASED" || d.starts_with("NEXT ")
 }
 
-pub fn check_version(v: &str) -> Result<bool, OddVersion> {
+pub fn check_version(v: &str) -> Result<bool, Error> {
     if v == "UNRELEASED" || v == "%(version)s" || v == "NEXT" {
         return Ok(true);
     }
 
     if !regex_is_match!(r"^[0-9\.]+$", v) {
-        return Err(OddVersion(v.to_string()));
+        return Err(Error::OddVersion(v.to_string()));
     }
 
     Ok(false)
@@ -57,25 +46,6 @@ pub fn skip_header<'a>(lines: &mut impl Iterator<Item = &'a [u8]>) -> usize {
     i as usize
 }
 
-#[derive(Debug)]
-struct PendingExists {
-    last_version: Version,
-    last_date: chrono::DateTime<chrono::Utc>,
-}
-
-impl std::fmt::Display for PendingExists {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "Pending version already exists: {} {}",
-            self.last_version.to_string(),
-            self.last_date.to_rfc3339()
-        )
-    }
-}
-
-impl std::error::Error for PendingExists {}
-
 /// Find pending version in news file.
 ///
 /// # Arguments
@@ -87,11 +57,11 @@ impl std::error::Error for PendingExists {}
 pub fn news_find_pending(
     tree: &dyn breezyshim::tree::Tree,
     path: &std::path::Path,
-) -> Result<Option<String>, Box<dyn std::error::Error>> {
+) -> Result<Option<String>, Error> {
     let lines = tree.get_file_lines(path)?;
     let mut iter = lines.iter().map(|x| x.as_slice());
     skip_header(&mut iter);
-    let line = String::from_utf8(iter.next().unwrap().to_vec())?;
+    let line = String::from_utf8(iter.next().unwrap().to_vec()).map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
     let (last_version, _last_date, _line_format, pending) = parse_version_line(line.as_str())?;
     if !pending {
         return Ok(None);
@@ -108,7 +78,7 @@ pub fn news_find_pending(
 ///   tuple with version, date released, line template, is_pending
 fn parse_version_line(
     line: &str,
-) -> Result<(Option<&str>, Option<&str>, String, bool), Box<dyn std::error::Error>> {
+) -> Result<(Option<&str>, Option<&str>, String, bool), Error> {
     // Strip leading and trailing whitespace
     let line = line.trim();
 
@@ -186,19 +156,19 @@ pub fn news_add_pending(
     tree: &dyn breezyshim::tree::MutableTree,
     path: &std::path::Path,
     new_version: &crate::Version,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Error> {
     let mut lines = tree.get_file_lines(path)?;
     let mut line_iter = lines.iter().map(|x| x.as_slice());
     let i = skip_header(&mut line_iter);
 
-    let line = String::from_utf8(line_iter.next().unwrap().to_vec())?;
+    let line = String::from_utf8(line_iter.next().unwrap().to_vec()).map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
 
     let (last_version, last_date, line_format, pending) = parse_version_line(line.as_str())?;
     if pending {
-        return Err(Box::new(PendingExists {
-            last_version: last_version.unwrap().parse()?,
-            last_date: last_date.unwrap().parse()?,
-        }));
+        return Err(Error::PendingExists {
+            last_version: last_version.unwrap().parse().map_err(|_| Error::InvalidData(last_version.unwrap().to_string()))?,
+            last_date: last_date.unwrap().parse().map_err(|_| Error::InvalidData(last_date.unwrap().to_string()))?,
+        });
     }
     lines.insert(i, b"\n".to_vec());
 
@@ -223,19 +193,58 @@ impl std::fmt::Display for NoUnreleasedChanges {
 
 impl std::error::Error for NoUnreleasedChanges {}
 
+#[derive(Debug)]
+pub enum Error {
+    TreeError(breezyshim::tree::Error),
+    NoUnreleasedChanges,
+    OddVersion(String),
+    PendingExists {
+        last_version: Version,
+        last_date: chrono::DateTime<chrono::Utc>,
+    },
+    InvalidData(String),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match &self {
+            Self::TreeError(e) => write!(f, "Tree error: {}", e),
+            Self::NoUnreleasedChanges => write!(f, "No unreleased changes"),
+            Self::OddVersion(s) => write!(f, "Odd version: {}", s),
+            Self::PendingExists { last_version, last_date } => {
+                write!(
+                    f,
+                    "Pending version already exists: {} {}",
+                    last_version.to_string(),
+                    last_date.to_rfc3339()
+                )
+            }
+            Self::InvalidData(s) => write!(f, "Invalid data: {}", s),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<breezyshim::tree::Error> for Error {
+    fn from(e: breezyshim::tree::Error) -> Self {
+        Self::TreeError(e)
+    }
+}
+
 pub fn news_mark_released(
     tree: &dyn MutableTree,
     path: &std::path::Path,
     expected_version: &Version,
     release_date: &chrono::DateTime<chrono::Utc>,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Error> {
     let mut lines = tree.get_file_lines(path)?;
     let mut iter = lines.iter().map(|x| x.as_slice());
     let i = skip_header(&mut iter);
-    let line = String::from_utf8(iter.next().unwrap().to_vec())?;
+    let line = String::from_utf8(iter.next().unwrap().to_vec()).map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
     let (version, _date, line_format, pending) = parse_version_line(line.as_str())?;
     if !pending {
-        return Err(Box::new(NoUnreleasedChanges()));
+        return Err(Error::NoUnreleasedChanges);
     }
     if let Some(version) = version {
         assert_eq!(
@@ -248,7 +257,10 @@ pub fn news_mark_released(
     }
     let mut change_lines = Vec::new();
     for line in lines[i + 1..].iter() {
-        let line = String::from_utf8(line.to_vec())?;
+        let line = match String::from_utf8(line.to_vec()) {
+            Ok(line) => line,
+            Err(_) => { continue; }
+        };
         if line.trim().is_empty() || line.starts_with(' ') || line.starts_with('\t') {
             change_lines.push(line);
         } else {
