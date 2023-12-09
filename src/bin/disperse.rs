@@ -463,6 +463,10 @@ fn main() {
 
 fn print_py_err(e: pyo3::PyErr) {
     pyo3::Python::with_gil(|py| {
+        // Don't print the error if it's a KeyboardInterrupt
+        if e.is_instance_of::<pyo3::exceptions::PyKeyboardInterrupt>(py) {
+            return;
+        }
         if let Some(tb) = e.traceback(py) {
             println!("{}", tb.format().unwrap());
         }
