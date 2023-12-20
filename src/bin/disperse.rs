@@ -6,6 +6,7 @@ use url::Url;
 use std::path::Path;
 use disperse::project_config::{read_project_with_fallback, ProjectConfig};
 use disperse::{find_last_version, find_last_version_in_tags};
+use breezyshim::tags::Error as TagError;
 
 use prometheus::{default_registry, Encoder, TextEncoder};
 
@@ -194,8 +195,14 @@ pub fn info(tree: &breezyshim::tree::WorkingTree, branch: &dyn breezyshim::branc
                 log::info!("  no revisions since last release");
             }
         },
-        Err(NoSuchTag) => {
-            log::info!("  tag {} for previous release not found", tag_name);
+        Err(TagError::NoSuchTag(name)) => {
+            log::info!("  tag {} for previous release not found", name);
+        },
+        Err(TagError::TagAlreadyExists(_name)) => {
+            unreachable!();
+        },
+        Err(TagError::Other(e)) => {
+            log::info!("  error loading tag: {}", e);
         },
     };
 
@@ -215,9 +222,13 @@ pub fn info(tree: &breezyshim::tree::WorkingTree, branch: &dyn breezyshim::branc
             );
             0
         }
-        Err(NoUnreleasedChanges) => {
+        Err(disperse::FindPendingVersionError::NoUnreleasedChanges) => {
             log::info!("No unreleased changes");
             0
+        }
+        Err(disperse::FindPendingVersionError::Other(e)) => {
+            log::info!("Error finding pending version: {}", e);
+            1
         }
     }
 }
@@ -242,7 +253,7 @@ fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
 
         if let Some(wt) = local_wt {
             let lock = wt.lock_read();
-            ret += info(&wt, wt.branch().as_ref());
+            ret += info(&wt, branch.as_ref());
             std::mem::drop(lock);
         } else {
             // TODO(jelmer): Just handle UnsupporedOperation
@@ -463,6 +474,10 @@ fn main() {
 
 fn print_py_err(e: pyo3::PyErr) {
     pyo3::Python::with_gil(|py| {
+        // Don't print the error if it's a KeyboardInterrupt
+        if e.is_instance_of::<pyo3::exceptions::PyKeyboardInterrupt>(py) {
+            return;
+        }
         if let Some(tb) = e.traceback(py) {
             println!("{}", tb.format().unwrap());
         }
