@@ -185,6 +185,7 @@ pub fn find_last_version(tree: &breezyshim::tree::WorkingTree, cfg: &project_con
 #[derive(Debug)]
 pub enum FindPendingVersionError {
     OddPendingVersion(String),
+    NoUnreleasedChanges,
     Other(Box<dyn std::error::Error>),
     NotFound
 }
@@ -201,6 +202,9 @@ impl std::fmt::Display for FindPendingVersionError {
             Self::Other(e) => {
                 write!(f, "Other error: {}", e)
             }
+            Self::NoUnreleasedChanges => {
+                write!(f, "No unreleased changes")
+            }
         }
     }
 }
@@ -211,11 +215,11 @@ pub fn find_pending_version(tree: &dyn breezyshim::tree::Tree, cfg: &project_con
     if let Some(news_file) = cfg.news_file.as_ref() {
         match news_file::news_find_pending(tree, Path::new(news_file.as_str())) {
             Ok(Some(version)) => Ok(version.parse().unwrap()),
-            Ok(None) => Err(FindPendingVersionError::NotFound),
+            Ok(None) => Err(FindPendingVersionError::NoUnreleasedChanges),
             Err(news_file::Error::OddVersion(e)) => {
                 Err(FindPendingVersionError::OddPendingVersion(e))
             }
-            Err(news_file::Error::PendingExists { last_version, last_date }) => {
+            Err(news_file::Error::PendingExists { .. }) => {
                 unreachable!();
             }
             Err(e) => {
