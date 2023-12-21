@@ -36,8 +36,8 @@ maplit = "1.0.2"
 lazy_static = "1.4.0"
 octocrab = "0.31"
 glob = "0.3.1"
-#launchpadlib = { version = "0.1.1", features = ["keyring"] }
-launchpadlib = { path = "../launchpadlib-rs", features = ["keyring"] }
+#launchpadlib = { version = "0.1.7", features = ["keyring"] }
+launchpadlib = { git = "https://github.com/jelmer/launchpadlib-rs", features = ["keyring"] }
 tokio = { version = "1", features = ["full"] }
 keyring = "2.1.0"
 

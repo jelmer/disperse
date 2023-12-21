@@ -580,10 +580,10 @@ pub fn release_project(
     let mut local_branch = None;
 
     if branch.user_transport().is_local() {
-        public_repo_url = Some(repo_url.parse().unwrap());
+        public_repo_url = Some(branch.user_transport().base());
         local_branch = Some(branch);
     } else if ["https", "http", "git"].contains(&branch.user_transport().base().scheme()) {
-        public_repo_url = Some(repo_url.parse().unwrap());
+        public_repo_url = Some(branch.user_transport().base());
         public_branch = Some(branch);
     } else if let Some(public_branch_url) = branch.get_public_branch() {
         log::info!("Using public branch {}", &public_branch_url);

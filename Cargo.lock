@@ -1641,7 +1641,8 @@ dependencies = [
 
 [[package]]
 name = "launchpadlib"
-version = "0.1.5"
+version = "0.1.7"
+source = "git+https://github.com/jelmer/launchpadlib-rs#93e7f363bcff654cde2a152b7509a2ff47d7ad7c"
 dependencies = [
  "chrono",
  "clap",

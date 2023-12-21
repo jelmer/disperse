@@ -258,7 +258,10 @@ pub fn update_version_in_file(
         if !r.is_match(line) {
             continue;
         }
-        *oline = expand_version_vars(new_line, new_version, status).unwrap().into_bytes();
+        let uline = expand_version_vars(new_line, new_version, status).unwrap();
+        let uline = format!("{}\n", uline);
+        log::debug!("Expanded {:?} to {:?}", new_line, uline);
+        *oline = uline.into_bytes();
         matches += 1;
     }
     if matches == 0 {
