@@ -566,7 +566,7 @@ pub fn release_project(
     let now = chrono::Utc::now();
 
     let (local_wt, branch) = match breezyshim::controldir::ControlDir::open_tree_or_branch(
-        &repo_url.parse().unwrap(),
+        &repo_url,
         None,
     ) {
         Ok(x) => x,
@@ -575,23 +575,32 @@ pub fn release_project(
         }
     };
 
-    let (public_repo_url, branch) = if branch.user_transport().is_local() {
-        (Some(repo_url.parse().unwrap()), branch)
+    let mut public_repo_url = None;
+    let mut public_branch = None;
+    let mut local_branch = None;
+
+    if branch.user_transport().is_local() {
+        public_repo_url = Some(repo_url.parse().unwrap());
+        local_branch = Some(branch);
+    } else if ["https", "http", "git"].contains(branch.user_transport().base().scheme()) {
+        public_repo_url = Some(repo_url.parse().unwrap());
+        public_branch = Some(branch);
     } else if let Some(public_branch_url) = branch.get_public_branch() {
         log::info!("Using public branch {}", &public_branch_url);
         let url: url::Url = public_branch_url.as_str().parse().unwrap();
-        (Some(url.clone()), breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?)
+        public_repo_url = Some(url.clone());
+        public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
     } else if let Some(submit_branch_url) = branch.get_submit_branch() {
         let url: url::Url = submit_branch_url.parse().unwrap();
         log::info!("Using public branch {}", &submit_branch_url);
-        (Some(url.clone()), breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?)
+        public_repo_url = Some(url.clone());
+        public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
     } else if let Some(push_location) = branch.get_push_location() {
         let url: url::Url = push_location.parse().unwrap();
         log::info!("Using public branch {}", &push_location);
-        (Some(url.clone()), breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?)
-    } else {
-        (None, branch)
-    };
+        public_repo_url = Some(url.clone());
+        public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
+    }
 
     let mut public_repo_url = public_repo_url.map(|u| breezyshim::urlutils::split_segment_parameters(&u).0);
 
