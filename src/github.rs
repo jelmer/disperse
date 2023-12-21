@@ -152,24 +152,22 @@ pub fn check_gh_repo_action_status(
             match check.conclusion.as_deref() {
                 Some("success") | Some("skipped") => continue,
                 Some(_) => {
-                    let error_msg = format!(
+                    error!(
                         "GitHub Status Failed: SHA {}, URL {}",
                         check.head_sha,
                         check.html_url.as_ref().unwrap_or(&"None".to_string())
                     );
-                    error!("{}", error_msg);
                     return Ok(GitHubCIStatus::Failed {
                         sha: check.head_sha,
                         html_url: check.html_url,
                     });
                 }
                 None => {
-                    let error_msg = format!(
+                    error!(
                         "GitHub Status Pending: SHA {}, URL {}",
                         check.head_sha,
                         check.html_url.as_ref().unwrap_or(&"None".to_string())
                     );
-                    error!("{}", error_msg);
                     return Ok(GitHubCIStatus::Pending {
                         sha: check.head_sha,
                         html_url: check.html_url.clone(),
@@ -207,49 +205,68 @@ pub fn wait_for_gh_actions(
         let start_time = std::time::Instant::now();
 
         while start_time.elapsed().as_secs() < timeout {
-            for check in instance
+            let check_runs = instance
                 .checks(&repo.owner.as_ref().unwrap().login, &repo.name)
                 .list_check_runs_for_git_ref(Commitish(commit.sha.clone()))
                 .send()
                 .await?
-                .check_runs
-            {
-                match check.conclusion.as_deref() {
-                    Some("success") | Some("skipped") => continue,
-                    Some("pending") => {
-                        std::thread::sleep(Duration::from_secs(30));
-                        break;
-                    }
-                    Some(_) => {
-                        let error_msg = format!(
-                            "GitHub Status Failed: SHA {}, URL {}",
-                            check.head_sha,
-                            check.html_url.as_ref().unwrap_or(&"None".to_string())
-                        );
-                        error!("{}", error_msg);
-                        return Ok(GitHubCIStatus::Failed {
-                            sha: check.head_sha,
-                            html_url: check.html_url,
-                        });
-                    }
-                    None => {
-                        let error_msg = format!(
-                            "GitHub Status Pending: SHA {}, URL {}",
-                            check.head_sha,
-                            check.html_url.as_ref().unwrap_or(&"None".to_string())
-                        );
-                        error!("{}", error_msg);
-                        return Ok(GitHubCIStatus::Pending {
-                            sha: check.head_sha,
-                            html_url: check.html_url,
-                        });
-                    }
+                .check_runs;
+
+            match check_status(check_runs.as_slice()) {
+                GitHubCIStatus::Ok => {
+                    info!("CI for {} on {} is green", repo.name, committish);
+                    return Ok(GitHubCIStatus::Ok);
+                }
+                GitHubCIStatus::Pending { .. } => {
+                    std::thread::sleep(Duration::from_secs(30));
+                }
+                GitHubCIStatus::Failed { html_url, sha } => {
+                    return Ok(GitHubCIStatus::Failed {
+                        sha,
+                        html_url
+                    });
                 }
             }
         }
 
         Err(Error::TimedOut)
     })
+}
+
+fn check_status(check_runs: &[octocrab::models::checks::CheckRun]) -> GitHubCIStatus {
+    for check in check_runs {
+        match check.conclusion.as_deref() {
+            Some("success") | Some("skipped") => { break; },
+            Some("pending") => {
+                std::thread::sleep(Duration::from_secs(30));
+            }
+            Some(e) => {
+                error!(
+                    "GitHub Status Failed ({}): SHA {}, URL {}",
+                    e,
+                    check.head_sha,
+                    check.html_url.as_ref().unwrap_or(&"None".to_string())
+                );
+                return GitHubCIStatus::Failed {
+                    sha: check.head_sha.clone(),
+                    html_url: check.html_url.clone(),
+                };
+            }
+            None => {
+                error!(
+                    "GitHub Status Pending: SHA {}, URL {}",
+                    check.head_sha,
+                    check.html_url.as_ref().unwrap_or(&"None".to_string())
+                );
+                return GitHubCIStatus::Pending {
+                    sha: check.head_sha.clone(),
+                    html_url: check.html_url.clone(),
+                };
+            }
+        }
+    }
+
+    GitHubCIStatus::Ok
 }
 
 pub fn create_github_release(
