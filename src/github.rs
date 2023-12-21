@@ -212,7 +212,7 @@ pub fn wait_for_gh_actions(
                 .await?
                 .check_runs;
 
-            match check_status(check_runs.as_slice()) {
+            match summarize_status(check_runs.as_slice()) {
                 GitHubCIStatus::Ok => {
                     info!("CI for {} on {} is green", repo.name, committish);
                     return Ok(GitHubCIStatus::Ok);
@@ -233,12 +233,20 @@ pub fn wait_for_gh_actions(
     })
 }
 
-fn check_status(check_runs: &[octocrab::models::checks::CheckRun]) -> GitHubCIStatus {
+fn summarize_status(check_runs: &[octocrab::models::checks::CheckRun]) -> GitHubCIStatus {
     for check in check_runs {
         match check.conclusion.as_deref() {
-            Some("success") | Some("skipped") => { break; },
+            Some("success") | Some("skipped") => { },
             Some("pending") => {
-                std::thread::sleep(Duration::from_secs(30));
+                error!(
+                    "GitHub Status Pending: SHA {}, URL {}",
+                    check.head_sha,
+                    check.html_url.as_ref().unwrap_or(&"None".to_string())
+                );
+                return GitHubCIStatus::Pending {
+                    sha: check.head_sha.clone(),
+                    html_url: check.html_url.clone(),
+                };
             }
             Some(e) => {
                 error!(
