@@ -316,7 +316,7 @@ fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
         }
 
         let (local_wt, branch) =
-            match breezyshim::controldir::ControlDir::open_tree_or_branch(url, None) {
+            match breezyshim::controldir::open_tree_or_branch(url, None) {
                 Ok(x) => x,
                 Err(e) => {
                     ret = 1;
@@ -401,8 +401,8 @@ pub enum ReleaseError {
     CommitFailed(String),
     RecentCommits { min_commit_age: i64, commit_age: i64 },
     CreateTagFailed { tag_name: String, status: Option<std::process::ExitStatus>, reason: Option<String> },
-    CIFailed,
-    CIPending,
+    CIFailed(String),
+    CIPending(String),
     PublishArtifactsFailed(String),
     DistCreationFailed,
     NoPublicBranch,
@@ -432,8 +432,8 @@ impl std::fmt::Display for ReleaseError {
             ReleaseError::ReleaseTagExists { project, tag, version } => write!(f, "Release tag already exists: {} {} {}", project, tag, version.to_string()),
             ReleaseError::CreateTagFailed { tag_name, status, .. } => write!(f, "Create tag failed: {}: {}", tag_name, status.map_or_else(|| "unknown".to_string(), |s| s.to_string())),
             ReleaseError::Other(msg) => write!(f, "{}", msg),
-            ReleaseError::CIFailed => write!(f, "CI failed"),
-            ReleaseError::CIPending => write!(f, "CI pending"),
+            ReleaseError::CIFailed(n) => write!(f, "CI failed: {}", n),
+            ReleaseError::CIPending(n) => write!(f, "CI pending: {}", n),
             ReleaseError::PublishArtifactsFailed(msg) => write!(f, "Publish artifacts failed: {}", msg),
             ReleaseError::DistCreationFailed => write!(f, "Dist creation failed"),
             ReleaseError::NoPublicBranch => write!(f, "No public branch"),
@@ -493,7 +493,7 @@ fn publish_artifacts(ws: &silver_platter::workspace::Workspace, tag_name: &str, 
                 gh_repo,
                 Some(tag_name),
                 cfg.ci_timeout.map(|x| x as u64),
-            ).map_err(|_| ReleaseError::CIFailed)?;
+            ).map_err(|e| ReleaseError::CIFailed(e.to_string()))?;
         }
     }
 
@@ -660,7 +660,32 @@ pub fn release_project(
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    let gh = rt.block_on(async { octocrab::instance() });
+    let gh = rt.block_on(async {
+
+        let entry = keyring::Entry::new("github.com", "personal_token").unwrap();
+        let oauth = match entry.get_password() {
+            Ok(oauth) => Some(oauth),
+            Err(keyring::Error::NoEntry) => None,
+            Err(e) => {
+                log::error!("Unable to read GitHub OAuth token from keyring: {}", e);
+                None
+            }
+        };
+
+        if let Some(oauth) = oauth {
+            log::info!("Using GitHub OAuth token from keyring");
+            let builder = octocrab::OctocrabBuilder::new().personal_token(oauth);
+            builder.build().unwrap()
+        } else {
+            println!("Please enter your GitHub personal token");
+            let mut personal_token = String::new();
+            std::io::stdin().read_line(&mut personal_token).unwrap();
+            let personal_token = personal_token.trim();
+            entry.set_password(personal_token).unwrap();
+            let builder = octocrab::OctocrabBuilder::new().personal_token(personal_token.to_string());
+            builder.build().unwrap()
+        }
+    });
 
     if let Some(url) = cfg.github_url.as_ref() {
         public_repo_url = Some(url.parse().unwrap());
@@ -670,29 +695,29 @@ pub fn release_project(
             Ok(disperse::github::GitHubCIStatus::Ok) => {
                 log::info!("GitHub action succeeded");
             }
-            Ok(disperse::github::GitHubCIStatus::Failed { html_url, .. }) => {
+            Ok(disperse::github::GitHubCIStatus::Failed { html_url, sha }) => {
                 let html_url = html_url.unwrap_or_else(|| "unknown".to_string());
                 if ignore_ci {
                     CI_IGNORED_COUNT.with_label_values(&[&name]).inc();
                     log::warn!("Ignoring failing CI: {}", html_url);
                 } else {
                     log::error!("CI failed: {}", html_url);
-                    return Err(ReleaseError::CIFailed);
+                    return Err(ReleaseError::CIFailed(format!("for revision {}: {}", sha, html_url)));
                 }
             }
-            Ok(disperse::github::GitHubCIStatus::Pending { html_url, .. }) => {
+            Ok(disperse::github::GitHubCIStatus::Pending { html_url, sha, }) => {
                 let html_url = html_url.unwrap_or_else(|| "unknown".to_string());
                 if ignore_ci {
                     CI_IGNORED_COUNT.with_label_values(&[&name]).inc();
                     log::warn!("Ignoring failing CI: {}", html_url);
                 } else {
                     log::error!("CI pending: {}", html_url);
-                    return Err(ReleaseError::CIPending);
+                    return Err(ReleaseError::CIPending(format!("for revision {}: {}", sha, html_url)));
                 }
             }
             Err(e) => {
                 log::error!("Unable to check CI status: {}", e);
-                return Err(ReleaseError::CIFailed);
+                return Err(ReleaseError::CIFailed(e.to_string()));
             }
         }
     }
@@ -727,17 +752,25 @@ pub fn release_project(
                 gh_repo = Some(disperse::github::get_github_repo(&gh, parsed_url).map_err(|e| ReleaseError::Other(e.to_string()))?);
                 match disperse::github::check_gh_repo_action_status(&gh, gh_repo.as_ref().unwrap(), branch_name.as_deref()) {
                     Ok(disperse::github::GitHubCIStatus::Ok) => (),
-                    Ok(disperse::github::GitHubCIStatus::Failed { .. }) | Ok(disperse::github::GitHubCIStatus::Pending { .. }) => {
+                    Ok(disperse::github::GitHubCIStatus::Failed { html_url, sha}) => {
                         if ignore_ci {
                             log::warn!("Ignoring failing CI");
                             CI_IGNORED_COUNT.with_label_values(&[&name]).inc();
                         } else {
-                            return Err(ReleaseError::CIFailed);
+                            return Err(ReleaseError::CIFailed(format!("for revision {}: {}", sha, html_url.unwrap_or_else(|| "unknown".to_string()))));
+                        }
+                    }
+                    Ok(disperse::github::GitHubCIStatus::Pending { sha, html_url }) => {
+                        if ignore_ci {
+                            log::warn!("Ignoring pending CI");
+                            CI_IGNORED_COUNT.with_label_values(&[&name]).inc();
+                        } else {
+                            return Err(ReleaseError::CIPending(format!("for revision {}: {}", sha, html_url.unwrap_or_else(|| "unknown".to_string()))));
                         }
                     }
                     Err(e) => {
                         log::error!("Unable to check CI status: {}", e);
-                        return Err(ReleaseError::CIFailed);
+                        return Err(ReleaseError::CIFailed(e.to_string()));
                     }
                 }
                 break;
@@ -898,7 +931,7 @@ pub fn release_project(
     if !dry_run {
         ws.push_tags(
             hashmap! {
-                tag_name.clone() => tags.lookup_tag(tag_name.as_str()).unwrap()
+                tag_name.clone() => revid.clone(),
             }
         ).map_err(|e| ReleaseError::CreateTagFailed { tag_name: tag_name.clone(), status: None, reason: Some(e.to_string()) })?;
     }
@@ -1102,14 +1135,14 @@ fn release_many(
                 ret = 1;
             }
         },
-        Err(ReleaseError::CIPending) => {
-            log::error!("CI checks not finished yet");
-            failed.push((url.to_string(), "CI checks not finished yet".to_string()));
+        Err(ReleaseError::CIPending(n)) => {
+            log::error!("CI checks not finished yet: {}", n);
+            failed.push((url.to_string(), format!("CI checks not finished yet: {}", n)));
             ret = 1;
         },
-        Err(ReleaseError::CIFailed) => {
-            log::error!("GitHub check failed");
-            failed.push((url.to_string(), "CI check failed".to_string()));
+        Err(ReleaseError::CIFailed(n)) => {
+            log::error!("GitHub check failed: {}", n);
+            failed.push((url.to_string(), format!("GitHub check failed: {}", n)));
             ret = 1;
         },
         Err(ReleaseError::RepositoryUnavailable { url, reason }) => {

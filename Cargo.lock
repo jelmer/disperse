@@ -378,9 +378,9 @@ dependencies = [
 
 [[package]]
 name = "breezyshim"
-version = "0.1.65"
+version = "0.1.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a113b445ec553e76ae6a3861f4ab011214ee73c3fdd9f1f01ccc6bef68891ad5"
+checksum = "006e802a62f0ab9508b3651c3b492a4d0d5f9b74c9d39907cfa0b482763386d3"
 dependencies = [
  "chrono",
  "debversion",
@@ -813,6 +813,7 @@ dependencies = [
  "crates_io_api",
  "env_logger",
  "glob",
+ "keyring",
  "launchpadlib",
  "lazy-regex 3.1.0",
  "lazy_static",
