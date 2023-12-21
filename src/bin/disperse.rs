@@ -125,9 +125,13 @@ struct ReleaseArgs {
     #[clap(long)]
     new_version: Option<String>,
 
-    /// Release, even if the CI is not passing
+    /// Release even if the CI is not passing
     #[clap(long)]
     ignore_ci: bool,
+
+    /// Release even if the verify_command fails
+    #[clap(long)]
+    ignore_verify_command: bool,
 
     #[clap(long)]
     discover: bool,
@@ -559,10 +563,12 @@ pub fn release_project(
     new_version: Option<&Version>,
     dry_run: Option<bool>,
     ignore_ci: Option<bool>,
+    ignore_verify_command: Option<bool>
 ) -> Result<(String, Version), ReleaseError> {
     let force = force.unwrap_or(false);
     let dry_run = dry_run.unwrap_or(false);
     let ignore_ci = ignore_ci.unwrap_or(false);
+    let ignore_verify_command = ignore_verify_command.unwrap_or(false);
     let now = chrono::Utc::now();
 
     let (local_wt, branch) = match breezyshim::controldir::open_tree_or_branch(
@@ -790,6 +796,7 @@ pub fn release_project(
 
     if !disperse::check_new_revisions(ws.local_tree().branch().as_ref(), cfg.news_file.as_ref().map(Path::new)).map_err(|e| ReleaseError::Other(e.to_string()))? {
         NO_UNRELEASED_CHANGES_COUNT.with_label_values(&[&name]).inc();
+        log::info!("No new revisions");
         return Err(ReleaseError::NoUnreleasedChanges);
     }
 
@@ -879,12 +886,16 @@ pub fn release_project(
             Ok(s) => {
                 if !s.success() {
                     VERIFY_COMMAND_FAILED.with_label_values(&[&name]).inc();
-                    return Err(ReleaseError::VerifyCommandFailed{ command: verify_command.clone(), status: Some(s) });
+                    if !ignore_verify_command {
+                        return Err(ReleaseError::VerifyCommandFailed{ command: verify_command.clone(), status: Some(s) });
+                    }
                 }
             },
             Err(_e) => {
                 VERIFY_COMMAND_FAILED.with_label_values(&[&name]).inc();
-                return Err(ReleaseError::VerifyCommandFailed{ command: verify_command.clone(), status: None });
+                if !ignore_verify_command {
+                    return Err(ReleaseError::VerifyCommandFailed{ command: verify_command.clone(), status: None });
+                }
             }
         }
     }
@@ -1061,6 +1072,7 @@ fn release_many(
     urls: &[String],
     new_version: Option<String>,
     ignore_ci: Option<bool>,
+    ignore_verify_command: Option<bool>,
     dry_run: Option<bool>,
     discover: bool,
     force: Option<bool>
@@ -1079,6 +1091,7 @@ fn release_many(
             new_version.as_ref().map(|v| v.as_str().parse().unwrap()).as_ref(),
             dry_run,
             ignore_ci,
+            ignore_verify_command
             ) {
         Err(ReleaseError::RecentCommits { min_commit_age, commit_age }) => {
             log::info!(
@@ -1280,6 +1293,7 @@ fn main() {
                 release_args.url.as_slice(),
                 release_args.new_version.clone(),
                 Some(release_args.ignore_ci),
+                Some(release_args.ignore_verify_command),
                 Some(args.dry_run),
                 release_args.discover,
                 Some(true)
@@ -1346,6 +1360,7 @@ fn main() {
                             .collect::<Vec<_>>()
                             .as_slice(),
                         None,
+                        Some(false),
                         Some(false),
                         Some(false),
                         true,

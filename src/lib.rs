@@ -74,16 +74,25 @@ pub fn check_new_revisions(
     let lock = branch.lock_read();
     let repository = branch.repository();
     let graph = repository.get_graph();
-    let from_tree = graph
+    let from_revid = graph
         .iter_lefthand_ancestry(&branch.last_revision(), None)
         .find_map(|revid| {
             let revid = revid.ok()?;
             if tags.contains_key(&revid) {
-                Some(repository.revision_tree(&revid))
+                Some(revid)
             } else {
                 None
             }
-        })
+        });
+
+    log::debug!("Checking revisions between {} and {}", branch.last_revision(), from_revid.as_ref().map(|r| r.to_string()).unwrap_or_else(|| "null".to_string()));
+
+    if from_revid == Some(branch.last_revision()) {
+        return Ok(false);
+    }
+
+    let from_tree =
+        from_revid.map(|r| repository.revision_tree(&r))
         .unwrap_or(repository.revision_tree(&breezyshim::revisionid::RevisionId::null()))?;
 
     let last_tree = branch.basis_tree()?;
