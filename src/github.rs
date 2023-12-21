@@ -48,10 +48,7 @@ pub enum GitHubCIStatus {
 
 impl GitHubCIStatus {
     pub fn is_ok(&self) -> bool {
-        match self {
-            GitHubCIStatus::Ok => true,
-            _ => false,
-        }
+        matches!(self, GitHubCIStatus::Ok)
     }
 }
 
