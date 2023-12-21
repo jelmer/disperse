@@ -120,5 +120,5 @@ pub fn find_version(tree: &dyn Tree) -> Result<crate::version::Version, Error> {
         .ok_or_else(|| Error::Other("Unable to find version in Cargo.toml".to_string()))?
         .to_string();
 
-    Ok(version.as_str().parse().map_err(|e| Error::VersionError(format!("Unable to parse version: {}", e)))?)
+    version.as_str().parse().map_err(|e| Error::VersionError(format!("Unable to parse version: {}", e)))
 }

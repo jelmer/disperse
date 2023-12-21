@@ -2,6 +2,7 @@ pub mod cargo;
 pub mod config;
 pub mod custom;
 pub mod github;
+pub mod launchpad;
 pub mod manpage;
 pub mod news_file;
 pub mod project_config;
@@ -134,7 +135,7 @@ pub fn find_last_version_in_tags(
 }
 
 
-pub fn find_last_version(tree: &breezyshim::tree::WorkingTree, cfg: &project_config::ProjectConfig) -> Result<Option<(crate::version::Version, Option<Status>)>, Box<dyn std::error::Error>> {
+pub fn find_last_version_in_files(tree: &breezyshim::tree::WorkingTree, cfg: &project_config::ProjectConfig) -> Result<Option<(crate::version::Version, Option<Status>)>, Box<dyn std::error::Error>> {
     if tree.has_filename(Path::new("Cargo.toml")) {
         log::debug!("Reading version from Cargo.toml");
         return Ok(Some((cargo::find_version(tree)?, None)));
@@ -187,7 +188,7 @@ pub enum FindPendingVersionError {
     OddPendingVersion(String),
     NoUnreleasedChanges,
     Other(Box<dyn std::error::Error>),
-    NotFound
+    NotFound,
 }
 
 impl std::fmt::Display for FindPendingVersionError {

@@ -57,7 +57,7 @@ impl Version {
             return Self::from_tupled(&text[1..text.len() - 1]);
         }
         let parts: Vec<&str> = text.split(',').collect();
-        if parts.len() < 1 || parts.len() > 5 {
+        if parts.is_empty() || parts.len() > 5 {
             return Err(Error(format!("invalid version: {}", text)));
         }
         let major = parts[0].trim().parse::<i32>().map_err(|e| Error(format!("invalid major version: {}", e)))?;

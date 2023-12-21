@@ -88,7 +88,7 @@ pub fn find_version_in_pyproject_toml(tree: &dyn Tree) -> Result<Option<Version>
         .and_then(|v| v.as_table())
         .and_then(|v| v.get("version"))
         .and_then(|v| v.as_str())
-        .map(|v| Version::from_str(v).map_err(|e| Error::VersionError(e))).transpose()
+        .map(|v| Version::from_str(v).map_err(Error::VersionError)).transpose()
 }
 
 pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Error> {
@@ -302,10 +302,10 @@ impl std::error::Error for UploadCommandFailed {}
 
 pub fn upload_python_artifacts(
     local_tree: &WorkingTree,
-    pypi_paths: &[&str],
+    pypi_paths: &[&std::path::Path],
 ) -> Result<(), UploadCommandFailed> {
     let mut command = vec!["twine", "upload", "--non-interactive"];
-    command.extend(pypi_paths);
+    command.extend(pypi_paths.iter().map(|v| v.to_str().unwrap()));
 
     let abs_path = local_tree.abspath(Path::new(".")).unwrap();
 
@@ -334,10 +334,10 @@ pub fn upload_python_artifacts(
 
 pub fn create_setup_py_artifacts(
     local_tree: &WorkingTree,
-) -> pyo3::PyResult<Vec<String>> {
+) -> pyo3::PyResult<Vec<std::path::PathBuf>> {
     pyo3::Python::with_gil(|py| {
         // Initialize an empty vector to store pypi_paths
-        let mut pypi_paths: Vec<String> = Vec::new();
+        let mut pypi_paths: Vec<std::path::PathBuf> = Vec::new();
 
         // Import required Python modules
         let os = py.import("os")?;
@@ -374,7 +374,7 @@ pub fn create_setup_py_artifacts(
                 "build",
                 ("wheel", local_tree.abspath(Path::new("dist")).unwrap()),
             )?;
-            pypi_paths.push(wheels.extract::<String>()?);
+            pypi_paths.push(wheels.extract::<std::path::PathBuf>()?);
         } else {
             log::warn!("python module is not pure; not uploading binary wheels");
         }
@@ -383,7 +383,7 @@ pub fn create_setup_py_artifacts(
             "build",
             ("sdist", local_tree.abspath(Path::new("dist")).unwrap()),
         )?;
-        pypi_paths.push(sdist_path.extract::<String>()?);
+        pypi_paths.push(sdist_path.extract::<std::path::PathBuf>()?);
 
         Ok(pypi_paths)
     })

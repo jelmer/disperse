@@ -1,6 +1,6 @@
 use crate::Version;
 use breezyshim::tree::MutableTree;
-use chrono::{NaiveDate, Utc};
+use chrono::{NaiveDate};
 use regex::Regex;
 
 use std::io::{BufRead, BufReader};

@@ -28,19 +28,21 @@ xdg = "2.5.2"
 serde = { version = "1.0.188", features = ["derive"] }
 toml = "0.8.2"
 clap = { version = "4", features = ["env", "derive"], optional = true }
-prometheus = { version = "0.13.3", features = ["reqwest"] }
+prometheus = { version = "0.13.3", features = ["reqwest", "push"] }
 env_logger = { version = "0.10.0", optional = true }
-silver-platter = { git = "https://github.com/jelmer/silver-platter" }
+#silver-platter = { git = "https://github.com/jelmer/silver-platter" }
+silver-platter = { path = "../silver-platter" }
 maplit = "1.0.2"
 lazy_static = "1.4.0"
-octocrab = "0.31.1"
+octocrab = "0.31"
+glob = "0.3.1"
+#launchpadlib = { version = "0.1.1", features = ["keyring"] }
+launchpadlib = { path = "../launchpadlib-rs", features = ["keyring"] }
+tokio = { version = "1", features = ["full"] }
 
 [build-dependencies]
 protobuf-codegen = "3"
 protoc-rust = "^2.0"
-
-[workspace]
-members = ["disperse-py"]
 
 [features]
 default = ["cli", "pyo3"]
