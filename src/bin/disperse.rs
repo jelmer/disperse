@@ -565,8 +565,8 @@ pub fn release_project(
     let ignore_ci = ignore_ci.unwrap_or(false);
     let now = chrono::Utc::now();
 
-    let (local_wt, branch) = match breezyshim::controldir::ControlDir::open_tree_or_branch(
-        &repo_url,
+    let (local_wt, branch) = match breezyshim::controldir::open_tree_or_branch(
+        repo_url,
         None,
     ) {
         Ok(x) => x,
@@ -582,7 +582,7 @@ pub fn release_project(
     if branch.user_transport().is_local() {
         public_repo_url = Some(repo_url.parse().unwrap());
         local_branch = Some(branch);
-    } else if ["https", "http", "git"].contains(branch.user_transport().base().scheme()) {
+    } else if ["https", "http", "git"].contains(&branch.user_transport().base().scheme()) {
         public_repo_url = Some(repo_url.parse().unwrap());
         public_branch = Some(branch);
     } else if let Some(public_branch_url) = branch.get_public_branch() {
@@ -608,18 +608,7 @@ pub fn release_project(
         log::info!("Found public repository URL: {}", public_repo_url);
     }
 
-    let (local_branch, public_branch) = if branch.as_ref().user_transport().is_local() {
-        if let Some(name) = branch.as_ref().name() {
-            log::info!("Using local branch {}", name);
-        } else {
-            log::info!("Using local branch");
-        }
-        (Some(branch.as_ref()), None)
-    } else {
-        (None, Some(branch.as_ref()))
-    };
-
-    let ws = silver_platter::workspace::Workspace::new(public_branch, local_branch, None, HashMap::new(), HashMap::new(), None, None, None);
+    let ws = silver_platter::workspace::Workspace::new(public_branch.as_deref(), local_branch.as_deref(), None, HashMap::new(), HashMap::new(), None, None, None);
 
     ws.start().unwrap();
 
@@ -727,7 +716,7 @@ pub fn release_project(
             ).map_err(|e| ReleaseError::Other(e.to_string()))?
         );
     }
-    possible_urls.push((public_repo_url, public_branch.and_then(|b| b.name())));
+    possible_urls.push((public_repo_url, public_branch.as_ref().and_then(|b| b.name())));
 
     for (parsed_url, branch_name) in possible_urls.iter() {
         match parsed_url.host_str() {
@@ -1023,10 +1012,11 @@ pub fn release_project(
         }
     }
     if !dry_run {
+        let pb = public_branch.unwrap();
         if let Some(local_wt) = local_wt.as_ref() {
-            local_wt.pull(public_branch.unwrap()).unwrap();
+            local_wt.pull(pb.as_ref()).unwrap();
         } else if let Some(local_branch) = local_branch.as_ref() {
-            local_branch.pull(public_branch.unwrap()).unwrap();
+            local_branch.pull(pb.as_ref()).unwrap();
         }
     }
 
@@ -1039,7 +1029,8 @@ fn release_many(
     new_version: Option<String>,
     ignore_ci: Option<bool>,
     dry_run: Option<bool>,
-    discover: bool
+    discover: bool,
+    force: Option<bool>
 ) -> i32 {
     let mut failed: Vec<(String, String)> = Vec::new();
     let mut skipped: Vec<(String, String)> = Vec::new();
@@ -1051,7 +1042,7 @@ fn release_many(
         }
         match release_project(
             url,
-            Some(false),
+            force,
             new_version.as_ref().map(|v| v.as_str().parse().unwrap()).as_ref(),
             dry_run,
             ignore_ci,
@@ -1258,6 +1249,7 @@ fn main() {
                 Some(release_args.ignore_ci),
                 Some(args.dry_run),
                 release_args.discover,
+                Some(true)
             )
         }
         Commands::Discover(discover_args) => {
@@ -1323,7 +1315,8 @@ fn main() {
                         None,
                         Some(false),
                         Some(false),
-                        true
+                        true,
+                        Some(false)
                     )
                 };
                 if let Some(prometheus) = args.prometheus {
