@@ -311,7 +311,7 @@ pub fn info(tree: &breezyshim::tree::WorkingTree, branch: &dyn breezyshim::branc
     }
 }
 
-fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
+fn info_many(urls: &[Url]) -> i32 {
     let mut ret = 0;
 
     for url in urls {
@@ -352,7 +352,7 @@ fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
             ret += r;
         }
     }
-    Ok(ret)
+    ret
 }
 
 pub fn pick_new_version(tree: &breezyshim::tree::WorkingTree, cfg: &ProjectConfig) -> Result<Version, String> {
@@ -1221,14 +1221,14 @@ fn release_many(
     ret
 }
 
-fn validate_config(path: &std::path::Path) -> pyo3::PyResult<i32> {
+fn validate_config(path: &std::path::Path) -> i32 {
     let wt = breezyshim::tree::WorkingTree::open(path)?;
 
     let cfg = match read_project_with_fallback(&wt) {
         Ok(x) => x,
         Err(e) => {
             log::error!("Unable to read config: {}", e);
-            return Ok(1);
+            return 1;
         }
     };
 
@@ -1237,7 +1237,7 @@ fn validate_config(path: &std::path::Path) -> pyo3::PyResult<i32> {
         let news_file = wt.base().join(news_file);
         if !news_file.exists() {
             log::error!("News file {} does not exist", news_file.display());
-            return Ok(1);
+            return 1;
         }
     }
 
@@ -1246,7 +1246,7 @@ fn validate_config(path: &std::path::Path) -> pyo3::PyResult<i32> {
             Ok(_) => {}
             Err(e) => {
                 log::error!("Invalid update_version: {}", e);
-                return Ok(1);
+                return 1;
             }
         }
     }
@@ -1256,12 +1256,12 @@ fn validate_config(path: &std::path::Path) -> pyo3::PyResult<i32> {
             Ok(_) => {}
             Err(e) => {
                 log::error!("Invalid update_manpage: {}", e);
-                return Ok(1);
+                return 1;
             }
         }
     }
 
-    Ok(0)
+    0
 }
 
 fn main() {
