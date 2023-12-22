@@ -2,6 +2,7 @@ use crate::Version;
 use breezyshim::tree::MutableTree;
 use chrono::{NaiveDate};
 use regex::Regex;
+use std::str::FromStr;
 
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -113,6 +114,7 @@ pub fn update_version_in_manpage(
     Ok(())
 }
 
+/// Validate that a manpage is updateable.
 fn validate_manpage_updateable(bufread: &mut dyn BufRead) -> Result<(), Error> {
     let mut lines = bufread
         .split(b'\n')
@@ -133,9 +135,14 @@ fn validate_manpage_updateable(bufread: &mut dyn BufRead) -> Result<(), Error> {
             continue;
         }
 
-        if args[4] == "$VERSION" {
-            found = true;
-            break;
+        match args[4].split_once(' ') {
+            Some((_, version)) => {
+                if Version::from_str(version).is_ok() {
+                    found = true;
+                    break;
+                }
+            }
+            None => {}
         }
     }
 
