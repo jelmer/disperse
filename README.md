@@ -1,7 +1,7 @@
 disperse
 ========
 
-disperse is a simple script that I use to create releases for some of the free
+disperse is a simple application that I use to create releases for some of the free
 software packages I maintain. It's meant to streamline the releasing process,
 reducing the human effort involved in creating a release as well as the
 likelihood of a brown-bag release.
@@ -42,10 +42,16 @@ For example:
 
 ```textpb
 
-   tag_format: "dulwich-%(release)s"
+   tag_format: "dulwich-$VERSIONs"
    news_path: "NEWS"
 
 ```
+
+Supported variables are:
+
+* ``$VERSION`` ("1.2.0")
+* ``$TUPLED\_VERSION`` ("(1, 2, 0)")
+* ``$STATUS\_TUPLED\_VERSION`` ('(1, 2, 3, "dev", 0)')
 
 Basic usage
 -----------
