@@ -5,10 +5,66 @@ use std::io::Write;
 use url::Url;
 use std::path::Path;
 use disperse::project_config::{read_project_with_fallback, ProjectConfig};
-use disperse::{find_last_version, find_last_version_in_tags};
 use breezyshim::tags::Error as TagError;
+use disperse::{find_last_version_in_files, find_last_version_in_tags};
+use disperse::version::Version;
+use std::collections::HashMap;
 
-use prometheus::{default_registry, Encoder, TextEncoder};
+use prometheus::{IntCounterVec, IntCounter, register_int_counter_vec, register_int_counter, TextEncoder, default_registry, Encoder};
+
+lazy_static::lazy_static! {
+    static ref CI_IGNORED_COUNT: IntCounterVec = register_int_counter_vec!(
+        "ci_ignored",
+        "Number of projects that were ignored because CI is not passing",
+        &["project"]
+    ).unwrap();
+
+    static ref NO_DISPERSE_CONFIG: IntCounter = register_int_counter!(
+        "no_disperse_config",
+        "Number of projects that were ignored because they have no disperse configuration",
+    ).unwrap();
+
+    static ref NO_UNRELEASED_CHANGES_COUNT: IntCounterVec = register_int_counter_vec!(
+        "no_unreleased_changes",
+        "There were no unreleased changes",
+        &["project"]
+    ).unwrap();
+
+    static ref RECENT_COMMITS_COUNT: IntCounterVec = register_int_counter_vec!(
+        "recent_commits",
+        "There were recent commits, so no release was done",
+        &["project"],
+    ).unwrap();
+
+    static ref PRE_DIST_COMMAND_FAILED: IntCounterVec = register_int_counter_vec!(
+        "pre_dist_command_failed",
+        "The pre-dist command failed to run",
+        &["project"],
+    ).unwrap();
+
+    static ref VERIFY_COMMAND_FAILED: IntCounterVec = register_int_counter_vec!(
+        "verify_command_failed",
+        "The verify command failed to run",
+        &["project"],
+    ).unwrap();
+
+    static ref BRANCH_PROTECTED_COUNT: IntCounterVec = register_int_counter_vec!(
+        "branch_protected",
+        "The branch was protected",
+        &["project"]
+    ).unwrap();
+
+    static ref RELEASED_COUNT: IntCounterVec = register_int_counter_vec!(
+        "released",
+        "Released projects",
+        &["project"]
+    ).unwrap();
+
+    static ref RELEASE_TAG_EXISTS: IntCounterVec = register_int_counter_vec!(
+        "release_tag_exists",
+        "A release tag already exists",
+        &["project"]).unwrap();
+}
 
 fn push_to_gateway(prometheus_url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut buffer = vec![];
@@ -69,9 +125,16 @@ struct ReleaseArgs {
     #[clap(long)]
     new_version: Option<String>,
 
-    /// Release, even if the CI is not passing
+    /// Release even if the CI is not passing
     #[clap(long)]
     ignore_ci: bool,
+
+    /// Release even if the verify_command fails
+    #[clap(long)]
+    ignore_verify_command: bool,
+
+    #[clap(long)]
+    discover: bool,
 }
 
 #[derive(clap::Args)]
@@ -115,6 +178,33 @@ struct InfoArgs {
     path: std::path::PathBuf,
 }
 
+pub fn find_last_version(workingtree: &breezyshim::tree::WorkingTree, cfg: &ProjectConfig) -> Result<(Option<Version>, Option<disperse::Status>), Box<dyn std::error::Error>> {
+    match find_last_version_in_files(workingtree, cfg) {
+        Ok(Some((v, s))) => { return Ok((Some(v), s)); },
+        Ok(None) => {
+            log::debug!("No version found in files");
+        }
+        Err(e) => {
+            log::info!("Error finding last version in files: {}", e);
+        }
+    }
+
+    if let Some(tag_name) = cfg.tag_name.as_deref() {
+        match find_last_version_in_tags(workingtree.branch().as_ref(), tag_name) {
+            Ok((Some(v), s)) => { return Ok((Some(v), s)); },
+            Ok((None, _)) => {
+                log::debug!("No version found in tags");
+            }
+            Err(e) => {
+                log::info!("Error finding last version in tags: {}", e);
+            }
+        }
+    }
+
+
+    Ok((None, None))
+}
+
 pub fn info(tree: &breezyshim::tree::WorkingTree, branch: &dyn breezyshim::branch::Branch) -> i32 {
     let cfg = match disperse::project_config::read_project_with_fallback(tree) {
         Ok(cfg) => cfg,
@@ -136,30 +226,16 @@ pub fn info(tree: &breezyshim::tree::WorkingTree, branch: &dyn breezyshim::branc
         log::info!("Project: {}", name);
     }
 
-    let (mut last_version, last_version_status) = if let Some((v, s)) = match find_last_version(tree, &cfg) {
-        Ok(v) => v,
+    let (mut last_version, last_version_status) = match find_last_version(tree, &cfg) {
+        Ok((Some(v), s)) => (v, s),
+        Ok((None, _)) => {
+            log::info!("No version found");
+            return 1;
+        }
         Err(e) => {
             log::info!("Error loading last version: {}", e);
             return 1;
         }
-    } {
-        (v, s)
-    } else if let Some(tag_name) = cfg.tag_name.as_deref() {
-        let (v, s) = match find_last_version_in_tags(branch, tag_name) {
-            Ok((Some(v), s)) => (v, s),
-            Ok((None, _)) => {
-                log::info!("No version found");
-                return 1;
-            }
-            Err(e) => {
-                log::info!("Error loading tags: {}", e);
-                return 1;
-            }
-        };
-        (v, s)
-    } else {
-        log::info!("No version found");
-        return 1;
     };
 
     log::info!("Last release: {}", last_version.to_string());
@@ -167,8 +243,10 @@ pub fn info(tree: &breezyshim::tree::WorkingTree, branch: &dyn breezyshim::branc
         log::info!("  status: {}", status.to_string());
     }
 
+    let tags = branch.tags().unwrap();
+
     let tag_name = disperse::version::expand_tag(cfg.tag_name.as_deref().unwrap(), &last_version);
-    match branch.tags().unwrap().lookup_tag(tag_name.as_str()) {
+    match tags.lookup_tag(tag_name.as_str()) {
         Ok(release_revid) => {
             log::info!("  tag name: {} ({})", tag_name, release_revid);
 
@@ -177,7 +255,7 @@ pub fn info(tree: &breezyshim::tree::WorkingTree, branch: &dyn breezyshim::branc
 
             if rev.revision_id != branch.last_revision() {
                 let graph = branch.repository().get_graph();
-                let missing = graph.iter_lefthand_ancestry(&branch.last_revision(), Some(&[release_revid.clone()])).collect::<Result<Vec<_>, _>>().unwrap();
+                let missing = graph.iter_lefthand_ancestry(&branch.last_revision(), Some(&[release_revid])).collect::<Result<Vec<_>, _>>().unwrap();
                 if missing.last().map(|r| r.is_null()).unwrap() {
                     log::info!("  last release not found in ancestry");
                 } else {
@@ -242,7 +320,7 @@ fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
         }
 
         let (local_wt, branch) =
-            match breezyshim::controldir::ControlDir::open_tree_or_branch(url, None) {
+            match breezyshim::controldir::open_tree_or_branch(url, None) {
                 Ok(x) => x,
                 Err(e) => {
                     ret = 1;
@@ -267,6 +345,7 @@ fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
                 None,
                 None,
             );
+            ws.start().unwrap();
             let lock = ws.local_tree().lock_read();
             let r = info(&ws.local_tree(), ws.local_tree().branch().as_ref());
             std::mem::drop(lock);
@@ -276,30 +355,870 @@ fn info_many(urls: &[Url]) -> pyo3::PyResult<i32> {
     Ok(ret)
 }
 
+pub fn pick_new_version(tree: &breezyshim::tree::WorkingTree, cfg: &ProjectConfig) -> Result<Version, String> {
+    match disperse::find_pending_version(tree, cfg) {
+        Ok(new_version) => { return Ok(new_version); },
+        Err(disperse::FindPendingVersionError::NotFound) => {},
+        Err(disperse::FindPendingVersionError::OddPendingVersion(e)) => {
+            return Err(format!("Pending version: {} (odd)", e));
+        },
+        Err(disperse::FindPendingVersionError::NoUnreleasedChanges) => {
+            return Err("No unreleased changes".to_string());
+        },
+        Err(disperse::FindPendingVersionError::Other(o)) => {
+            return Err(format!("Error finding pending version: {}", o));
+        },
+    }
+
+    let mut last_version = match find_last_version(tree, cfg) {
+        Ok((Some(v), _)) => v,
+        Ok((None, _)) => {
+            return Err("No version found".to_string());
+        }
+        Err(e) => {
+            return Err(format!("Error loading last version: {}", e));
+        }
+    };
+    let tags = tree.branch().tags().unwrap();
+    loop {
+        let last_version_tag_name = disperse::version::expand_tag(cfg.tag_name.as_ref().unwrap(), &last_version);
+        if !tags.has_tag(last_version_tag_name.as_str()) {
+            break;
+        }
+        disperse::version::increase_version(&mut last_version, -1);
+    }
+    Ok(last_version)
+}
+
+#[derive(Debug)]
+pub enum ReleaseError {
+    RepositoryUnavailable{ url: String, reason: String },
+    NoUnreleasedChanges,
+    NoVersion,
+    OddPendingVersion { version: String },
+    NoSuchTag,
+    NoDisperseConfig,
+    PreDistCommandFailed { command: String, status: Option<std::process::ExitStatus> },
+    UploadCommandFailed { command: String, status: Option<std::process::ExitStatus>, reason: Option<String> },
+    VerifyCommandFailed { command: String, status: Option<std::process::ExitStatus> },
+    ReleaseTagExists { project: String, tag: String, version: Version },
+    CommitFailed(String),
+    RecentCommits { min_commit_age: i64, commit_age: i64 },
+    CreateTagFailed { tag_name: String, status: Option<std::process::ExitStatus>, reason: Option<String> },
+    CIFailed(String),
+    CIPending(String),
+    PublishArtifactsFailed(String),
+    DistCreationFailed,
+    NoPublicBranch,
+    Other(String),
+}
+
+impl From<silver_platter::workspace::Error> for ReleaseError {
+    fn from(_e: silver_platter::workspace::Error) -> Self {
+        ReleaseError::Other("workspace error".to_string())
+    }
+}
+
+impl std::fmt::Display for ReleaseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            ReleaseError::RepositoryUnavailable { url, reason } => write!(f, "Repository unavailable: {}: {}", url, reason),
+            ReleaseError::NoUnreleasedChanges => write!(f, "No unreleased changes"),
+            ReleaseError::NoVersion => write!(f, "No version"),
+            ReleaseError::OddPendingVersion { version } => write!(f, "Odd pending version: {}", version),
+            ReleaseError::NoSuchTag => write!(f, "No such tag"),
+            ReleaseError::NoDisperseConfig => write!(f, "No disperse config"),
+            ReleaseError::PreDistCommandFailed { command, status } => write!(f, "Pre-dist command failed: {}: {}", command, status.map_or_else(|| "unknown".to_string(), |s| s.to_string())),
+            ReleaseError::UploadCommandFailed { command, status, reason: _ } => write!(f, "Upload command failed: {}: {}", command, status.map_or_else(|| "unknown".to_string(), |s| s.to_string())),
+            ReleaseError::VerifyCommandFailed { command, status } => write!(f, "Verify command failed: {}: {}", command, status.map_or_else(|| "unknown".to_string(), |s| s.to_string())),
+            ReleaseError::CommitFailed(msg) => write!(f, "Commit failed: {}", msg),
+            ReleaseError::RecentCommits { min_commit_age, commit_age } => write!(f, "Last commit is {} days old, but minimum is {}", commit_age, min_commit_age),
+            ReleaseError::ReleaseTagExists { project, tag, version } => write!(f, "Release tag already exists: {} {} {}", project, tag, version.to_string()),
+            ReleaseError::CreateTagFailed { tag_name, status, .. } => write!(f, "Create tag failed: {}: {}", tag_name, status.map_or_else(|| "unknown".to_string(), |s| s.to_string())),
+            ReleaseError::Other(msg) => write!(f, "{}", msg),
+            ReleaseError::CIFailed(n) => write!(f, "CI failed: {}", n),
+            ReleaseError::CIPending(n) => write!(f, "CI pending: {}", n),
+            ReleaseError::PublishArtifactsFailed(msg) => write!(f, "Publish artifacts failed: {}", msg),
+            ReleaseError::DistCreationFailed => write!(f, "Dist creation failed"),
+            ReleaseError::NoPublicBranch => write!(f, "No public branch"),
+        }
+    }
+}
+
+impl std::error::Error for ReleaseError {}
+
+fn is_git_repo(repository: &breezyshim::repository::Repository) -> bool {
+    use pyo3::ToPyObject;
+    pyo3::Python::with_gil(|py| {
+        repository.to_object(py).as_ref(py).hasattr("_git")
+    }).unwrap()
+}
+
+#[derive(Debug)]
+struct RecentCommits {
+    min_commit_age: i64,
+    commit_age: i64,
+}
+
+impl std::fmt::Display for RecentCommits {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Last commit is {} days old, but minimum is {}", self.commit_age, self.min_commit_age)
+    }
+}
+
+impl std::error::Error for RecentCommits {}
+
+fn check_release_age(branch: &dyn breezyshim::branch::Branch, cfg: &ProjectConfig, now: chrono::DateTime<chrono::Utc>) -> Result<(), RecentCommits> {
+    use chrono::TimeZone;
+    let rev = branch.repository().get_revision(&branch.last_revision()).unwrap();
+    if let Some(timeout_days) = cfg.timeout_days {
+        let commit_time = chrono::FixedOffset::east(rev.timezone).timestamp(rev.timestamp as i64, 0);
+        let time_delta = now.signed_duration_since(commit_time);
+        if (time_delta.num_days() as i32) < timeout_days {
+            return Err(RecentCommits {
+                min_commit_age: timeout_days as i64,
+                commit_age: time_delta.num_days(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn publish_artifacts(ws: &silver_platter::workspace::Workspace, tag_name: &str, dry_run: bool, gh: &octocrab::Octocrab, cfg: &ProjectConfig, pypi_paths: &[&std::path::Path], gh_repo: Option<&octocrab::models::Repository>) -> Result<Vec<std::path::PathBuf>, ReleaseError> {
+    let mut artifacts = vec![];
+    // Wait for CI to go green
+    if let Some(gh_repo) = gh_repo {
+        if dry_run {
+            log::info!("In dry-run mode, so unable to wait for CI");
+        } else {
+            disperse::github::wait_for_gh_actions(
+                gh,
+                gh_repo,
+                Some(tag_name),
+                cfg.ci_timeout.map(|x| x as u64),
+            ).map_err(|e| ReleaseError::CIFailed(e.to_string()))?;
+        }
+    }
+
+    if !pypi_paths.is_empty() {
+        artifacts.extend(pypi_paths.iter().map(|x| x.to_path_buf()));
+        if dry_run {
+            log::info!("skipping twine upload due to dry run mode")
+        } else if cfg.skip_twine_upload == Some(true) {
+            log::info!("skipping twine upload; disabled in config")
+        } else {
+            disperse::python::upload_python_artifacts(&ws.local_tree(), pypi_paths)
+                .map_err(|e| ReleaseError::UploadCommandFailed {
+                    command: "twine upload".to_string(),
+                    status: None,
+                    reason: Some(e.to_string()),
+                })?;
+        }
+    }
+    if ws.local_tree().has_filename(std::path::Path::new("Cargo.toml")) {
+        if dry_run {
+            log::info!("skipping cargo upload due to dry run mode");
+        } else {
+            disperse::cargo::publish(&ws.local_tree(), std::path::Path::new(".")).map_err(|e| ReleaseError::UploadCommandFailed {
+                command: "cargo publish".to_string(),
+                status: None,
+                reason: Some(e.to_string()),
+            })?;
+        }
+    }
+    for loc in cfg.tarball_location.iter() {
+        if dry_run {
+            log::info!("skipping scp to {} due to dry run mode", loc);
+        } else {
+            let args = artifacts.iter().map(|s| s.to_path_buf().into_os_string()).chain([std::ffi::OsString::from(loc)]).collect::<Vec<std::ffi::OsString>>();
+            match std::process::Command::new("scp")
+                .args(args.clone())
+                .status() {
+                Ok(status) => {
+                    if !status.success() {
+                        return Err(ReleaseError::UploadCommandFailed {
+                            command: format!("scp {}", args.into_iter().map(|s| s.into_string().unwrap()).collect::<Vec<String>>().join(" ")),
+                            status: Some(status),
+                            reason: None,
+                        });
+                    }
+                }
+                Err(e) => {
+                    return Err(ReleaseError::UploadCommandFailed {
+                        command: format!("scp {}", args.into_iter().map(|s| s.into_string().unwrap()).collect::<Vec<String>>().join(" ")),
+                        status: None,
+                        reason: Some(e.to_string()),
+                    });
+                }
+            }
+        }
+    }
+    Ok(artifacts)
+}
+
+pub fn release_project(
+    repo_url: &str,
+    force: Option<bool>,
+    new_version: Option<&Version>,
+    dry_run: Option<bool>,
+    ignore_ci: Option<bool>,
+    ignore_verify_command: Option<bool>
+) -> Result<(String, Version), ReleaseError> {
+    let force = force.unwrap_or(false);
+    let dry_run = dry_run.unwrap_or(false);
+    let ignore_ci = ignore_ci.unwrap_or(false);
+    let ignore_verify_command = ignore_verify_command.unwrap_or(false);
+    let now = chrono::Utc::now();
+
+    let (local_wt, branch) = match breezyshim::controldir::open_tree_or_branch(
+        repo_url,
+        None,
+    ) {
+        Ok(x) => x,
+        Err(e) => {
+            return Err(ReleaseError::RepositoryUnavailable { url: repo_url.to_string(), reason: e.to_string() });
+        }
+    };
+
+    let mut public_repo_url = None;
+    let mut public_branch = None;
+    let mut local_branch = None;
+
+    if branch.user_transport().is_local() {
+        public_repo_url = Some(branch.user_transport().base());
+        local_branch = Some(branch);
+    } else if ["https", "http", "git"].contains(&branch.user_transport().base().scheme()) {
+        public_repo_url = Some(branch.user_transport().base());
+        public_branch = Some(branch);
+    } else if let Some(public_branch_url) = branch.get_public_branch() {
+        log::info!("Using public branch {}", &public_branch_url);
+        let url: url::Url = public_branch_url.as_str().parse().unwrap();
+        public_repo_url = Some(url.clone());
+        public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
+    } else if let Some(submit_branch_url) = branch.get_submit_branch() {
+        let url: url::Url = submit_branch_url.parse().unwrap();
+        log::info!("Using public branch {}", &submit_branch_url);
+        public_repo_url = Some(url.clone());
+        public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
+    } else if let Some(push_location) = branch.get_push_location() {
+        let url: url::Url = push_location.parse().unwrap();
+        log::info!("Using public branch {}", &push_location);
+        public_repo_url = Some(url.clone());
+        public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
+    }
+
+    let mut public_repo_url = public_repo_url.map(|u| breezyshim::urlutils::split_segment_parameters(&u).0);
+
+    if let Some(public_repo_url) = &public_repo_url {
+        log::info!("Found public repository URL: {}", public_repo_url);
+    }
+
+    let ws = silver_platter::workspace::Workspace::new(public_branch.as_deref(), local_branch.as_deref(), None, HashMap::new(), HashMap::new(), None, None, None);
+
+    ws.start().unwrap();
+
+    let cfg = match disperse::project_config::read_project_with_fallback(&ws.local_tree()) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            log::error!("Unable to read project configuration: {}", e);
+            NO_DISPERSE_CONFIG.inc();
+            return Err(ReleaseError::NoDisperseConfig);
+        }
+    };
+
+    let name = if let Some(name) = cfg.name.as_ref() {
+        Some(name.clone())
+    } else if ws.local_tree().has_filename(Path::new("pyproject.toml")) {
+        disperse::python::find_name_in_pyproject_toml(&ws.local_tree())
+    } else {
+        None
+    };
+
+    let name = if let Some(name) = name {
+        name
+    } else {
+        public_repo_url.as_ref().map(|u| u.as_str().rsplit('/').next().map(|s| s.to_string()).unwrap_or_else(|| "".to_string())).unwrap_or_else(|| "".to_string())
+    };
+
+    let lp = launchpadlib::client::Client::authenticated(None, "disperse").map_err(|e| ReleaseError::Other(e.to_string()))?;
+
+    let mut launchpad_project = if let Some(project) = cfg.launchpad_project.as_ref() {
+        disperse::launchpad::get_project(&lp, project).ok()
+    } else {
+        None
+    };
+
+    let mut launchpad_series = if let Some(series) = cfg.launchpad_series.as_ref() {
+        let series = disperse::launchpad::find_project_series(&lp, &launchpad_project.as_ref().unwrap().self_().unwrap(), Some(series), None).map_err(ReleaseError::Other)?;
+        let b = series.branch();
+        public_repo_url = b.get(&lp).unwrap().web_link;
+        if let Some(url) = &public_repo_url {
+            ws.set_main_branch_url(url).unwrap();
+        }
+        // TODO: Check for git repository
+        Some(series)
+    } else {
+        None
+    };
+
+    let mut gh_repo = None;
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    let gh = rt.block_on(async {
+
+        let entry = keyring::Entry::new("github.com", "personal_token").unwrap();
+        let oauth = match entry.get_password() {
+            Ok(oauth) => Some(oauth),
+            Err(keyring::Error::NoEntry) => None,
+            Err(e) => {
+                log::error!("Unable to read GitHub OAuth token from keyring: {}", e);
+                None
+            }
+        };
+
+        if let Some(oauth) = oauth {
+            log::info!("Using GitHub OAuth token from keyring");
+            let builder = octocrab::OctocrabBuilder::new().personal_token(oauth);
+            builder.build().unwrap()
+        } else {
+            println!("Please enter your GitHub personal token");
+            let mut personal_token = String::new();
+            std::io::stdin().read_line(&mut personal_token).unwrap();
+            let personal_token = personal_token.trim();
+            entry.set_password(personal_token).unwrap();
+            let builder = octocrab::OctocrabBuilder::new().personal_token(personal_token.to_string());
+            builder.build().unwrap()
+        }
+    });
+
+    if let Some(url) = cfg.github_url.as_ref() {
+        public_repo_url = Some(url.parse().unwrap());
+        ws.set_main_branch_url(public_repo_url.as_ref().unwrap()).unwrap();
+        gh_repo = Some(disperse::github::get_github_repo(&gh, public_repo_url.as_ref().unwrap()).map_err(|e| ReleaseError::Other(e.to_string()))?);
+        match disperse::github::check_gh_repo_action_status(&gh, gh_repo.as_ref().unwrap(), cfg.github_branch.as_deref()) {
+            Ok(disperse::github::GitHubCIStatus::Ok) => {
+                log::info!("GitHub action succeeded");
+            }
+            Ok(disperse::github::GitHubCIStatus::Failed { html_url, sha }) => {
+                let html_url = html_url.unwrap_or_else(|| "unknown".to_string());
+                if ignore_ci {
+                    CI_IGNORED_COUNT.with_label_values(&[&name]).inc();
+                    log::warn!("Ignoring failing CI: {}", html_url);
+                } else {
+                    log::error!("CI failed: {}", html_url);
+                    return Err(ReleaseError::CIFailed(format!("for revision {}: {}", sha, html_url)));
+                }
+            }
+            Ok(disperse::github::GitHubCIStatus::Pending { html_url, sha, }) => {
+                let html_url = html_url.unwrap_or_else(|| "unknown".to_string());
+                if ignore_ci {
+                    CI_IGNORED_COUNT.with_label_values(&[&name]).inc();
+                    log::warn!("Ignoring failing CI: {}", html_url);
+                } else {
+                    log::error!("CI pending: {}", html_url);
+                    return Err(ReleaseError::CIPending(format!("for revision {}: {}", sha, html_url)));
+                }
+            }
+            Err(e) => {
+                log::error!("Unable to check CI status: {}", e);
+                return Err(ReleaseError::CIFailed(e.to_string()));
+            }
+        }
+    }
+
+    let public_repo_url = if let Some(public_repo_url) = public_repo_url.as_ref() {
+        public_repo_url.clone()
+    } else {
+        return Err(ReleaseError::NoPublicBranch);
+    };
+
+    let mut possible_urls: Vec<(url::Url, Option<String>)> = vec![];
+    if ws.local_tree().has_filename(Path::new("setup.cfg")) {
+        possible_urls.extend(
+            disperse::python::read_project_urls_from_setup_cfg(ws.local_tree().abspath(Path::new("setup.cfg")).unwrap().as_path()).map_err(|e| ReleaseError::Other(e.to_string()))?
+        );
+    }
+    if ws.local_tree().has_filename(Path::new("pyproject.toml")) {
+        possible_urls.extend(
+            disperse::python::read_project_urls_from_pyproject_toml(
+                ws.local_tree().abspath(Path::new("pyproject.toml")).unwrap().as_path()
+            ).map_err(|e| ReleaseError::Other(e.to_string()))?
+        );
+    }
+    possible_urls.push((public_repo_url, public_branch.as_ref().and_then(|b| b.name())));
+
+    for (parsed_url, branch_name) in possible_urls.iter() {
+        match parsed_url.host_str() {
+            Some("github.com") => {
+                if gh_repo.is_some() {
+                    continue;
+                }
+                gh_repo = Some(disperse::github::get_github_repo(&gh, parsed_url).map_err(|e| ReleaseError::Other(e.to_string()))?);
+                match disperse::github::check_gh_repo_action_status(&gh, gh_repo.as_ref().unwrap(), branch_name.as_deref()) {
+                    Ok(disperse::github::GitHubCIStatus::Ok) => (),
+                    Ok(disperse::github::GitHubCIStatus::Failed { html_url, sha}) => {
+                        if ignore_ci {
+                            log::warn!("Ignoring failing CI");
+                            CI_IGNORED_COUNT.with_label_values(&[&name]).inc();
+                        } else {
+                            return Err(ReleaseError::CIFailed(format!("for revision {}: {}", sha, html_url.unwrap_or_else(|| "unknown".to_string()))));
+                        }
+                    }
+                    Ok(disperse::github::GitHubCIStatus::Pending { sha, html_url }) => {
+                        if ignore_ci {
+                            log::warn!("Ignoring pending CI");
+                            CI_IGNORED_COUNT.with_label_values(&[&name]).inc();
+                        } else {
+                            return Err(ReleaseError::CIPending(format!("for revision {}: {}", sha, html_url.unwrap_or_else(|| "unknown".to_string()))));
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Unable to check CI status: {}", e);
+                        return Err(ReleaseError::CIFailed(e.to_string()));
+                    }
+                }
+                break;
+            }
+            Some("launchpad.net") => {
+                let parts = parsed_url.path_segments().unwrap().collect::<Vec<_>>();
+                launchpad_project = Some(disperse::launchpad::get_project(&lp, parts[0]).map_err(ReleaseError::Other)?);
+                if parts.len() > 1 && !parts[1].starts_with('+') {
+                    launchpad_series = Some(disperse::launchpad::find_project_series(&lp, &launchpad_project.as_ref().unwrap().self_().unwrap(), Some(parts[1]), None).map_err(ReleaseError::Other)?);
+                }
+            }
+            _ => {
+                log::debug!("Unknown host: {}", parsed_url);
+            }
+        }
+    }
+
+    if !disperse::check_new_revisions(ws.local_tree().branch().as_ref(), cfg.news_file.as_ref().map(Path::new)).map_err(|e| ReleaseError::Other(e.to_string()))? {
+        NO_UNRELEASED_CHANGES_COUNT.with_label_values(&[&name]).inc();
+        log::info!("No new revisions");
+        return Err(ReleaseError::NoUnreleasedChanges);
+    }
+
+    if let Err(RecentCommits { min_commit_age, commit_age }) = check_release_age(ws.local_tree().branch().as_ref(), &cfg, now) {
+        RECENT_COMMITS_COUNT.with_label_values(&[&name]).inc();
+        if !force {
+            return Err(ReleaseError::RecentCommits { min_commit_age, commit_age });
+        }
+    }
+
+    let new_version: Version = new_version.map_or_else(|| {
+        let new_version = pick_new_version(&ws.local_tree(), &cfg).map_err(ReleaseError::Other)?;
+        log::info!("Picked new version: {}", new_version.to_string());
+        Ok::<Version, ReleaseError>(new_version)
+    }, |v| Ok(v.clone()))?;
+
+    if let Some(pre_dist_command) = cfg.pre_dist_command.as_ref() {
+        match std::process::Command::new("sh")
+            .arg("-c")
+            .arg(pre_dist_command)
+            .current_dir(ws.local_tree().abspath(Path::new(".")).unwrap())
+            .status() {
+            Ok(s) => {
+                if !s.success() {
+                    PRE_DIST_COMMAND_FAILED.with_label_values(&[&name]).inc();
+                    return Err(ReleaseError::PreDistCommandFailed{ command: pre_dist_command.clone(), status: Some(s) });
+                }
+            },
+            Err(_e) => {
+                PRE_DIST_COMMAND_FAILED.with_label_values(&[&name]).inc();
+                return Err(ReleaseError::PreDistCommandFailed{ command: pre_dist_command.clone(), status: None });
+            }
+        }
+    }
+
+    let verify_command = if let Some(verify_command) = cfg.verify_command.as_ref() {
+        Some(verify_command.clone())
+    } else if ws.local_tree().has_filename(Path::new("tox.ini")) {
+        Some("tox".to_string())
+    } else {
+        None
+    };
+
+    log::info!("releasing {}", new_version.to_string());
+    let (news_file, release_changes) = if let Some(news_file_path) = cfg.news_file.as_ref() {
+        let news_file = disperse::news_file::NewsFile::new(ws.local_tree(), Path::new(news_file_path)).map_err(|e| ReleaseError::Other(e.to_string()))?;
+        let release_changes = news_file.mark_released(&new_version, &now.date().naive_utc()).map_err(|e| ReleaseError::Other(e.to_string()))?;
+        (Some(news_file), Some(release_changes))
+    } else {
+        (None, None)
+    };
+
+    for update_version in &cfg.update_version {
+        disperse::custom::update_version_in_file(
+            &ws.local_tree(),
+            Path::new(update_version.path.as_ref().unwrap()),
+            update_version.new_line.as_ref().unwrap(),
+            update_version.match_.as_deref(),
+            &new_version,
+            disperse::Status::Final
+        ).map_err(ReleaseError::Other)?;
+    }
+
+    for update_manpage in &cfg.update_manpages {
+        for path in glob::glob(ws.local_tree().abspath(Path::new(update_manpage.as_str())).unwrap().to_str().unwrap()).unwrap() {
+            disperse::manpage::update_version_in_manpage(
+                &mut ws.local_tree(), ws.local_tree().relpath(path.unwrap().as_path()).unwrap().as_path(), &new_version, now.date().naive_utc()
+            ).map_err(|e| ReleaseError::Other(e.to_string()))?;
+        }
+    }
+
+    if ws.local_tree().has_filename(Path::new("Cargo.toml")) {
+        disperse::cargo::update_version(&ws.local_tree(), new_version.to_string().as_str()).map_err(|e| ReleaseError::Other(e.to_string()))?;
+    }
+    if ws.local_tree().has_filename(Path::new("pyproject.toml")) {
+        disperse::python::update_version_in_pyproject_toml(&ws.local_tree(), &new_version).map_err(|e| ReleaseError::Other(e.to_string()))?;
+    }
+    let revid = ws.local_tree().commit(format!("Release {}.", new_version.to_string()).as_str(), None, None, None)
+        .map_err(|e| ReleaseError::CommitFailed(e.to_string()))?;
+
+    if let Some(verify_command) = verify_command {
+        match std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&verify_command)
+            .current_dir(ws.local_tree().abspath(Path::new(".")).unwrap())
+            .status() {
+            Ok(s) => {
+                if !s.success() {
+                    VERIFY_COMMAND_FAILED.with_label_values(&[&name]).inc();
+                    if !ignore_verify_command {
+                        return Err(ReleaseError::VerifyCommandFailed{ command: verify_command.clone(), status: Some(s) });
+                    }
+                }
+            },
+            Err(_e) => {
+                VERIFY_COMMAND_FAILED.with_label_values(&[&name]).inc();
+                if !ignore_verify_command {
+                    return Err(ReleaseError::VerifyCommandFailed{ command: verify_command.clone(), status: None });
+                }
+            }
+        }
+    }
+
+    let tags = ws.main_branch().tags().unwrap();
+    let tag_name = disperse::version::expand_tag(cfg.tag_name.as_ref().unwrap(), &new_version);
+    if tags.has_tag(tag_name.as_str()) {
+        RELEASE_TAG_EXISTS.with_label_values(&[&name]).inc();
+        // Maybe there's a pending pull request merging new_version?
+        // TODO(jelmer): Do some more verification. Expect: release tag
+        // has one additional revision that's not on our branch.
+        return Err(ReleaseError::ReleaseTagExists{project: name, version: new_version, tag: tag_name});
+    }
+    log::info!("Creating tag {}", tag_name);
+    if is_git_repo(&ws.local_tree().branch().repository()) {
+        match std::process::Command::new("git")
+            .arg("tag")
+            .arg("-as")
+            .arg(&tag_name)
+            .arg("-m")
+            .arg(format!("Release {}", new_version.to_string()))
+            .current_dir(ws.local_tree().abspath(Path::new(".")).unwrap())
+            .status() {
+            Ok(s) => {
+                if !s.success() {
+                    return Err(ReleaseError::CreateTagFailed{ tag_name: tag_name.clone(), status: Some(s), reason: Some("git tag failed".to_string()) });
+                }
+            },
+            Err(e) => {
+                return Err(ReleaseError::CreateTagFailed{ tag_name: tag_name.clone(), status: None, reason: Some(e.to_string()) });
+            }
+        }
+    } else {
+        tags.set_tag(tag_name.as_str(), &ws.local_tree().last_revision().unwrap()).map_err(|e| ReleaseError::CreateTagFailed{ tag_name: tag_name.clone(), status: None, reason: Some(e.to_string()) })?;
+    }
+    let pypi_paths = if ws.local_tree().has_filename(Path::new("setup.py")) {
+        disperse::python::create_setup_py_artifacts(&ws.local_tree()).unwrap()
+    } else if ws.local_tree().has_filename(Path::new("pyproject.toml")) {
+        disperse::python::create_python_artifacts(&ws.local_tree()).unwrap()
+    } else {
+        vec![]
+    };
+
+    if !dry_run {
+        ws.push_tags(
+            hashmap! {
+                tag_name.clone() => revid.clone(),
+            }
+        ).map_err(|e| ReleaseError::CreateTagFailed { tag_name: tag_name.clone(), status: None, reason: Some(e.to_string()) })?;
+    }
+
+    let result = publish_artifacts(&ws, &tag_name, dry_run, &gh, &cfg, pypi_paths.iter().map(|p| p.as_path()).collect::<Vec<_>>().as_slice(), gh_repo.as_ref());
+
+    let artifacts = match result {
+        Ok(artifacts) => artifacts,
+        Err(e) => {
+            log::error!("Failed to publish artifacts: {}", e);
+            log::info!("Deleting remote tag {}", tag_name);
+            if !dry_run {
+                tags.delete_tag(tag_name.as_str()).map_err(|e| ReleaseError::Other(e.to_string()))?;
+            }
+            return Err(ReleaseError::PublishArtifactsFailed(e.to_string()));
+        }
+    };
+
+    // At this point, it's official - so let's push.
+    if !dry_run {
+        pyo3::import_exception!(breezy.git.forge, ProtectedBranchHookDeclined);
+        match ws.push() {
+            Ok(_) => {},
+            Err(silver_platter::workspace::Error::Python(e)) if pyo3::Python::with_gil(|py| e.is_instance_of::<ProtectedBranchHookDeclined>(py)) => {
+                BRANCH_PROTECTED_COUNT.with_label_values(&[&name]).inc();
+                log::info!(
+                    "{} is protected; proposing merge instead",
+                    ws.local_tree().branch().name().unwrap_or_else(|| "branch".to_string())
+                );
+                let commit_message = format!("Merge release of {}", new_version.to_string());
+                let mp = if !dry_run {
+                    let (mp, _is_new) = ws.propose(
+                        format!("Merge release of {}", new_version.to_string()).as_str(),
+                        Some(hashmap! { tag_name.clone() => revid }),
+                        format!("release-{}", new_version.to_string()).as_str(),
+                        Some(vec!["release".to_string()]),
+                        Some(false),
+                        Some(commit_message.as_str())
+
+                    )?;
+                    Some(mp)
+                } else {
+                    None
+                };
+
+                if let Some(mp) = mp {
+                    log::info!("Created merge proposal: {}", mp.url().unwrap());
+
+                    if mp.supports_auto_merge() {
+                        mp.merge(true).map_err(|e| ReleaseError::Other(e.to_string()))?;
+                    }
+                }
+            }
+            Err(e) => {
+                log::info!("Failed to push: {}", e);
+                return Err(e.into());
+            }
+        }
+    }
+
+    let gh = octocrab::instance();
+
+    if let Some(gh_repo) = gh_repo.as_ref() {
+        if dry_run {
+            log::info!("skipping creation of github release due to dry run mode");
+        } else {
+            disperse::github::create_github_release(&gh, gh_repo, tag_name.as_str(), &new_version.to_string(), release_changes.as_deref()).map_err(|e| ReleaseError::Other(e.to_string()))?;
+        }
+    }
+
+    if let Some(launchpad_project) = launchpad_project.as_ref() {
+        if dry_run {
+            log::info!("skipping upload of tarball to Launchpad");
+        } else {
+            let lp_release = disperse::launchpad::ensure_release(
+                &lp,
+                &launchpad_project.self_().unwrap(),
+                &new_version.to_string(),
+                launchpad_series.as_ref().map(|s| s.name.as_str()),
+                release_changes.as_deref(),
+            ).map_err(ReleaseError::Other)?;
+            disperse::launchpad::add_release_files(&lp, &lp_release, artifacts)
+                .map_err(ReleaseError::Other)?;
+        }
+    }
+
+    // TODO(jelmer): Mark any news bugs in NEWS as fixed [later]
+    // * Commit:
+    //  * Update NEWS and version strings for next version
+    let mut new_pending_version: Version = new_version.clone();
+    disperse::version::increase_version(&mut new_pending_version, -1);
+    log::info!("Using new version {}", new_pending_version.to_string());
+    if let Some(news_file) = news_file {
+        news_file.add_pending(&new_pending_version)
+            .map_err(|e| ReleaseError::Other(e.to_string()))?;
+        ws.local_tree().commit(format!("Start on {}", new_pending_version.to_string()).as_str(), None, None, None).map_err(|e| ReleaseError::Other(e.to_string()))?;
+        if !dry_run {
+            ws.push().map_err(|e| ReleaseError::Other(e.to_string()))?;
+        }
+    }
+    if let Some(launchpad_project) = launchpad_project.as_ref() {
+        if dry_run {
+            log::info!(
+                "Skipping creation of new mileston {} on Launchpad",
+                new_pending_version.to_string(),
+            );
+        } else {
+            disperse::launchpad::create_milestone(
+                &lp, &launchpad_project.self_().unwrap(), &new_pending_version.to_string(), launchpad_series.as_ref().map(|s| s.name.as_str()),
+            ).map_err(ReleaseError::Other)?;
+        }
+    }
+    if !dry_run {
+        let pb = public_branch.unwrap();
+        if let Some(local_wt) = local_wt.as_ref() {
+            local_wt.pull(pb.as_ref()).unwrap();
+        } else if let Some(local_branch) = local_branch.as_ref() {
+            local_branch.pull(pb.as_ref()).unwrap();
+        }
+    }
+
+    RELEASED_COUNT.with_label_values(&[&name]).inc();
+    Ok((name, new_version))
+}
+
 fn release_many(
     urls: &[String],
     new_version: Option<String>,
-    ignore_ci: bool,
-    dry_run: bool,
-) -> pyo3::PyResult<i32> {
-    pyo3::Python::with_gil(|py| {
-        let m = py.import("disperse.__main__")?;
-        let release_many = m.getattr("release_many")?;
-        let kwargs = pyo3::types::PyDict::new(py);
-        kwargs.set_item(
-            "urls",
-            urls.iter().map(|u| u.to_string()).collect::<Vec<_>>(),
-        )?;
-        kwargs.set_item("force", true)?;
-        kwargs.set_item("dry_run", dry_run)?;
-        kwargs.set_item("discover", false)?;
-        kwargs.set_item("new_version", new_version)?;
-        kwargs.set_item("ignore_ci", ignore_ci)?;
-        release_many
-            .call((), Some(kwargs))?
-            .extract::<Option<i32>>()
-            .map(|x| x.unwrap_or(0))
-    })
+    ignore_ci: Option<bool>,
+    ignore_verify_command: Option<bool>,
+    dry_run: Option<bool>,
+    discover: bool,
+    force: Option<bool>
+) -> i32 {
+    let mut failed: Vec<(String, String)> = Vec::new();
+    let mut skipped: Vec<(String, String)> = Vec::new();
+    let mut success: Vec<String> = Vec::new();
+    let mut ret = 0;
+    for url in urls {
+        if url != "." {
+            log::info!("Processing {}", url);
+        }
+        match release_project(
+            url,
+            force,
+            new_version.as_ref().map(|v| v.as_str().parse().unwrap()).as_ref(),
+            dry_run,
+            ignore_ci,
+            ignore_verify_command
+            ) {
+        Err(ReleaseError::RecentCommits { min_commit_age, commit_age }) => {
+            log::info!(
+                "Recent commits exist ({} < {})", min_commit_age, commit_age
+            );
+            skipped.push((url.to_string(), format!("Recent commits exist ({} < {})", min_commit_age, commit_age)));
+            if !discover {
+                ret = 1;
+            }
+        },
+        Err(ReleaseError::VerifyCommandFailed { command, .. }) => {
+            log::error!("Verify command ({}) failed to run.", command);
+            failed.push((url.to_string(), format!("Verify command ({}) failed to run.", command)));
+            ret = 1;
+        }
+        Err(ReleaseError::PreDistCommandFailed { command, .. }) => {
+            log::error!("Pre-Dist command ({}) failed to run.", command);
+            failed.push((url.to_string(), format!("Pre-Dist command ({}) failed to run.", command)));
+            ret = 1;
+        },
+        Err(ReleaseError::UploadCommandFailed { command, .. }) => {
+            log::error!("Upload command ({}) failed to run.", command);
+            failed.push((url.to_string(), format!("Upload command ({}) failed to run.", command)));
+            ret = 1;
+        }
+        Err(ReleaseError::ReleaseTagExists {project, tag, version }) => {
+            log::warn!(
+                "{}: Release tag {} for version {} exists. Unmerged release commit?",
+                project,
+                tag,
+                version.to_string(),
+            );
+            skipped.push((url.to_string(), format!("Release tag {} for version {} exists", tag, version.to_string())));
+            if !discover {
+                ret = 1;
+            }
+        },
+        Err(ReleaseError::DistCreationFailed) => {
+            log::error!("Dist creation failed to run.");
+            failed.push((url.to_string(), "Dist creation failed to run.".to_string()));
+            ret = 1;
+        },
+        Err(ReleaseError::NoUnreleasedChanges) => {
+            log::error!("No unreleased changes");
+            skipped.push((url.to_string(), "No unreleased changes".to_string()));
+            if !discover {
+                ret = 1;
+            }
+        },
+        Err(ReleaseError::NoDisperseConfig) => {
+            log::error!("No configuration for disperse");
+            skipped.push((url.to_string(), "No configuration for disperse".to_string()));
+            if !discover {
+                ret = 1;
+            }
+        },
+        Err(ReleaseError::CIPending(n)) => {
+            log::error!("CI checks not finished yet: {}", n);
+            failed.push((url.to_string(), format!("CI checks not finished yet: {}", n)));
+            ret = 1;
+        },
+        Err(ReleaseError::CIFailed(n)) => {
+            log::error!("GitHub check failed: {}", n);
+            failed.push((url.to_string(), format!("GitHub check failed: {}", n)));
+            ret = 1;
+        },
+        Err(ReleaseError::RepositoryUnavailable { url, reason }) => {
+            log::error!("Repository is unavailable: {}: {}", url, reason);
+            failed.push((url.to_string(), format!("Repository is unavailable: {}: {}", url, reason)));
+            ret = 1;
+        },
+        Err(ReleaseError::OddPendingVersion { version }) => {
+            log::error!("Odd pending version: {}", version);
+            failed.push((url.to_string(), format!("Odd pending version: {}", version)));
+            ret = 1;
+        },
+        Err(ReleaseError::NoVersion) => {
+            log::error!("No version");
+            failed.push((url.to_string(), "No version".to_string()));
+            ret = 1;
+        },
+        Err(ReleaseError::NoSuchTag) => {
+            log::error!("No such tag");
+            failed.push((url.to_string(), "No such tag".to_string()));
+            ret = 1;
+        },
+        Err(ReleaseError::CreateTagFailed{ .. }) => {
+            log::error!("Failed to create tag");
+            failed.push((url.to_string(), "Failed to create tag".to_string()));
+            ret = 1;
+        },
+        Err(ReleaseError::Other(o)) => {
+            log::error!("Other error: {}", o);
+            failed.push((url.to_string(), format!("Other error: {}", o)));
+            ret = 1;
+        },
+        Err(ReleaseError::CommitFailed(..)) => {
+            log::error!("Failed to commit");
+            failed.push((url.to_string(), "Failed to commit".to_string()));
+            ret = 1;
+        },
+        Err(ReleaseError::PublishArtifactsFailed(o)) => {
+            log::error!("Failed to publish artifacts: {}", o);
+            failed.push((url.to_string(), format!("Failed to publish artifacts: {}", o)));
+            ret = 1;
+        },
+        Err(ReleaseError::NoPublicBranch) => {
+            log::error!("No public branch");
+            failed.push((url.to_string(), "No public branch".to_string()));
+            ret = 1;
+        },
+        Ok((name, version)) => {
+            log::info!("Released {} version {}", name, version.to_string());
+            success.push(url.to_string());
+        },
+    }
+    }
+
+    if discover {
+        log::info!(
+            "{} successfully released, {} skipped, {} failed",
+            success.len(),
+            skipped.len(),
+            failed.len());
+    }
+
+    ret
 }
 
 fn validate_config(path: &std::path::Path) -> pyo3::PyResult<i32> {
@@ -370,18 +1289,15 @@ fn main() {
 
     std::process::exit(match &args.command {
         Commands::Release(release_args) => {
-            match release_many(
-            release_args.url.as_slice(),
-            release_args.new_version.clone(),
-            release_args.ignore_ci,
-            args.dry_run,
-        ) {
-            Ok(x) => x,
-            Err(e) => {
-                print_py_err(e);
-                1
-            }
-        }
+            release_many(
+                release_args.url.as_slice(),
+                release_args.new_version.clone(),
+                Some(release_args.ignore_ci),
+                Some(release_args.ignore_verify_command),
+                Some(args.dry_run),
+                release_args.discover,
+                Some(true)
+            )
         }
         Commands::Discover(discover_args) => {
             let pypi_usernames = match discover_args.pypi_user.as_slice() {
@@ -438,21 +1354,18 @@ fn main() {
                     );
                     0
                 } else {
-                    match release_many(
+                    release_many(
                         urls.iter()
                             .map(|x| x.to_string())
                             .collect::<Vec<_>>()
                             .as_slice(),
                         None,
-                        false,
-                        false,
-                    ) {
-                        Ok(ret) => ret,
-                        Err(e) => {
-                            print_py_err(e);
-                            1
-                        }
-                    }
+                        Some(false),
+                        Some(false),
+                        Some(false),
+                        true,
+                        Some(false)
+                    )
                 };
                 if let Some(prometheus) = args.prometheus {
                     push_to_gateway(prometheus.as_str()).unwrap();
@@ -470,17 +1383,4 @@ fn main() {
             info(&wt, wt.branch().as_ref())
         }
     });
-}
-
-fn print_py_err(e: pyo3::PyErr) {
-    pyo3::Python::with_gil(|py| {
-        // Don't print the error if it's a KeyboardInterrupt
-        if e.is_instance_of::<pyo3::exceptions::PyKeyboardInterrupt>(py) {
-            return;
-        }
-        if let Some(tb) = e.traceback(py) {
-            println!("{}", tb.format().unwrap());
-        }
-    });
-    panic!("{}", e);
 }

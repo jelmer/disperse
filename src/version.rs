@@ -15,7 +15,7 @@ impl std::str::FromStr for Version {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split('.').collect();
-        let major = parts[0].parse::<i32>().unwrap();
+        let major = parts[0].parse::<i32>().map_err(|e| format!("invalid major version: {}", e))?;
         let minor = parts.get(1).map(|x| x.parse::<i32>().unwrap());
         let micro = parts.get(2).map(|x| x.parse::<i32>().unwrap());
         Ok(Version {
@@ -57,7 +57,7 @@ impl Version {
             return Self::from_tupled(&text[1..text.len() - 1]);
         }
         let parts: Vec<&str> = text.split(',').collect();
-        if parts.len() < 1 || parts.len() > 5 {
+        if parts.is_empty() || parts.len() > 5 {
             return Err(Error(format!("invalid version: {}", text)));
         }
         let major = parts[0].trim().parse::<i32>().map_err(|e| Error(format!("invalid major version: {}", e)))?;

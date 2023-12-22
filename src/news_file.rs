@@ -277,3 +277,34 @@ pub fn news_mark_released(
     tree.put_file_bytes_non_atomic(path, lines.concat().as_slice())?;
     Ok(change_lines.concat())
 }
+
+pub struct NewsFile {
+    tree: breezyshim::tree::WorkingTree,
+    path: std::path::PathBuf,
+}
+
+impl NewsFile {
+    pub fn new(tree: breezyshim::tree::WorkingTree, path: &std::path::Path) -> Result<Self, Error> {
+        Ok(Self {
+            tree,
+            path: path.to_path_buf(),
+        })
+    }
+
+    pub fn add_pending(&self, new_version: &crate::Version) -> Result<(), Error> {
+        news_add_pending(&self.tree, self.path.as_path(), new_version)
+    }
+
+    pub fn mark_released(
+        &self,
+        expected_version: &Version,
+        release_date: &chrono::NaiveDate
+    ) -> Result<String, Error> {
+        news_mark_released(
+            &self.tree,
+            self.path.as_path(),
+            expected_version,
+            release_date,
+        )
+    }
+}

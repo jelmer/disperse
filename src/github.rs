@@ -48,10 +48,7 @@ pub enum GitHubCIStatus {
 
 impl GitHubCIStatus {
     pub fn is_ok(&self) -> bool {
-        match self {
-            GitHubCIStatus::Ok => true,
-            _ => false,
-        }
+        matches!(self, GitHubCIStatus::Ok)
     }
 }
 
@@ -104,11 +101,12 @@ pub fn init_github() -> Result<Octocrab, Error> {
     Ok(instance)
 }
 
-pub async fn get_github_repo(
+pub fn get_github_repo(
     instance: &Octocrab,
-    repo_url: &str,
+    repo_url: &url::Url
 ) -> Result<octocrab::models::Repository, Error> {
     // Remove ".git" from the end of the URL, if present
+    let repo_url = repo_url.as_str();
     let repo_url = repo_url.strip_suffix(".git").unwrap_or(repo_url);
 
     let parsed_url = Url::parse(repo_url)
@@ -122,63 +120,69 @@ pub async fn get_github_repo(
     // Retrieve the GitHub token using octocrab
     info!("Finding project {}/{} on GitHub", owner, repo_name);
 
-    // Get the repository using octocrab
-    Ok(instance.repos(owner, repo_name).get().await?)
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    rt.block_on(async {
+        // Get the repository using octocrab
+        Ok(instance.repos(owner, repo_name).get().await?)
+    })
 }
 
-pub async fn check_gh_repo_action_status(
+pub fn check_gh_repo_action_status(
     instance: &Octocrab,
-    repo: octocrab::models::Repository,
+    repo: &octocrab::models::Repository,
     committish: Option<&str>,
 ) -> Result<GitHubCIStatus, Error> {
     let committish = committish.unwrap_or("HEAD");
-    let commit = instance
-        .commits(&repo.owner.as_ref().unwrap().login, &repo.name)
-        .get(committish)
-        .await?;
 
-    for check in instance
-        .checks(&repo.owner.as_ref().unwrap().login, &repo.name)
-        .list_check_runs_for_git_ref(Commitish(commit.sha.clone()))
-        .send()
-        .await?
-        .check_runs
-    {
-        match check.conclusion.as_deref() {
-            Some("success") | Some("skipped") => continue,
-            Some(_) => {
-                let error_msg = format!(
-                    "GitHub Status Failed: SHA {}, URL {}",
-                    check.head_sha,
-                    check.html_url.as_ref().unwrap_or(&"None".to_string())
-                );
-                error!("{}", error_msg);
-                return Ok(GitHubCIStatus::Failed {
-                    sha: check.head_sha,
-                    html_url: check.html_url,
-                });
-            }
-            None => {
-                let error_msg = format!(
-                    "GitHub Status Pending: SHA {}, URL {}",
-                    check.head_sha,
-                    check.html_url.as_ref().unwrap_or(&"None".to_string())
-                );
-                error!("{}", error_msg);
-                return Ok(GitHubCIStatus::Pending {
-                    sha: check.head_sha,
-                    html_url: check.html_url.clone(),
-                });
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let commit = instance
+            .commits(&repo.owner.as_ref().unwrap().login, &repo.name)
+            .get(committish)
+            .await?;
+
+        for check in instance
+            .checks(&repo.owner.as_ref().unwrap().login, &repo.name)
+            .list_check_runs_for_git_ref(Commitish(commit.sha.clone()))
+            .send()
+            .await?
+            .check_runs
+        {
+            match check.conclusion.as_deref() {
+                Some("success") | Some("skipped") => continue,
+                Some(_) => {
+                    error!(
+                        "GitHub Status Failed: SHA {}, URL {}",
+                        check.head_sha,
+                        check.html_url.as_ref().unwrap_or(&"None".to_string())
+                    );
+                    return Ok(GitHubCIStatus::Failed {
+                        sha: check.head_sha,
+                        html_url: check.html_url,
+                    });
+                }
+                None => {
+                    error!(
+                        "GitHub Status Pending: SHA {}, URL {}",
+                        check.head_sha,
+                        check.html_url.as_ref().unwrap_or(&"None".to_string())
+                    );
+                    return Ok(GitHubCIStatus::Pending {
+                        sha: check.head_sha,
+                        html_url: check.html_url.clone(),
+                    });
+                }
             }
         }
-    }
 
-    Ok(GitHubCIStatus::Ok)
+        Ok(GitHubCIStatus::Ok)
+    })
 }
 
-pub async fn wait_for_gh_actions(
+pub fn wait_for_gh_actions(
     instance: &Octocrab,
-    repo: octocrab::models::Repository,
+    repo: &octocrab::models::Repository,
     committish: Option<&str>,
     timeout: Option<u64>,
 ) -> Result<GitHubCIStatus, Error> {
@@ -189,75 +193,112 @@ pub async fn wait_for_gh_actions(
         committish.unwrap_or("HEAD")
     );
     let committish = committish.unwrap_or("HEAD");
-    let commit = instance
-        .commits(&repo.owner.as_ref().unwrap().login, &repo.name)
-        .get(committish)
-        .await?;
 
-    let start_time = std::time::Instant::now();
+    let rt = tokio::runtime::Runtime::new().unwrap();
 
-    while start_time.elapsed().as_secs() < timeout {
-        for check in instance
-            .checks(&repo.owner.as_ref().unwrap().login, &repo.name)
-            .list_check_runs_for_git_ref(Commitish(commit.sha.clone()))
-            .send()
-            .await?
-            .check_runs
-        {
-            match check.conclusion.as_deref() {
-                Some("success") | Some("skipped") => continue,
-                Some("pending") => {
+    rt.block_on(async {
+        let commit = instance
+            .commits(&repo.owner.as_ref().unwrap().login, &repo.name)
+            .get(committish)
+            .await?;
+
+        let start_time = std::time::Instant::now();
+
+        while start_time.elapsed().as_secs() < timeout {
+            let check_runs = instance
+                .checks(&repo.owner.as_ref().unwrap().login, &repo.name)
+                .list_check_runs_for_git_ref(Commitish(commit.sha.clone()))
+                .send()
+                .await?
+                .check_runs;
+
+            match summarize_status(check_runs.as_slice()) {
+                GitHubCIStatus::Ok => {
+                    info!("CI for {} on {} is green", repo.name, committish);
+                    return Ok(GitHubCIStatus::Ok);
+                }
+                GitHubCIStatus::Pending { .. } => {
                     std::thread::sleep(Duration::from_secs(30));
-                    break;
                 }
-                Some(_) => {
-                    let error_msg = format!(
-                        "GitHub Status Failed: SHA {}, URL {}",
-                        check.head_sha,
-                        check.html_url.as_ref().unwrap_or(&"None".to_string())
-                    );
-                    error!("{}", error_msg);
+                GitHubCIStatus::Failed { html_url, sha } => {
                     return Ok(GitHubCIStatus::Failed {
-                        sha: check.head_sha,
-                        html_url: check.html_url,
-                    });
-                }
-                None => {
-                    let error_msg = format!(
-                        "GitHub Status Pending: SHA {}, URL {}",
-                        check.head_sha,
-                        check.html_url.as_ref().unwrap_or(&"None".to_string())
-                    );
-                    error!("{}", error_msg);
-                    return Ok(GitHubCIStatus::Pending {
-                        sha: check.head_sha,
-                        html_url: check.html_url,
+                        sha,
+                        html_url
                     });
                 }
             }
         }
-    }
 
-    Err(Error::TimedOut)
+        Err(Error::TimedOut)
+    })
 }
 
-pub async fn create_github_release(
+fn summarize_status(check_runs: &[octocrab::models::checks::CheckRun]) -> GitHubCIStatus {
+    for check in check_runs {
+        match check.conclusion.as_deref() {
+            Some("success") | Some("skipped") => { },
+            Some("pending") => {
+                error!(
+                    "GitHub Status Pending: SHA {}, URL {}",
+                    check.head_sha,
+                    check.html_url.as_ref().unwrap_or(&"None".to_string())
+                );
+                return GitHubCIStatus::Pending {
+                    sha: check.head_sha.clone(),
+                    html_url: check.html_url.clone(),
+                };
+            }
+            Some(e) => {
+                error!(
+                    "GitHub Status Failed ({}): SHA {}, URL {}",
+                    e,
+                    check.head_sha,
+                    check.html_url.as_ref().unwrap_or(&"None".to_string())
+                );
+                return GitHubCIStatus::Failed {
+                    sha: check.head_sha.clone(),
+                    html_url: check.html_url.clone(),
+                };
+            }
+            None => {
+                error!(
+                    "GitHub Status Pending: SHA {}, URL {}",
+                    check.head_sha,
+                    check.html_url.as_ref().unwrap_or(&"None".to_string())
+                );
+                return GitHubCIStatus::Pending {
+                    sha: check.head_sha.clone(),
+                    html_url: check.html_url.clone(),
+                };
+            }
+        }
+    }
+
+    GitHubCIStatus::Ok
+}
+
+pub fn create_github_release(
     instance: &Octocrab,
-    repo: octocrab::models::Repository,
+    repo: &octocrab::models::Repository,
     tag_name: &str,
     version: &str,
     description: Option<&str>,
 ) -> Result<(), Error> {
     info!("Creating release on GitHub");
-    instance
-        .repos(&repo.owner.as_ref().unwrap().login, &repo.name)
-        .releases()
-        .create(version)
-        .target_commitish(tag_name)
-        .name(version)
-        .body(description.unwrap_or(&format!("Release {}.", version)))
-        .send()
-        .await?;
 
-    Ok(())
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    rt.block_on(async {
+        instance
+            .repos(&repo.owner.as_ref().unwrap().login, &repo.name)
+            .releases()
+            .create(version)
+            .target_commitish(tag_name)
+            .name(version)
+            .body(description.unwrap_or(&format!("Release {}.", version)))
+            .send()
+            .await?;
+
+        Ok(())
+    })
 }

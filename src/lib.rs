@@ -2,6 +2,7 @@ pub mod cargo;
 pub mod config;
 pub mod custom;
 pub mod github;
+pub mod launchpad;
 pub mod manpage;
 pub mod news_file;
 pub mod project_config;
@@ -73,16 +74,25 @@ pub fn check_new_revisions(
     let lock = branch.lock_read();
     let repository = branch.repository();
     let graph = repository.get_graph();
-    let from_tree = graph
+    let from_revid = graph
         .iter_lefthand_ancestry(&branch.last_revision(), None)
         .find_map(|revid| {
             let revid = revid.ok()?;
             if tags.contains_key(&revid) {
-                Some(repository.revision_tree(&revid))
+                Some(revid)
             } else {
                 None
             }
-        })
+        });
+
+    log::debug!("Checking revisions between {} and {}", branch.last_revision(), from_revid.as_ref().map(|r| r.to_string()).unwrap_or_else(|| "null".to_string()));
+
+    if from_revid == Some(branch.last_revision()) {
+        return Ok(false);
+    }
+
+    let from_tree =
+        from_revid.map(|r| repository.revision_tree(&r))
         .unwrap_or(repository.revision_tree(&breezyshim::revisionid::RevisionId::null()))?;
 
     let last_tree = branch.basis_tree()?;
@@ -134,7 +144,7 @@ pub fn find_last_version_in_tags(
 }
 
 
-pub fn find_last_version(tree: &breezyshim::tree::WorkingTree, cfg: &project_config::ProjectConfig) -> Result<Option<(crate::version::Version, Option<Status>)>, Box<dyn std::error::Error>> {
+pub fn find_last_version_in_files(tree: &breezyshim::tree::WorkingTree, cfg: &project_config::ProjectConfig) -> Result<Option<(crate::version::Version, Option<Status>)>, Box<dyn std::error::Error>> {
     if tree.has_filename(Path::new("Cargo.toml")) {
         log::debug!("Reading version from Cargo.toml");
         return Ok(Some((cargo::find_version(tree)?, None)));
@@ -187,7 +197,7 @@ pub enum FindPendingVersionError {
     OddPendingVersion(String),
     NoUnreleasedChanges,
     Other(Box<dyn std::error::Error>),
-    NotFound
+    NotFound,
 }
 
 impl std::fmt::Display for FindPendingVersionError {

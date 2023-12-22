@@ -40,6 +40,10 @@ fn version_version(v: &Version, _s: Status) -> Option<String> {
     Some(v.to_string())
 }
 
+fn quoted_version(v: &Version, _s: Status) -> Option<String> {
+    Some(format!("\"{}\"", v.to_string()))
+}
+
 type VersionFormatter = Box<dyn Fn(&Version, Status) -> Option<String> + Sync>;
 
 lazy_static::lazy_static! {
@@ -47,6 +51,7 @@ lazy_static::lazy_static! {
         "TUPLED_VERSION" => Box::new(tupled_version) as VersionFormatter,
         "STATUS_TUPLED_VERSION" => Box::new(status_tupled_version) as VersionFormatter,
         "VERSION" => Box::new(version_version) as VersionFormatter,
+        "QUOTED_VERSION" => Box::new(quoted_version) as VersionFormatter,
         "MAJOR_VERSION" => Box::new(version_major) as VersionFormatter,
         "MINOR_VERSION" => Box::new(version_minor) as VersionFormatter,
         "MICRO_VERSION" => Box::new(version_micro) as VersionFormatter,
@@ -258,7 +263,10 @@ pub fn update_version_in_file(
         if !r.is_match(line) {
             continue;
         }
-        *oline = expand_version_vars(new_line, new_version, status).unwrap().into_bytes();
+        let uline = expand_version_vars(new_line, new_version, status).unwrap();
+        let uline = format!("{}\n", uline);
+        log::debug!("Expanded {:?} to {:?}", new_line, uline);
+        *oline = uline.into_bytes();
         matches += 1;
     }
     if matches == 0 {
@@ -287,7 +295,7 @@ mod tests {
         super::update_version_in_file(
             &tree,
             path.as_path(),
-            "version = [$VERSION]\n",
+            "version = [$VERSION]",
             None,
             &super::Version { major: 1, minor: Some(2), micro: Some(4) },
             super::Status::Final,
