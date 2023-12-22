@@ -23,8 +23,12 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.x"
-      - name: Install protoc
+      - name: Install protoc (Linux)
         run: sudo apt -y update && sudo apt -y install protobuf-compiler
+        if: "matrix.os == 'ubuntu-latest'"
+      - name: Install protoc (Mac OS X)
+        run: brew install protobuf
+        if: "matrix.os == 'macos-latest'"
       - name: Install breezy
         run: pip install breezy
       - name: Build
