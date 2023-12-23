@@ -85,14 +85,21 @@ pub fn check_new_revisions(
             }
         });
 
-    log::debug!("Checking revisions between {} and {}", branch.last_revision(), from_revid.as_ref().map(|r| r.to_string()).unwrap_or_else(|| "null".to_string()));
+    log::debug!(
+        "Checking revisions between {} and {}",
+        branch.last_revision(),
+        from_revid
+            .as_ref()
+            .map(|r| r.to_string())
+            .unwrap_or_else(|| "null".to_string())
+    );
 
     if from_revid == Some(branch.last_revision()) {
         return Ok(false);
     }
 
-    let from_tree =
-        from_revid.map(|r| repository.revision_tree(&r))
+    let from_tree = from_revid
+        .map(|r| repository.revision_tree(&r))
         .unwrap_or(repository.revision_tree(&breezyshim::revisionid::RevisionId::null()))?;
 
     let last_tree = branch.basis_tree()?;
@@ -143,8 +150,10 @@ pub fn find_last_version_in_tags(
     Ok((None, None))
 }
 
-
-pub fn find_last_version_in_files(tree: &breezyshim::tree::WorkingTree, cfg: &project_config::ProjectConfig) -> Result<Option<(crate::version::Version, Option<Status>)>, Box<dyn std::error::Error>> {
+pub fn find_last_version_in_files(
+    tree: &breezyshim::tree::WorkingTree,
+    cfg: &project_config::ProjectConfig,
+) -> Result<Option<(crate::version::Version, Option<Status>)>, Box<dyn std::error::Error>> {
     if tree.has_filename(Path::new("Cargo.toml")) {
         log::debug!("Reading version from Cargo.toml");
         return Ok(Some((cargo::find_version(tree)?, None)));
@@ -184,7 +193,14 @@ pub fn find_last_version_in_files(tree: &breezyshim::tree::WorkingTree, cfg: &pr
         use std::io::BufRead;
         let buf = std::io::BufReader::new(f);
         let lines = buf.lines().map(|l| l.unwrap()).collect::<Vec<_>>();
-        let (v, s) = custom::reverse_version(new_line.as_str(), lines.iter().map(|l| l.as_str()).collect::<Vec<_>>().as_slice());
+        let (v, s) = custom::reverse_version(
+            new_line.as_str(),
+            lines
+                .iter()
+                .map(|l| l.as_str())
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
         if let Some(v) = v {
             return Ok(Some((v, s)));
         }
@@ -221,7 +237,10 @@ impl std::fmt::Display for FindPendingVersionError {
 
 impl std::error::Error for FindPendingVersionError {}
 
-pub fn find_pending_version(tree: &dyn breezyshim::tree::Tree, cfg: &project_config::ProjectConfig) -> Result<Version, FindPendingVersionError> {
+pub fn find_pending_version(
+    tree: &dyn breezyshim::tree::Tree,
+    cfg: &project_config::ProjectConfig,
+) -> Result<Version, FindPendingVersionError> {
     if let Some(news_file) = cfg.news_file.as_ref() {
         match news_file::news_find_pending(tree, Path::new(news_file.as_str())) {
             Ok(Some(version)) => Ok(version.parse().unwrap()),
@@ -232,11 +251,36 @@ pub fn find_pending_version(tree: &dyn breezyshim::tree::Tree, cfg: &project_con
             Err(news_file::Error::PendingExists { .. }) => {
                 unreachable!();
             }
-            Err(e) => {
-                Err(FindPendingVersionError::Other(Box::new(e)))
-            }
+            Err(e) => Err(FindPendingVersionError::Other(Box::new(e))),
         }
     } else {
         Err(FindPendingVersionError::NotFound)
     }
+}
+
+pub fn drop_segment_parameters(u: &url::Url) -> url::Url {
+    breezyshim::urlutils::split_segment_parameters(
+        &u.as_str().trim_end_matches('/').parse().unwrap(),
+    )
+    .0
+}
+
+#[test]
+fn test_drop_segment_parameters() {
+    assert_eq!(
+        drop_segment_parameters(&"https://example.com/foo/bar,baz=quux".parse().unwrap()),
+        "https://example.com/foo/bar".parse().unwrap()
+    );
+    assert_eq!(
+        drop_segment_parameters(&"https://example.com/foo/bar,baz=quux#frag".parse().unwrap()),
+        "https://example.com/foo/bar".parse().unwrap()
+    );
+    assert_eq!(
+        drop_segment_parameters(
+            &"https://example.com/foo/bar,baz=quux#frag?frag2"
+                .parse()
+                .unwrap()
+        ),
+        "https://example.com/foo/bar".parse().unwrap()
+    );
 }
