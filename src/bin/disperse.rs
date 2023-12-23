@@ -114,6 +114,16 @@ enum Commands {
 
     /// Show information about a project
     Info(InfoArgs),
+
+    /// Run the verify command
+    Verify(VerifyArgs),
+}
+
+#[derive(clap::Args)]
+struct VerifyArgs {
+    /// Path or URL for project
+    #[clap(default_value = ".")]
+    path: std::path::PathBuf,
 }
 
 #[derive(clap::Args)]
@@ -311,6 +321,7 @@ pub fn info(tree: &breezyshim::tree::WorkingTree, branch: &dyn breezyshim::branc
     }
 }
 
+/// Print information about the current project.
 fn info_many(urls: &[Url]) -> i32 {
     let mut ret = 0;
 
@@ -392,10 +403,17 @@ pub fn pick_new_version(tree: &breezyshim::tree::WorkingTree, cfg: &ProjectConfi
 
 #[derive(Debug)]
 pub enum ReleaseError {
+    /// The repository is unavailable.
     RepositoryUnavailable{ url: String, reason: String },
+
+    /// There are no changes since the last release.
     NoUnreleasedChanges,
+
     NoVersion,
+
+    /// The pending version is not parseable.
     OddPendingVersion { version: String },
+
     NoSuchTag,
     NoDisperseConfig,
     PreDistCommandFailed { command: String, status: Option<std::process::ExitStatus> },
@@ -557,6 +575,29 @@ fn publish_artifacts(ws: &silver_platter::workspace::Workspace, tag_name: &str, 
     Ok(artifacts)
 }
 
+fn drop_segment_parameters(u: &url::Url) -> url::Url {
+    breezyshim::urlutils::split_segment_parameters(&u.as_str().trim_end_matches('/').parse().unwrap()).0
+}
+
+#[test]
+fn test_drop_segment_parameters() {
+    assert_eq!(drop_segment_parameters(&"https://example.com/foo/bar,baz=quux".parse().unwrap()), "https://example.com/foo/bar".parse().unwrap());
+    assert_eq!(drop_segment_parameters(&"https://example.com/foo/bar,baz=quux#frag".parse().unwrap()), "https://example.com/foo/bar".parse().unwrap());
+    assert_eq!(drop_segment_parameters(&"https://example.com/foo/bar,baz=quux#frag?frag2".parse().unwrap()), "https://example.com/foo/bar".parse().unwrap());
+}
+
+fn determine_verify_command(cfg: &ProjectConfig, wt: &breezyshim::tree::WorkingTree) -> Option<String> {
+if let Some(verify_command) = cfg.verify_command.as_ref() {
+        Some(verify_command.clone())
+    } else if wt.has_filename(Path::new("tox.ini")) {
+        Some("tox".to_string())
+    } else if wt.has_filename(Path::new("Cargo.toml")) {
+        Some("cargo test --all".to_string())
+    } else {
+        None
+    }
+}
+
 pub fn release_project(
     repo_url: &str,
     force: Option<bool>,
@@ -585,30 +626,31 @@ pub fn release_project(
     let mut public_branch = None;
     let mut local_branch = None;
 
-    if branch.user_transport().is_local() {
-        public_repo_url = Some(branch.user_transport().base());
+    if branch.user_transport().base().scheme() == "file" {
         local_branch = Some(branch);
+        if let Some(public_branch_url) = local_branch.as_ref().unwrap().get_public_branch() {
+            log::info!("Using public branch {}", &public_branch_url);
+            let url: url::Url = public_branch_url.as_str().parse().unwrap();
+            let url = drop_segment_parameters(&url);
+            public_repo_url = Some(url.clone());
+            public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
+        } else if let Some(submit_branch_url) = local_branch.as_ref().unwrap().get_submit_branch() {
+            let url: url::Url = submit_branch_url.parse().unwrap();
+            let url = drop_segment_parameters(&url);
+            log::info!("Using public branch {}", &submit_branch_url);
+            public_repo_url = Some(url.clone());
+            public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
+        } else if let Some(push_location) = local_branch.as_ref().unwrap().get_push_location() {
+            let url: url::Url = push_location.parse().unwrap();
+            let url = drop_segment_parameters(&url);
+            log::info!("Using public branch {}", &push_location);
+            public_repo_url = Some(url.clone());
+            public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
+        }
     } else if ["https", "http", "git"].contains(&branch.user_transport().base().scheme()) {
         public_repo_url = Some(branch.user_transport().base());
         public_branch = Some(branch);
-    } else if let Some(public_branch_url) = branch.get_public_branch() {
-        log::info!("Using public branch {}", &public_branch_url);
-        let url: url::Url = public_branch_url.as_str().parse().unwrap();
-        public_repo_url = Some(url.clone());
-        public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
-    } else if let Some(submit_branch_url) = branch.get_submit_branch() {
-        let url: url::Url = submit_branch_url.parse().unwrap();
-        log::info!("Using public branch {}", &submit_branch_url);
-        public_repo_url = Some(url.clone());
-        public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
-    } else if let Some(push_location) = branch.get_push_location() {
-        let url: url::Url = push_location.parse().unwrap();
-        log::info!("Using public branch {}", &push_location);
-        public_repo_url = Some(url.clone());
-        public_branch = Some(breezyshim::branch::open(&url).map_err(|e| ReleaseError::RepositoryUnavailable { url: url.to_string(), reason: e.to_string() })?);
     }
-
-    let mut public_repo_url = public_repo_url.map(|u| breezyshim::urlutils::split_segment_parameters(&u).0);
 
     if let Some(public_repo_url) = &public_repo_url {
         log::info!("Found public repository URL: {}", public_repo_url);
@@ -832,13 +874,7 @@ pub fn release_project(
         }
     }
 
-    let verify_command = if let Some(verify_command) = cfg.verify_command.as_ref() {
-        Some(verify_command.clone())
-    } else if ws.local_tree().has_filename(Path::new("tox.ini")) {
-        Some("tox".to_string())
-    } else {
-        None
-    };
+    let verify_command = determine_verify_command(&cfg, &ws.local_tree());
 
     log::info!("releasing {}", new_version.to_string());
     let (news_file, release_changes) = if let Some(news_file_path) = cfg.news_file.as_ref() {
@@ -900,8 +936,8 @@ pub fn release_project(
         }
     }
 
-    let tags = ws.main_branch().tags().unwrap();
     let tag_name = disperse::version::expand_tag(cfg.tag_name.as_ref().unwrap(), &new_version);
+    let tags = ws.local_tree().branch().tags().unwrap();
     if tags.has_tag(tag_name.as_str()) {
         RELEASE_TAG_EXISTS.with_label_values(&[&name]).inc();
         // Maybe there's a pending pull request merging new_version?
@@ -1003,7 +1039,8 @@ pub fn release_project(
         }
     }
 
-    let gh = octocrab::instance();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let gh = rt.block_on(async { octocrab::instance() });
 
     if let Some(gh_repo) = gh_repo.as_ref() {
         if dry_run {
@@ -1222,7 +1259,13 @@ fn release_many(
 }
 
 fn validate_config(path: &std::path::Path) -> i32 {
-    let wt = breezyshim::tree::WorkingTree::open(path)?;
+    let wt = match breezyshim::tree::WorkingTree::open(path) {
+        Ok(x) => x,
+        Err(e) => {
+            log::error!("Unable to open working tree: {}", e);
+            return 1;
+        }
+    };
 
     let cfg = match read_project_with_fallback(&wt) {
         Ok(x) => x,
@@ -1259,6 +1302,42 @@ fn validate_config(path: &std::path::Path) -> i32 {
                 return 1;
             }
         }
+    }
+
+    0
+}
+
+fn verify(wt: &breezyshim::tree::WorkingTree) -> i32 {
+    let cfg = match disperse::project_config::read_project_with_fallback(wt) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            log::info!("Error loading configuration: {}", e);
+            return 1;
+        }
+    };
+
+    let verify_command = determine_verify_command(&cfg, wt);
+
+    if verify_command.is_none() {
+        log::info!("No verify command configured or detected");
+        return 0;
+    }
+
+    let verify_command = verify_command.unwrap();
+
+    log::info!("Running verify command: {}", verify_command);
+
+    let mut cmd = std::process::Command::new("sh");
+    cmd.arg("-c").arg(verify_command);
+    cmd.current_dir(wt.abspath(std::path::Path::new(".")).unwrap());
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::inherit());
+    cmd.stderr(std::process::Stdio::inherit());
+    let status = cmd.status().unwrap();
+
+    if !status.success() {
+        log::error!("Verify command failed");
+        return 1;
     }
 
     0
@@ -1343,7 +1422,7 @@ fn main() {
                 0
             } else {
                 let ret = if discover_args.info {
-                    info_many(urls.as_slice()).unwrap()
+                    info_many(urls.as_slice())
                 } else if discover_args.urls {
                     println!(
                         "{}",
@@ -1377,10 +1456,14 @@ fn main() {
                 }
             }
         }
-        Commands::Validate(args) => validate_config(&args.path).unwrap(),
+        Commands::Validate(args) => validate_config(&args.path),
         Commands::Info(args) => {
             let wt = breezyshim::tree::WorkingTree::open(args.path.as_ref()).unwrap();
             info(&wt, wt.branch().as_ref())
+        }
+        Commands::Verify(args) => {
+            let wt = breezyshim::tree::WorkingTree::open(args.path.as_ref()).unwrap();
+            verify(&wt)
         }
     });
 }
