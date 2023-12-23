@@ -1,6 +1,6 @@
 use crate::Version;
 use breezyshim::tree::MutableTree;
-use chrono::{NaiveDate};
+use chrono::NaiveDate;
 use regex::Regex;
 use std::str::FromStr;
 
@@ -12,7 +12,7 @@ pub enum Error {
     TreeError(breezyshim::tree::Error),
     IoError(std::io::Error),
     InvalidRegex(regex::Error),
-    NoMatches
+    NoMatches,
 }
 
 impl From<breezyshim::tree::Error> for Error {
@@ -116,9 +116,7 @@ pub fn update_version_in_manpage(
 
 /// Validate that a manpage is updateable.
 fn validate_manpage_updateable(bufread: &mut dyn BufRead) -> Result<(), Error> {
-    let mut lines = bufread
-        .split(b'\n')
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut lines = bufread.split(b'\n').collect::<Result<Vec<_>, _>>()?;
 
     let mut found = false;
     for line in lines.iter_mut() {
@@ -135,14 +133,11 @@ fn validate_manpage_updateable(bufread: &mut dyn BufRead) -> Result<(), Error> {
             continue;
         }
 
-        match args[4].split_once(' ') {
-            Some((_, version)) => {
-                if Version::from_str(version).is_ok() {
-                    found = true;
-                    break;
-                }
+        if let Some((_, version)) = args[4].split_once(' ') {
+            if Version::from_str(version).is_ok() {
+                found = true;
+                break;
             }
-            None => {}
         }
     }
 
@@ -153,7 +148,10 @@ fn validate_manpage_updateable(bufread: &mut dyn BufRead) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn validate_update_manpage(tree: &dyn breezyshim::tree::Tree, update_manpage: &str) -> Result<(), Error> {
+pub fn validate_update_manpage(
+    tree: &dyn breezyshim::tree::Tree,
+    update_manpage: &str,
+) -> Result<(), Error> {
     let file = tree.get_file(Path::new(update_manpage))?;
 
     validate_manpage_updateable(&mut BufReader::new(file))

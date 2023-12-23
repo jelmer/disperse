@@ -11,7 +11,7 @@ const DEFAULT_GITHUB_CI_TIMEOUT: u64 = 60 * 24;
 pub enum Error {
     InvalidGitHubUrl(String, String),
     GitHubError(octocrab::Error),
-    TimedOut
+    TimedOut,
 }
 
 impl From<octocrab::Error> for Error {
@@ -59,12 +59,7 @@ impl std::fmt::Display for GitHubCIStatus {
             GitHubCIStatus::Failed {
                 sha,
                 html_url: Some(url),
-            } => write!(
-                f,
-                "GitHub CI Status: Failed: SHA {}, URL {}",
-                sha,
-                url
-            ),
+            } => write!(f, "GitHub CI Status: Failed: SHA {}, URL {}", sha, url),
             GitHubCIStatus::Failed {
                 sha,
                 html_url: None,
@@ -72,12 +67,7 @@ impl std::fmt::Display for GitHubCIStatus {
             GitHubCIStatus::Pending {
                 sha,
                 html_url: Some(url),
-            } => write!(
-                f,
-                "GitHub CI Status: Pending: SHA {}, URL {}",
-                sha,
-                url
-            ),
+            } => write!(f, "GitHub CI Status: Pending: SHA {}, URL {}", sha, url),
             GitHubCIStatus::Pending {
                 sha,
                 html_url: None,
@@ -85,7 +75,6 @@ impl std::fmt::Display for GitHubCIStatus {
         }
     }
 }
-
 
 pub fn init_github() -> Result<Octocrab, Error> {
     let github_token = match std::env::var("GITHUB_TOKEN") {
@@ -103,7 +92,7 @@ pub fn init_github() -> Result<Octocrab, Error> {
 
 pub fn get_github_repo(
     instance: &Octocrab,
-    repo_url: &url::Url
+    repo_url: &url::Url,
 ) -> Result<octocrab::models::Repository, Error> {
     // Remove ".git" from the end of the URL, if present
     let repo_url = repo_url.as_str();
@@ -111,6 +100,8 @@ pub fn get_github_repo(
 
     let parsed_url = Url::parse(repo_url)
         .map_err(|_| Error::InvalidGitHubUrl(repo_url.to_string(), "Invalid URL".to_string()))?;
+
+    let parsed_url = crate::drop_segment_parameters(&parsed_url);
 
     // Extract the owner and repo name from the URL
     let path_segments: Vec<&str> = parsed_url.path_segments().unwrap().collect();
@@ -221,10 +212,7 @@ pub fn wait_for_gh_actions(
                     std::thread::sleep(Duration::from_secs(30));
                 }
                 GitHubCIStatus::Failed { html_url, sha } => {
-                    return Ok(GitHubCIStatus::Failed {
-                        sha,
-                        html_url
-                    });
+                    return Ok(GitHubCIStatus::Failed { sha, html_url });
                 }
             }
         }
@@ -236,7 +224,7 @@ pub fn wait_for_gh_actions(
 fn summarize_status(check_runs: &[octocrab::models::checks::CheckRun]) -> GitHubCIStatus {
     for check in check_runs {
         match check.conclusion.as_deref() {
-            Some("success") | Some("skipped") => { },
+            Some("success") | Some("skipped") => {}
             Some("pending") => {
                 error!(
                     "GitHub Status Pending: SHA {}, URL {}",
