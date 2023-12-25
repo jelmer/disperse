@@ -280,8 +280,7 @@ pub fn create_github_release(
         instance
             .repos(&repo.owner.as_ref().unwrap().login, &repo.name)
             .releases()
-            .create(version)
-            .target_commitish(tag_name)
+            .create(tag_name)
             .name(version)
             .body(description.unwrap_or(&format!("Release {}.", version)))
             .send()
