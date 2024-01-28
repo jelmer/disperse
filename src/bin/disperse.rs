@@ -349,7 +349,8 @@ fn info_many(urls: &[Url]) -> i32 {
             log::info!("Processing {}", url);
         }
 
-        let (local_wt, branch) = match breezyshim::controldir::open_tree_or_branch(url, None) {
+        let (local_wt, branch) = match breezyshim::controldir::open_tree_or_branch(url, None, None)
+        {
             Ok(x) => x,
             Err(e) => {
                 ret = 1;
@@ -745,7 +746,8 @@ pub fn release_project(
     let ignore_verify_command = ignore_verify_command.unwrap_or(false);
     let now = chrono::Utc::now();
 
-    let (local_wt, branch) = match breezyshim::controldir::open_tree_or_branch(repo_url, None) {
+    let (local_wt, branch) = match breezyshim::controldir::open_tree_or_branch(repo_url, None, None)
+    {
         Ok(x) => x,
         Err(e) => {
             return Err(ReleaseError::RepositoryUnavailable {
@@ -907,18 +909,27 @@ pub fn release_project(
 
     let gh = rt.block_on(async {
         let entry = keyring::Entry::new("github.com", "personal_token").unwrap();
-        let oauth = match entry.get_password() {
-            Ok(oauth) => Some(oauth),
-            Err(keyring::Error::NoEntry) => None,
+        let token = match std::env::var("GITHUB_TOKEN") {
+            Ok(token) => Some(token),
+            Err(std::env::VarError::NotPresent) => match entry.get_password() {
+                Ok(token) => Some(token),
+                Err(keyring::Error::NoEntry) => None,
+                Err(e) => {
+                    log::error!("Unable to read GitHub personal token from keyring: {}", e);
+                    None
+                }
+            },
             Err(e) => {
-                log::error!("Unable to read GitHub OAuth token from keyring: {}", e);
+                log::error!(
+                    "Unable to read GitHub personal token from environment: {}",
+                    e
+                );
                 None
             }
         };
-
-        if let Some(oauth) = oauth {
-            log::info!("Using GitHub OAuth token from keyring");
-            let builder = octocrab::OctocrabBuilder::new().personal_token(oauth);
+        if let Some(token) = token {
+            log::info!("Using GitHub personal token from keyring");
+            let builder = octocrab::OctocrabBuilder::new().personal_token(token);
             builder.build().unwrap()
         } else {
             println!("Please enter your GitHub personal token");

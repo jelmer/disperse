@@ -39,7 +39,7 @@ impl std::error::Error for Error {}
 pub fn get_owned_crates(user: &str) -> Result<Vec<url::Url>, Error> {
     let client =
         crates_io_api::SyncClient::new(crate::USER_AGENT, std::time::Duration::from_millis(1000))
-        .map_err(|e| Error::Other(format!("Unable to create crates.io client: {}", e)))?;
+            .map_err(|e| Error::Other(format!("Unable to create crates.io client: {}", e)))?;
 
     let user = client.user(user)?;
 
@@ -60,8 +60,10 @@ pub fn publish(tree: &WorkingTree, subpath: &Path) -> Result<(), Error> {
     Command::new("cargo")
         .arg("publish")
         .current_dir(tree.abspath(subpath)?)
-        .spawn().map_err(|e| Error::Other(format!("Unable to spawn cargo publish: {}", e)))?
-        .wait().map_err(|e| Error::Other(format!("Unable to wait for cargo publish: {}", e)))?;
+        .spawn()
+        .map_err(|e| Error::Other(format!("Unable to spawn cargo publish: {}", e)))?
+        .wait()
+        .map_err(|e| Error::Other(format!("Unable to wait for cargo publish: {}", e)))?;
     Ok(())
 }
 
@@ -72,8 +74,9 @@ pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Error
 
     // Parse Cargo.toml as TOML
     let mut parsed_toml: toml_edit::Document =
-        String::from_utf8_lossy(cargo_toml_contents.as_slice()).parse()
-        .map_err(|e| Error::Other(format!("Unable to parse Cargo.toml: {}", e)))?;
+        String::from_utf8_lossy(cargo_toml_contents.as_slice())
+            .parse()
+            .map_err(|e| Error::Other(format!("Unable to parse Cargo.toml: {}", e)))?;
 
     // Update the version field
     if let Some(package) = parsed_toml.as_table_mut().get_mut("package") {
@@ -88,16 +91,8 @@ pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Error
     // Write the updated TOML back to Cargo.toml
     tree.put_file_bytes_non_atomic(Path::new("Cargo.toml"), updated_cargo_toml.as_bytes())?;
 
-    // Run 'cargo update' to update dependencies
-    Command::new("cargo")
-        .arg("update")
-        .current_dir(tree.abspath(Path::new("."))?)
-        .spawn().map_err(|e| Error::Other(format!("Unable to spawn cargo update: {}", e)))?
-        .wait().map_err(|e| Error::Other(format!("Unable to wait for cargo update: {}", e)))?;
-
     Ok(())
 }
-
 
 // Define a function to find the version in the Cargo.toml file
 pub fn find_version(tree: &dyn Tree) -> Result<crate::version::Version, Error> {
@@ -106,8 +101,8 @@ pub fn find_version(tree: &dyn Tree) -> Result<crate::version::Version, Error> {
 
     // Parse Cargo.toml as TOML
     let parsed_toml: toml_edit::Document = String::from_utf8(cargo_toml_contents)
-        .map_err(|e| Error::Other(format!("Unable to parse Cargo.toml: {}", e)))
-        ?.parse()
+        .map_err(|e| Error::Other(format!("Unable to parse Cargo.toml: {}", e)))?
+        .parse()
         .map_err(|e| Error::Other(format!("Unable to parse Cargo.toml: {}", e)))?;
 
     // Retrieve the version field
@@ -120,5 +115,8 @@ pub fn find_version(tree: &dyn Tree) -> Result<crate::version::Version, Error> {
         .ok_or_else(|| Error::Other("Unable to find version in Cargo.toml".to_string()))?
         .to_string();
 
-    version.as_str().parse().map_err(|e| Error::VersionError(format!("Unable to parse version: {}", e)))
+    version
+        .as_str()
+        .parse()
+        .map_err(|e| Error::VersionError(format!("Unable to parse version: {}", e)))
 }
