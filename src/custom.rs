@@ -77,9 +77,9 @@ pub fn expand_version_vars(
 
 #[cfg(test)]
 mod expand_version_vars_tests {
-    use std::str::FromStr;
     use super::expand_version_vars;
     use crate::{Status, Version};
+    use std::str::FromStr;
 
     #[test]
     fn test_simple() {
@@ -288,7 +288,11 @@ mod tests {
     fn test_update_version_in_file() {
         breezyshim::init().unwrap();
         let td = tempfile::tempdir().unwrap();
-        let tree = breezyshim::controldir::ControlDir::create_standalone_workingtree(td.path(), None).unwrap();
+        let tree = breezyshim::controldir::create_standalone_workingtree(
+            td.path(),
+            &breezyshim::controldir::ControlDirFormat::default(),
+        )
+        .unwrap();
         let path = tree.abspath(std::path::Path::new("test")).unwrap();
         std::fs::write(path.as_path(), b"version = [1.2.3]\n").unwrap();
         tree.add(&[std::path::Path::new("test")]).unwrap();
@@ -297,15 +301,25 @@ mod tests {
             path.as_path(),
             "version = [$VERSION]",
             None,
-            &super::Version { major: 1, minor: Some(2), micro: Some(4) },
+            &super::Version {
+                major: 1,
+                minor: Some(2),
+                micro: Some(4),
+            },
             super::Status::Final,
         )
         .unwrap();
-        assert_eq!(tree.get_file_text(path.as_path()).unwrap(), b"version = [1.2.4]\n");
+        assert_eq!(
+            tree.get_file_text(path.as_path()).unwrap(),
+            b"version = [1.2.4]\n"
+        );
     }
 }
 
-pub fn validate_update_version(wt: &dyn breezyshim::tree::Tree, update_version: &crate::project_config::UpdateVersion) -> Result<(), String> {
+pub fn validate_update_version(
+    wt: &dyn breezyshim::tree::Tree,
+    update_version: &crate::project_config::UpdateVersion,
+) -> Result<(), String> {
     let path = match update_version.path.as_ref() {
         Some(p) => p,
         None => return Err("path is required".to_string()),
@@ -318,7 +332,9 @@ pub fn validate_update_version(wt: &dyn breezyshim::tree::Tree, update_version: 
 
     let mut lines = match wt.get_file_lines(std::path::Path::new(path)) {
         Ok(l) => l,
-        Err(breezyshim::tree::Error::NoSuchFile(_)) => return Err(format!("No such file: {}", path)),
+        Err(breezyshim::tree::Error::NoSuchFile(_)) => {
+            return Err(format!("No such file: {}", path))
+        }
         Err(e) => return Err(format!("Failed to read {}: {}", path, e)),
     };
     let mut matches = 0;
@@ -339,11 +355,7 @@ pub fn validate_update_version(wt: &dyn breezyshim::tree::Tree, update_version: 
         matches += 1;
     }
     if matches == 0 {
-        return Err(format!(
-            "No matches for {} in {}",
-            r.as_str(),
-            path
-        ));
+        return Err(format!("No matches for {} in {}", r.as_str(), path));
     }
     Ok(())
 }
