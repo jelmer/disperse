@@ -7,7 +7,7 @@ fn main() {
 
     protobuf_codegen::Codegen::new()
         .cargo_out_dir("generated")
-        .inputs([top_dir.join("disperse").join("config.proto")])
+        .inputs([top_dir.join("config.proto")])
         .include(top_dir)
         .run_from_script();
 }
