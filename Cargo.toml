@@ -60,4 +60,4 @@ required-features = ["cli"]
 
 [dev-dependencies]
 tempfile = "3.8.1"
-pyo3 = { features = ["auto-initialize"] }
+pyo3 = { features = ["auto-initialize"], version = "0.21" }
