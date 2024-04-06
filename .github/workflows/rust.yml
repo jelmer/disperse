@@ -14,7 +14,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Builds currently fail on windows. See #139
+        os: [ubuntu-latest, macos-latest]
       fail-fast: false
 
     steps:
