@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.x"
       - name: Install Protoc
-        uses: arduino/setup-protoc@v2
+        uses: arduino/setup-protoc@v3
       - name: Install breezy
         run: pip install breezy
       - name: Build
