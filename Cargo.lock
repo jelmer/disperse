@@ -69,9 +69,9 @@ dependencies = [
 
 [[package]]
 name = "anstyle"
-version = "1.0.4"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7079075b41f533b8c61d2a4d073c4676e1f8b249ff94a393b0595db304e0dd87"
+checksum = "8901269c6307e8d93993578286ac0edf7f195079ffff5ebdeea6a59ffb7e36bc"
 
 [[package]]
 name = "anstyle-parse"
@@ -712,7 +712,7 @@ dependencies = [
  "debian-changelog",
  "debian-control",
  "debian-copyright",
- "debversion 0.2.2",
+ "debversion 0.3.0",
  "distro-info",
  "env_logger 0.10.2",
  "lazy-regex 2.5.0",
@@ -773,7 +773,6 @@ checksum = "e65a0a572fa10f34b89addac251b7c8f40266606ee5847d769ab8db4d56ca11b"
 dependencies = [
  "lazy-regex 3.1.0",
  "pyo3",
- "serde",
 ]
 
 [[package]]
@@ -831,7 +830,7 @@ dependencies = [
  "chrono",
  "clap",
  "crates_io_api",
- "env_logger 0.11.1",
+ "env_logger 0.11.3",
  "glob",
  "keyring",
  "launchpadlib",
@@ -951,9 +950,9 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.11.1"
+version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05e7cf40684ae96ade6232ed84582f40ce0a66efcd43a5117aef610534f8e0b8"
+checksum = "38b35839ba51819680ba087cd351788c9a3c476841207e0b8cee0b04722343b9"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1515,7 +1514,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.4.10",
+ "socket2 0.5.5",
  "tokio",
  "tower-service",
  "tracing",
@@ -3286,7 +3285,7 @@ dependencies = [
  "clap",
  "debian-analyzer",
  "debian-changelog",
- "debversion 0.2.2",
+ "debversion 0.3.0",
  "env_logger 0.9.3",
  "flate2",
  "lazy-regex 3.1.0",
