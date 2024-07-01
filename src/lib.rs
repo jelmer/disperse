@@ -25,7 +25,8 @@ pub enum Status {
 
 #[cfg(feature = "pyo3")]
 impl pyo3::FromPyObject<'_> for Status {
-    fn extract(ob: &pyo3::PyAny) -> pyo3::PyResult<Self> {
+    fn extract_bound(ob: &pyo3::Bound<pyo3::PyAny>) -> pyo3::PyResult<Self> {
+        use pyo3::prelude::*;
         let s = ob.extract::<String>()?;
         s.parse()
             .map_err(pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>)

@@ -332,7 +332,7 @@ pub fn validate_update_version(
 
     let mut lines = match wt.get_file_lines(std::path::Path::new(path)) {
         Ok(l) => l,
-        Err(breezyshim::tree::Error::NoSuchFile(_)) => {
+        Err(breezyshim::error::Error::NoSuchFile(_)) => {
             return Err(format!("No such file: {}", path))
         }
         Err(e) => return Err(format!("Failed to read {}: {}", path, e)),
