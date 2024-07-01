@@ -60,7 +60,8 @@ pub fn news_find_pending(
     let lines = tree.get_file_lines(path)?;
     let mut iter = lines.iter().map(|x| x.as_slice()).peekable();
     skip_header(&mut iter);
-    let line = String::from_utf8(iter.next().unwrap().to_vec()).map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
+    let line = String::from_utf8(iter.next().unwrap().to_vec())
+        .map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
     let (last_version, _last_date, _line_format, pending) = parse_version_line(line.as_str())?;
     if !pending {
         return Ok(None);
@@ -75,9 +76,7 @@ pub fn news_find_pending(
 ///
 /// # Returns
 ///   tuple with version, date released, line template, is_pending
-fn parse_version_line(
-    line: &str,
-) -> Result<(Option<&str>, Option<&str>, String, bool), Error> {
+fn parse_version_line(line: &str) -> Result<(Option<&str>, Option<&str>, String, bool), Error> {
     // Strip leading and trailing whitespace
     let line = line.trim();
 
@@ -160,14 +159,20 @@ pub fn news_add_pending(
     let mut line_iter = lines.iter().map(|x| x.as_slice()).peekable();
     let i = skip_header(&mut line_iter);
 
-    let line = String::from_utf8(line_iter.next().unwrap().to_vec()).map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
+    let line = String::from_utf8(line_iter.next().unwrap().to_vec())
+        .map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
 
     let (last_version, last_date, line_format, pending) = parse_version_line(line.as_str())?;
     if pending {
-        let last_date = last_date.map(|x| x.parse().map_err(|_| Error::InvalidData(x.to_string()))).transpose()?;
+        let last_date = last_date
+            .map(|x| x.parse().map_err(|_| Error::InvalidData(x.to_string())))
+            .transpose()?;
         return Err(Error::PendingExists {
-            last_version: last_version.unwrap().parse().map_err(|_| Error::InvalidData(last_version.unwrap().to_string()))?,
-            last_date
+            last_version: last_version
+                .unwrap()
+                .parse()
+                .map_err(|_| Error::InvalidData(last_version.unwrap().to_string()))?,
+            last_date,
         });
     }
     lines.insert(i, b"\n".to_vec());
@@ -195,12 +200,12 @@ impl std::error::Error for NoUnreleasedChanges {}
 
 #[derive(Debug)]
 pub enum Error {
-    TreeError(breezyshim::tree::Error),
+    BrzError(breezyshim::error::Error),
     NoUnreleasedChanges,
     OddVersion(String),
     PendingExists {
         last_version: Version,
-        last_date: Option<chrono::NaiveDate>
+        last_date: Option<chrono::NaiveDate>,
     },
     InvalidData(String),
 }
@@ -208,15 +213,21 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &self {
-            Self::TreeError(e) => write!(f, "Tree error: {}", e),
+            Self::BrzError(e) => write!(f, "Tree error: {}", e),
             Self::NoUnreleasedChanges => write!(f, "No unreleased changes"),
             Self::OddVersion(s) => write!(f, "Odd version: {}", s),
-            Self::PendingExists { last_version, last_date } => {
+            Self::PendingExists {
+                last_version,
+                last_date,
+            } => {
                 write!(
                     f,
                     "Pending version already exists: {} {}",
                     last_version.to_string(),
-                    last_date.map_or_else(|| "UNRELEASED".to_string(), |x| x.format("%Y-%m-%d").to_string())
+                    last_date.map_or_else(
+                        || "UNRELEASED".to_string(),
+                        |x| x.format("%Y-%m-%d").to_string()
+                    )
                 )
             }
             Self::InvalidData(s) => write!(f, "Invalid data: {}", s),
@@ -226,9 +237,9 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-impl From<breezyshim::tree::Error> for Error {
-    fn from(e: breezyshim::tree::Error) -> Self {
-        Self::TreeError(e)
+impl From<breezyshim::error::Error> for Error {
+    fn from(e: breezyshim::error::Error) -> Self {
+        Self::BrzError(e)
     }
 }
 
@@ -241,7 +252,8 @@ pub fn news_mark_released(
     let mut lines = tree.get_file_lines(path)?;
     let mut iter = lines.iter().map(|x| x.as_slice()).peekable();
     let i = skip_header(&mut iter);
-    let line = String::from_utf8(iter.next().unwrap().to_vec()).map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
+    let line = String::from_utf8(iter.next().unwrap().to_vec())
+        .map_err(|_| Error::InvalidData("Invalid UTF-8 in news file".to_string()))?;
     let (version, _date, line_format, pending) = parse_version_line(line.as_str())?;
     if !pending {
         return Err(Error::NoUnreleasedChanges);
@@ -259,7 +271,9 @@ pub fn news_mark_released(
     for line in lines[i + 1..].iter() {
         let line = match String::from_utf8(line.to_vec()) {
             Ok(line) => line,
-            Err(_) => { continue; }
+            Err(_) => {
+                continue;
+            }
         };
         if line.trim().is_empty() || line.starts_with(' ') || line.starts_with('\t') {
             change_lines.push(line);
@@ -278,13 +292,16 @@ pub fn news_mark_released(
     Ok(change_lines.concat())
 }
 
-pub struct NewsFile {
-    tree: breezyshim::tree::WorkingTree,
+pub struct NewsFile<'a> {
+    tree: &'a breezyshim::tree::WorkingTree,
     path: std::path::PathBuf,
 }
 
-impl NewsFile {
-    pub fn new(tree: breezyshim::tree::WorkingTree, path: &std::path::Path) -> Result<Self, Error> {
+impl<'a> NewsFile<'a> {
+    pub fn new(
+        tree: &'a breezyshim::tree::WorkingTree,
+        path: &std::path::Path,
+    ) -> Result<Self, Error> {
         Ok(Self {
             tree,
             path: path.to_path_buf(),
@@ -292,16 +309,16 @@ impl NewsFile {
     }
 
     pub fn add_pending(&self, new_version: &crate::Version) -> Result<(), Error> {
-        news_add_pending(&self.tree, self.path.as_path(), new_version)
+        news_add_pending(self.tree, self.path.as_path(), new_version)
     }
 
     pub fn mark_released(
         &self,
         expected_version: &Version,
-        release_date: &chrono::NaiveDate
+        release_date: &chrono::NaiveDate,
     ) -> Result<String, Error> {
         news_mark_released(
-            &self.tree,
+            self.tree,
             self.path.as_path(),
             expected_version,
             release_date,

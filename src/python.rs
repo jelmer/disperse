@@ -1,5 +1,7 @@
 use crate::Version;
+use breezyshim::error::Error as BrzError;
 use breezyshim::tree::{Tree, WorkingTree};
+use pyo3::prelude::*;
 
 use serde_json::Value;
 use std::path::Path;
@@ -10,15 +12,15 @@ use xmlrpc::Request;
 
 #[derive(Debug)]
 pub enum Error {
-    TreeError(breezyshim::tree::Error),
+    BrzError(BrzError),
     VersionError(String),
     IoError(std::io::Error),
     Other(String),
 }
 
-impl From<breezyshim::tree::Error> for Error {
-    fn from(e: breezyshim::tree::Error) -> Self {
-        Error::TreeError(e)
+impl From<BrzError> for Error {
+    fn from(e: BrzError) -> Self {
+        Error::BrzError(e)
     }
 }
 
@@ -31,7 +33,7 @@ impl From<std::io::Error> for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &self {
-            Error::TreeError(e) => write!(f, "Tree error: {}", e),
+            Error::BrzError(e) => write!(f, "Tree error: {}", e),
             Error::VersionError(e) => write!(f, "Version error: {}", e),
             Error::Other(e) => write!(f, "Other error: {}", e),
             Error::IoError(e) => write!(f, "IO error: {}", e),
@@ -47,8 +49,7 @@ pub fn update_version_in_pyproject_toml(
 ) -> Result<bool, Error> {
     let cargo_toml_contents = tree.get_file_text(Path::new("pyproject.toml"))?;
 
-    let mut parsed_toml: toml_edit::Document =
-        String::from_utf8(cargo_toml_contents)
+    let mut parsed_toml: toml_edit::Document = String::from_utf8(cargo_toml_contents)
         .map_err(|e| Error::Other(format!("Invalid UTF-8 in pyproject.toml: {}", e)))?
         .parse()
         .map_err(|e| Error::Other(format!("Invalid TOML in pyproject.toml: {}", e)))?;
@@ -78,8 +79,9 @@ pub fn update_version_in_pyproject_toml(
 pub fn find_version_in_pyproject_toml(tree: &dyn Tree) -> Result<Option<Version>, Error> {
     let content = tree.get_file_text(Path::new("pyproject.toml"))?;
 
-    let parsed_toml: toml_edit::Document =
-        String::from_utf8(content).map_err(|e| Error::Other(format!("{}", e)))?.parse()
+    let parsed_toml: toml_edit::Document = String::from_utf8(content)
+        .map_err(|e| Error::Other(format!("{}", e)))?
+        .parse()
         .map_err(|e| Error::Other(format!("Unable to parse TOML: {}", e)))?;
 
     parsed_toml
@@ -88,13 +90,15 @@ pub fn find_version_in_pyproject_toml(tree: &dyn Tree) -> Result<Option<Version>
         .and_then(|v| v.as_table())
         .and_then(|v| v.get("version"))
         .and_then(|v| v.as_str())
-        .map(|v| Version::from_str(v).map_err(Error::VersionError)).transpose()
+        .map(|v| Version::from_str(v).map_err(Error::VersionError))
+        .transpose()
 }
 
 pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Error> {
     let request = Request::new("user_packages").arg(pypi_user);
 
-    let response = request.call_url("https://pypi.org/pypi")
+    let response = request
+        .call_url("https://pypi.org/pypi")
         .map_err(|e| Error::Other(format!("Error calling PyPI: {}", e)))?;
 
     let mut ret = vec![];
@@ -108,10 +112,13 @@ pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Error> {
         let package_str = package.as_array().unwrap()[1].as_str().unwrap();
 
         let req_url = format!("https://pypi.org/pypi/{}/json", package_str);
-        let resp = client.get(&req_url).send()
+        let resp = client
+            .get(&req_url)
+            .send()
             .map_err(|e| Error::Other(format!("Error fetching {}: {}", req_url, e)))?;
 
-        let data: Value = resp.json()
+        let data: Value = resp
+            .json()
             .map_err(|e| Error::Other(format!("Error parsing JSON from {}: {}", req_url, e)))?;
         if let Some(project_urls) = data["info"]["project_urls"].as_object() {
             if project_urls.is_empty() {
@@ -124,8 +131,11 @@ pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Error> {
                     continue;
                 }
                 if key == "Repository" {
-                    ret.push(url.as_str().unwrap().parse()
-                        .map_err(|e| Error::Other(format!("Error parsing URL {}: {}", url, e)))?);
+                    ret.push(
+                        url.as_str().unwrap().parse().map_err(|e| {
+                            Error::Other(format!("Error parsing URL {}: {}", url, e))
+                        })?,
+                    );
                     break;
                 }
                 let parsed_url = match Url::parse(url.as_str().unwrap()) {
@@ -138,8 +148,11 @@ pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Error> {
                 if parsed_url.host_str() == Some("github.com")
                     && parsed_url.path().trim_matches('/').matches('/').count() == 1
                 {
-                    ret.push(url.as_str().unwrap().parse()
-                        .map_err(|e| Error::Other(format!("Error parsing URL {}: {}", url, e)))?);
+                    ret.push(
+                        url.as_str().unwrap().parse().map_err(|e| {
+                            Error::Other(format!("Error parsing URL {}: {}", url, e))
+                        })?,
+                    );
                     break;
                 }
             }
@@ -155,8 +168,8 @@ pub fn pyproject_uses_hatch_vcs(tree: &dyn Tree) -> Result<bool, Error> {
         Err(_) => return Ok(false),
     };
 
-    let parsed_toml: toml_edit::Document = String::from_utf8(content).
-        map_err(|e| Error::Other(format!("Invalid UTF-8 in pyproject.toml: {}", e)))?
+    let parsed_toml: toml_edit::Document = String::from_utf8(content)
+        .map_err(|e| Error::Other(format!("Invalid UTF-8 in pyproject.toml: {}", e)))?
         .parse()
         .map_err(|e| Error::Other(format!("Invalid TOML in pyproject.toml: {}", e)))?;
 
@@ -218,9 +231,10 @@ pub fn read_project_urls_from_pyproject_toml(
 ) -> Result<Vec<(url::Url, Option<String>)>, Error> {
     let content = std::fs::read(path)?;
 
-    let parsed_toml: toml_edit::Document = String::from_utf8(content).
-        map_err(|e| Error::Other(format!("Invalid UTF-8 in pyproject.toml: {}", e)))?
-        .parse().map_err(|e| Error::Other(format!("Invalid TOML in pyproject.toml: {}", e)))?;
+    let parsed_toml: toml_edit::Document = String::from_utf8(content)
+        .map_err(|e| Error::Other(format!("Invalid UTF-8 in pyproject.toml: {}", e)))?
+        .parse()
+        .map_err(|e| Error::Other(format!("Invalid TOML in pyproject.toml: {}", e)))?;
 
     let project_urls = match parsed_toml
         .as_table()
@@ -256,7 +270,7 @@ pub fn read_project_urls_from_setup_cfg(
     path: &std::path::Path,
 ) -> pyo3::PyResult<Vec<(url::Url, Option<String>)>> {
     pyo3::Python::with_gil(|py| {
-        let setuptools = py.import("setuptools.config.setupcfg")?;
+        let setuptools = py.import_bound("setuptools.config.setupcfg")?;
 
         let config = setuptools.call_method1("read_configuration", (path,))?;
 
@@ -340,9 +354,9 @@ pub fn create_setup_py_artifacts(
         let mut pypi_paths: Vec<std::path::PathBuf> = Vec::new();
 
         // Import required Python modules
-        let os = py.import("os")?;
-        let run_setup = py.import("distutils.core")?.getattr("run_setup")?;
-        let _setuptools = py.import("setuptools")?;
+        let os = py.import_bound("os")?;
+        let run_setup = py.import_bound("distutils.core")?.getattr("run_setup")?;
+        let _setuptools = py.import_bound("setuptools")?;
 
         // Save the original directory
         let orig_dir = os.call_method0("getcwd")?;
@@ -362,11 +376,17 @@ pub fn create_setup_py_artifacts(
         };
 
         // Check for C libraries and extension modules
-        let is_pure = !result.call_method0("has_c_libraries")?.extract::<Option<bool>>()?.unwrap_or(false)
-            && !result.call_method0("has_ext_modules")?.extract::<Option<bool>>()?.unwrap_or(false);
+        let is_pure = !result
+            .call_method0("has_c_libraries")?
+            .extract::<Option<bool>>()?
+            .unwrap_or(false)
+            && !result
+                .call_method0("has_ext_modules")?
+                .extract::<Option<bool>>()?
+                .unwrap_or(false);
 
         let builder = py
-            .import("build")?
+            .import_bound("build")?
             .call_method1("ProjectBuilder", (setup_dir,))?;
 
         if is_pure {
@@ -395,7 +415,7 @@ pub fn create_python_artifacts(
     pyo3::Python::with_gil(|py| {
         let mut pypi_paths = Vec::new();
 
-        let project_builder = py.import("build")?.call_method1(
+        let project_builder = py.import_bound("build")?.call_method1(
             "ProjectBuilder",
             (local_tree.abspath(Path::new(".")).unwrap(),),
         )?;

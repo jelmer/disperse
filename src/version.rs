@@ -15,7 +15,9 @@ impl std::str::FromStr for Version {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split('.').collect();
-        let major = parts[0].parse::<i32>().map_err(|e| format!("invalid major version: {}", e))?;
+        let major = parts[0]
+            .parse::<i32>()
+            .map_err(|e| format!("invalid major version: {}", e))?;
         let minor = parts.get(1).map(|x| x.parse::<i32>().unwrap());
         let micro = parts.get(2).map(|x| x.parse::<i32>().unwrap());
         Ok(Version {
@@ -60,9 +62,20 @@ impl Version {
         if parts.is_empty() || parts.len() > 5 {
             return Err(Error(format!("invalid version: {}", text)));
         }
-        let major = parts[0].trim().parse::<i32>().map_err(|e| Error(format!("invalid major version: {}", e)))?;
-        let minor = parts.get(1).map(|x| x.trim().parse::<i32>()).transpose().map_err(|e| Error(format!("invalid minor version: {}", e)))?;
-        let micro = parts.get(2).map(|x| x.trim().parse::<i32>()).transpose().map_err(|e| Error(format!("invalid micro version: {}", e)))?;
+        let major = parts[0]
+            .trim()
+            .parse::<i32>()
+            .map_err(|e| Error(format!("invalid major version: {}", e)))?;
+        let minor = parts
+            .get(1)
+            .map(|x| x.trim().parse::<i32>())
+            .transpose()
+            .map_err(|e| Error(format!("invalid minor version: {}", e)))?;
+        let micro = parts
+            .get(2)
+            .map(|x| x.trim().parse::<i32>())
+            .transpose()
+            .map_err(|e| Error(format!("invalid micro version: {}", e)))?;
         let status = if let Some(s) = parts.get(3).map(|x| x.trim()) {
             if s == "\"dev\"" || s == "'dev'" {
                 Some(crate::Status::Dev)
@@ -92,43 +105,58 @@ mod tests {
     fn test_from_tupled() {
         assert_eq!(
             Version::from_tupled("(1, 2, 3, \"dev\", 0)").unwrap(),
-            (Version {
-                major: 1,
-                minor: Some(2),
-                micro: Some(3),
-            }, Some(crate::Status::Dev))
+            (
+                Version {
+                    major: 1,
+                    minor: Some(2),
+                    micro: Some(3),
+                },
+                Some(crate::Status::Dev)
+            )
         );
         assert_eq!(
             Version::from_tupled("(1, 2, 3)").unwrap(),
-            (Version {
-                major: 1,
-                minor: Some(2),
-                micro: Some(3),
-            }, None)
+            (
+                Version {
+                    major: 1,
+                    minor: Some(2),
+                    micro: Some(3),
+                },
+                None
+            )
         );
         assert_eq!(
             Version::from_tupled("(1, 2)").unwrap(),
-            (Version {
-                major: 1,
-                minor: Some(2),
-                micro: None,
-            }, None)
+            (
+                Version {
+                    major: 1,
+                    minor: Some(2),
+                    micro: None,
+                },
+                None
+            )
         );
         assert_eq!(
             Version::from_tupled("(1)").unwrap(),
-            (Version {
-                major: 1,
-                minor: None,
-                micro: None,
-            }, None)
+            (
+                Version {
+                    major: 1,
+                    minor: None,
+                    micro: None,
+                },
+                None
+            )
         );
         assert_eq!(
             Version::from_tupled("1").unwrap(),
-            (Version {
-                major: 1,
-                minor: None,
-                micro: None,
-            }, None)
+            (
+                Version {
+                    major: 1,
+                    minor: None,
+                    micro: None,
+                },
+                None
+            )
         );
     }
 }
@@ -149,7 +177,8 @@ impl IntoPy<pyo3::PyObject> for Version {
 
 #[cfg(feature = "pyo3")]
 impl FromPyObject<'_> for Version {
-    fn extract(ob: &pyo3::PyAny) -> pyo3::PyResult<Self> {
+    fn extract_bound(ob: &pyo3::Bound<pyo3::PyAny>) -> pyo3::PyResult<Self> {
+        use pyo3::prelude::*;
         let s = ob.extract::<String>()?;
         Version::from_str(s.as_str())
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid version: {}", e)))

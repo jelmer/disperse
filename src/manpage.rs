@@ -9,15 +9,15 @@ use std::path::Path;
 
 #[derive(Debug)]
 pub enum Error {
-    TreeError(breezyshim::tree::Error),
+    BrzError(breezyshim::error::Error),
     IoError(std::io::Error),
     InvalidRegex(regex::Error),
     NoMatches,
 }
 
-impl From<breezyshim::tree::Error> for Error {
-    fn from(e: breezyshim::tree::Error) -> Self {
-        Error::TreeError(e)
+impl From<breezyshim::error::Error> for Error {
+    fn from(e: breezyshim::error::Error) -> Self {
+        Error::BrzError(e)
     }
 }
 
@@ -36,7 +36,7 @@ impl From<regex::Error> for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &self {
-            Error::TreeError(e) => write!(f, "TreeError: {}", e),
+            Error::BrzError(e) => write!(f, "TreeError: {}", e),
             Error::IoError(e) => write!(f, "IoError: {}", e),
             Error::InvalidRegex(e) => write!(f, "InvalidRegex: {}", e),
             Error::NoMatches => write!(f, "NoMatches"),
@@ -48,7 +48,7 @@ impl std::error::Error for Error {}
 
 /// Update the version in a manpage.
 pub fn update_version_in_manpage(
-    tree: &mut dyn MutableTree,
+    tree: &dyn MutableTree,
     path: &Path,
     new_version: &Version,
     release_date: NaiveDate,
@@ -100,7 +100,7 @@ pub fn update_version_in_manpage(
             }
         }
 
-        let updated_line = shlex::join(args.iter().map(|s| s.as_ref()));
+        let updated_line = shlex::try_join(args.iter().map(|s| s.as_ref())).unwrap();
         lines[i] = updated_line.into_bytes();
         break;
     }

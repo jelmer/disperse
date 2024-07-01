@@ -1,4 +1,5 @@
-use breezyshim::tree::{Error as TreeError, Tree};
+use breezyshim::error::Error as BrzError;
+use breezyshim::tree::Tree;
 use std::path::Path;
 include!(concat!(env!("OUT_DIR"), "/generated/mod.rs"));
 
@@ -13,11 +14,11 @@ fn read_project(f: &mut dyn std::io::Read) -> ProjectConfig {
     ret
 }
 
-pub fn read_project_with_fallback(tree: &dyn Tree) -> Result<ProjectConfig, TreeError> {
+pub fn read_project_with_fallback(tree: &dyn Tree) -> Result<ProjectConfig, BrzError> {
     let mut f = match tree.get_file(Path::new("disperse.conf")) {
         Ok(f) => f,
-        Err(TreeError::NoSuchFile(f)) => match tree.get_file(Path::new("releaser.conf")) {
-            Err(_) => return Err(TreeError::NoSuchFile(f)),
+        Err(BrzError::NoSuchFile(f)) => match tree.get_file(Path::new("releaser.conf")) {
+            Err(_) => return Err(BrzError::NoSuchFile(f)),
             Ok(f) => f,
         },
         Err(e) => return Err(e),
