@@ -365,11 +365,10 @@ fn info_many(urls: &[Url]) -> i32 {
             std::mem::drop(lock);
         } else {
             let main_branch = breezyshim::branch::open(url).unwrap();
-            let mut ws = silver_platter::workspace::Workspace::builder()
-                .main_branch(main_branch.as_ref())
+            let ws = silver_platter::workspace::Workspace::builder()
+                .main_branch(main_branch)
                 .build()
                 .unwrap();
-            ws.start().unwrap();
             let lock = ws.local_tree().lock_read();
             let r = info(&ws.local_tree(), ws.local_tree().branch().as_ref());
             std::mem::drop(lock);
@@ -826,17 +825,15 @@ pub fn release_project(
 
     let mut wsbuilder = silver_platter::workspace::Workspace::builder();
 
-    if let Some(public_branch) = public_branch.as_ref() {
-        wsbuilder = wsbuilder.main_branch(public_branch.as_ref());
+    if let Some(public_branch) = public_branch.take() {
+        wsbuilder = wsbuilder.main_branch(public_branch);
     }
 
-    if let Some(local_branch) = local_branch.as_ref() {
-        wsbuilder = wsbuilder.cached_branch(local_branch.as_ref());
+    if let Some(local_branch) = local_branch.take() {
+        wsbuilder = wsbuilder.cached_branch(local_branch);
     }
 
     let mut ws = wsbuilder.build().unwrap();
-
-    ws.start().unwrap();
 
     let cfg = match disperse::project_config::read_project_with_fallback(ws.local_tree()) {
         Ok(cfg) => cfg,
@@ -891,7 +888,7 @@ pub fn release_project(
         public_repo_url = b.get(&lp).unwrap().web_link;
         if let Some(url) = &public_repo_url {
             let main_branch = breezyshim::branch::open(url).unwrap();
-            ws.set_main_branch(main_branch.as_ref()).unwrap();
+            ws.set_main_branch(main_branch).unwrap();
         }
         // TODO: Check for git repository
         Some(series)
@@ -941,12 +938,8 @@ pub fn release_project(
 
     if let Some(url) = cfg.github_url.as_ref() {
         public_repo_url = Some(url.parse().unwrap());
-        ws.set_main_branch(
-            breezyshim::branch::open(public_repo_url.as_ref().unwrap())
-                .unwrap()
-                .as_ref(),
-        )
-        .unwrap();
+        ws.set_main_branch(breezyshim::branch::open(public_repo_url.as_ref().unwrap()).unwrap())
+            .unwrap();
         gh_repo = Some(
             disperse::github::get_github_repo(&gh, public_repo_url.as_ref().unwrap())
                 .map_err(|e| ReleaseError::Other(e.to_string()))?,
@@ -1021,10 +1014,7 @@ pub fn release_project(
             .map_err(|e| ReleaseError::Other(e.to_string()))?,
         );
     }
-    possible_urls.push((
-        public_repo_url,
-        public_branch.as_ref().and_then(|b| b.name()),
-    ));
+    possible_urls.push((public_repo_url, ws.main_branch().map(|b| b.name().unwrap())));
 
     for (parsed_url, branch_name) in possible_urls.iter() {
         match parsed_url.host_str() {
