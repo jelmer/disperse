@@ -1,4 +1,4 @@
-use breezyshim::tags::Error as TagError;
+use breezyshim::error::Error as BrzError;
 use breezyshim::tree::Tree;
 use clap::Parser;
 use disperse::project_config::{read_project_with_fallback, ProjectConfig};
@@ -301,13 +301,13 @@ pub fn info(tree: &breezyshim::tree::WorkingTree, branch: &dyn breezyshim::branc
                 log::info!("  no revisions since last release");
             }
         }
-        Err(TagError::NoSuchTag(name)) => {
+        Err(BrzError::NoSuchTag(name)) => {
             log::info!("  tag {} for previous release not found", name);
         }
-        Err(TagError::TagAlreadyExists(_name)) => {
+        Err(BrzError::TagAlreadyExists(_name)) => {
             unreachable!();
         }
-        Err(TagError::Other(e)) => {
+        Err(e) => {
             log::info!("  error loading tag: {}", e);
         }
     };
@@ -364,18 +364,11 @@ fn info_many(urls: &[Url]) -> i32 {
             ret += info(&wt, branch.as_ref());
             std::mem::drop(lock);
         } else {
-            // TODO(jelmer): Just handle UnsupporedOperation
-            let ws = silver_platter::workspace::Workspace::from_url(
-                url,
-                None,
-                None,
-                hashmap! {},
-                hashmap! {},
-                None,
-                None,
-                None,
-            );
-            ws.start().unwrap();
+            let main_branch = breezyshim::branch::open(url).unwrap();
+            let ws = silver_platter::workspace::Workspace::builder()
+                .main_branch(main_branch)
+                .build()
+                .unwrap();
             let lock = ws.local_tree().lock_read();
             let r = info(&ws.local_tree(), ws.local_tree().branch().as_ref());
             std::mem::drop(lock);
@@ -566,8 +559,8 @@ impl std::fmt::Display for ReleaseError {
 impl std::error::Error for ReleaseError {}
 
 fn is_git_repo(repository: &breezyshim::repository::Repository) -> bool {
-    use pyo3::ToPyObject;
-    pyo3::Python::with_gil(|py| repository.to_object(py).as_ref(py).hasattr("_git")).unwrap()
+    use pyo3::prelude::*;
+    pyo3::Python::with_gil(|py| repository.to_object(py).bind(py).hasattr("_git")).unwrap()
 }
 
 #[derive(Debug)]
@@ -830,20 +823,19 @@ pub fn release_project(
         return Err(ReleaseError::NoPublicBranch);
     }
 
-    let ws = silver_platter::workspace::Workspace::new(
-        public_branch.as_deref(),
-        local_branch.as_deref(),
-        None,
-        HashMap::new(),
-        HashMap::new(),
-        None,
-        None,
-        None,
-    );
+    let mut wsbuilder = silver_platter::workspace::Workspace::builder();
 
-    ws.start().unwrap();
+    if let Some(public_branch) = public_branch.take() {
+        wsbuilder = wsbuilder.main_branch(public_branch);
+    }
 
-    let cfg = match disperse::project_config::read_project_with_fallback(&ws.local_tree()) {
+    if let Some(local_branch) = local_branch.take() {
+        wsbuilder = wsbuilder.cached_branch(local_branch);
+    }
+
+    let mut ws = wsbuilder.build().unwrap();
+
+    let cfg = match disperse::project_config::read_project_with_fallback(ws.local_tree()) {
         Ok(cfg) => cfg,
         Err(e) => {
             log::error!("Unable to read project configuration: {}", e);
@@ -855,7 +847,7 @@ pub fn release_project(
     let name = if let Some(name) = cfg.name.as_ref() {
         Some(name.clone())
     } else if ws.local_tree().has_filename(Path::new("pyproject.toml")) {
-        disperse::python::find_name_in_pyproject_toml(&ws.local_tree())
+        disperse::python::find_name_in_pyproject_toml(ws.local_tree())
     } else {
         None
     };
@@ -895,7 +887,8 @@ pub fn release_project(
         let b = series.branch();
         public_repo_url = b.get(&lp).unwrap().web_link;
         if let Some(url) = &public_repo_url {
-            ws.set_main_branch_url(url).unwrap();
+            let main_branch = breezyshim::branch::open(url).unwrap();
+            ws.set_main_branch(main_branch).unwrap();
         }
         // TODO: Check for git repository
         Some(series)
@@ -945,7 +938,7 @@ pub fn release_project(
 
     if let Some(url) = cfg.github_url.as_ref() {
         public_repo_url = Some(url.parse().unwrap());
-        ws.set_main_branch_url(public_repo_url.as_ref().unwrap())
+        ws.set_main_branch(breezyshim::branch::open(public_repo_url.as_ref().unwrap()).unwrap())
             .unwrap();
         gh_repo = Some(
             disperse::github::get_github_repo(&gh, public_repo_url.as_ref().unwrap())
@@ -1021,10 +1014,7 @@ pub fn release_project(
             .map_err(|e| ReleaseError::Other(e.to_string()))?,
         );
     }
-    possible_urls.push((
-        public_repo_url,
-        public_branch.as_ref().and_then(|b| b.name()),
-    ));
+    possible_urls.push((public_repo_url, ws.main_branch().map(|b| b.name().unwrap())));
 
     for (parsed_url, branch_name) in possible_urls.iter() {
         match parsed_url.host_str() {
@@ -1176,7 +1166,7 @@ pub fn release_project(
 
     for update_version in &cfg.update_version {
         disperse::custom::update_version_in_file(
-            &ws.local_tree(),
+            ws.local_tree(),
             Path::new(update_version.path.as_ref().unwrap()),
             update_version.new_line.as_ref().unwrap(),
             update_version.match_.as_deref(),
@@ -1197,7 +1187,7 @@ pub fn release_project(
         .unwrap()
         {
             disperse::manpage::update_version_in_manpage(
-                &mut ws.local_tree(),
+                ws.local_tree(),
                 ws.local_tree()
                     .relpath(path.unwrap().as_path())
                     .unwrap()
@@ -1354,14 +1344,11 @@ pub fn release_project(
 
     // At this point, it's official - so let's push.
     if !dry_run {
-        pyo3::import_exception!(breezy.git.forge, ProtectedBranchHookDeclined);
-        match ws.push() {
+        match ws.push(None) {
             Ok(_) => {}
-            Err(silver_platter::workspace::Error::Python(e))
-                if pyo3::Python::with_gil(|py| {
-                    e.is_instance_of::<ProtectedBranchHookDeclined>(py)
-                }) =>
-            {
+            Err(silver_platter::workspace::Error::BrzError(
+                BrzError::ProtectedBranchHookDeclined(..),
+            )) => {
                 BRANCH_PROTECTED_COUNT.with_label_values(&[&name]).inc();
                 log::info!(
                     "{} is protected; proposing merge instead",
@@ -1373,12 +1360,21 @@ pub fn release_project(
                 let commit_message = format!("Merge release of {}", new_version.to_string());
                 let mp = if !dry_run {
                     let (mp, _is_new) = ws.propose(
-                        format!("Merge release of {}", new_version.to_string()).as_str(),
-                        Some(hashmap! { tag_name.clone() => revid }),
                         format!("release-{}", new_version.to_string()).as_str(),
+                        format!("Merge release of {}", new_version.to_string()).as_str(),
+                        None,
+                        None,
+                        None,
+                        Some(hashmap! { tag_name.clone() => revid }),
                         Some(vec!["release".to_string()]),
-                        Some(false),
+                        None,
                         Some(commit_message.as_str()),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
                     )?;
                     Some(mp)
                 } else {
@@ -1455,7 +1451,8 @@ pub fn release_project(
             )
             .map_err(|e| ReleaseError::Other(e.to_string()))?;
         if !dry_run {
-            ws.push().map_err(|e| ReleaseError::Other(e.to_string()))?;
+            ws.push(None)
+                .map_err(|e| ReleaseError::Other(e.to_string()))?;
         }
     }
     if let Some(launchpad_project) = launchpad_project.as_ref() {
@@ -1475,11 +1472,14 @@ pub fn release_project(
         }
     }
     if !dry_run {
-        let pb = public_branch.unwrap();
         if let Some(local_wt) = local_wt.as_ref() {
-            local_wt.pull(pb.as_ref()).unwrap();
+            local_wt
+                .pull(public_branch.unwrap().as_ref(), None)
+                .unwrap();
         } else if let Some(local_branch) = local_branch.as_ref() {
-            local_branch.pull(pb.as_ref()).unwrap();
+            local_branch
+                .pull(public_branch.unwrap().as_ref(), None)
+                .unwrap();
         }
     }
 
@@ -1782,7 +1782,7 @@ fn main() {
 
     pyo3::prepare_freethreaded_python();
 
-    breezyshim::init().unwrap();
+    breezyshim::init();
 
     std::process::exit(match &args.command {
         Commands::Release(release_args) => release_many(

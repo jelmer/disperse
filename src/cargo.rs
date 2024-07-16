@@ -5,15 +5,15 @@ use std::process::Command;
 
 #[derive(Debug)]
 pub enum Error {
-    TreeError(breezyshim::tree::Error),
+    BrzError(breezyshim::error::Error),
     CratesIoError(crates_io_api::Error),
     VersionError(String),
     Other(String),
 }
 
-impl From<breezyshim::tree::Error> for Error {
-    fn from(e: breezyshim::tree::Error) -> Self {
-        Error::TreeError(e)
+impl From<breezyshim::error::Error> for Error {
+    fn from(e: breezyshim::error::Error) -> Self {
+        Error::BrzError(e)
     }
 }
 
@@ -26,7 +26,7 @@ impl From<crates_io_api::Error> for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &self {
-            Error::TreeError(e) => write!(f, "TreeError: {}", e),
+            Error::BrzError(e) => write!(f, "TreeError: {}", e),
             Error::CratesIoError(e) => write!(f, "CratesIoError: {}", e),
             Error::VersionError(e) => write!(f, "VersionError: {}", e),
             Error::Other(e) => write!(f, "Other: {}", e),
