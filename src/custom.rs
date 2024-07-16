@@ -286,7 +286,7 @@ mod tests {
     use breezyshim::tree::Tree;
     #[test]
     fn test_update_version_in_file() {
-        breezyshim::init().unwrap();
+        breezyshim::init();
         let td = tempfile::tempdir().unwrap();
         let tree = breezyshim::controldir::create_standalone_workingtree(
             td.path(),
