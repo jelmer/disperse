@@ -598,13 +598,13 @@ dependencies = [
 
 [[package]]
 name = "crates_io_api"
-version = "0.8.2"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0346712abc6ffc5b287637815c838f6126ff62df37f12806fa029e66c0ec285c"
+checksum = "200ad30d24892baf2168f2df366939264d02f2fa0be0914f8e2da4bd3407c58c"
 dependencies = [
  "chrono",
  "futures",
- "reqwest 0.11.27",
+ "reqwest 0.12.5",
  "serde",
  "serde_derive",
  "serde_json",

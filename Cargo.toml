@@ -12,7 +12,7 @@ build = "build.rs"
 [dependencies]
 breezyshim = ">=0.1.101"
 chrono = { workspace = true }
-crates_io_api = "0.8.1"
+crates_io_api = "0.11.0"
 lazy-regex = "3.2.0"
 pyo3 = { workspace = true }
 regex = "1.10.0"
