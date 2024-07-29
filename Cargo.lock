@@ -1887,9 +1887,9 @@ dependencies = [
 
 [[package]]
 name = "launchpadlib"
-version = "0.1.9"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b90067eada083f4043844ed992ac9f6824b23ae401bbb1a7d6ce38ad558f6e9"
+checksum = "0e7bb5c4d373241e9d6a9351e5ce56ef4994bafe3600f702c51d20eea00ee182"
 dependencies = [
  "chrono",
  "clap",
