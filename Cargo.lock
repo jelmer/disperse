@@ -866,7 +866,7 @@ dependencies = [
  "crates_io_api",
  "env_logger",
  "glob",
- "keyring",
+ "keyring 3.0.5",
  "launchpadlib",
  "lazy-regex",
  "lazy_static",
@@ -1866,6 +1866,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "keyring"
+version = "3.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c163ef0b9da5ccf44ae4d7c9d24fb1a8750aa1969d484865fc1eedc44b26c09"
+
+[[package]]
 name = "kqueue"
 version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1895,7 +1901,7 @@ dependencies = [
  "clap",
  "debversion 0.3.1",
  "form_urlencoded",
- "keyring",
+ "keyring 2.3.3",
  "lazy_static",
  "log",
  "mime",
