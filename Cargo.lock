@@ -3374,14 +3374,15 @@ dependencies = [
 
 [[package]]
 name = "silver-platter"
-version = "0.5.27"
+version = "0.5.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4712d963c75e242c918135153f54629b395ec597afe93103f94174b5b0382c38"
+checksum = "cd36da8178dda7ba7fe32c351f2cb6a36c58132a6b70f13b1f03dd1157d86bd8"
 dependencies = [
  "breezyshim",
  "chrono",
  "debian-analyzer",
  "debian-changelog",
+ "debian-control",
  "debversion 0.4.0",
  "flate2",
  "lazy-regex",
@@ -3390,6 +3391,7 @@ dependencies = [
  "log",
  "percent-encoding",
  "pyo3",
+ "rand",
  "regex",
  "reqwest 0.12.5",
  "serde",
