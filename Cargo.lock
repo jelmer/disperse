@@ -372,9 +372,9 @@ dependencies = [
 
 [[package]]
 name = "breezyshim"
-version = "0.1.159"
+version = "0.1.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "073fa8c3ffbd3dc4f809be805c7e8083f18273315d56b8c2f3284741d4fd0d1a"
+checksum = "54d709bf544a3d12515493a74f9aec5153435ae4f7165817e62d853ae51c34e5"
 dependencies = [
  "chrono",
  "ctor",
@@ -711,9 +711,9 @@ dependencies = [
 
 [[package]]
 name = "debian-analyzer"
-version = "0.158.7"
+version = "0.158.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9e1a293def727c819af5616cd60603dc69191d3e0323860395051936dd6325b"
+checksum = "9ec74e3feec53ea8cca6bce6941facaba309f40b18919c0ea66c262d301e5415"
 dependencies = [
  "breezyshim",
  "chrono",
@@ -3385,9 +3385,9 @@ dependencies = [
 
 [[package]]
 name = "silver-platter"
-version = "0.5.28"
+version = "0.5.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd36da8178dda7ba7fe32c351f2cb6a36c58132a6b70f13b1f03dd1157d86bd8"
+checksum = "97f9e2382dae4183323fad299a350246154929be7b3e362c4e8d59e0368a9cb8"
 dependencies = [
  "breezyshim",
  "chrono",
