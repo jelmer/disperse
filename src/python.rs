@@ -49,7 +49,7 @@ pub fn update_version_in_pyproject_toml(
 ) -> Result<bool, Error> {
     let cargo_toml_contents = tree.get_file_text(Path::new("pyproject.toml"))?;
 
-    let mut parsed_toml: toml_edit::Document = String::from_utf8(cargo_toml_contents)
+    let mut parsed_toml: toml_edit::DocumentMut = String::from_utf8(cargo_toml_contents)
         .map_err(|e| Error::Other(format!("Invalid UTF-8 in pyproject.toml: {}", e)))?
         .parse()
         .map_err(|e| Error::Other(format!("Invalid TOML in pyproject.toml: {}", e)))?;
@@ -79,7 +79,7 @@ pub fn update_version_in_pyproject_toml(
 pub fn find_version_in_pyproject_toml(tree: &dyn Tree) -> Result<Option<Version>, Error> {
     let content = tree.get_file_text(Path::new("pyproject.toml"))?;
 
-    let parsed_toml: toml_edit::Document = String::from_utf8(content)
+    let parsed_toml: toml_edit::DocumentMut = String::from_utf8(content)
         .map_err(|e| Error::Other(format!("{}", e)))?
         .parse()
         .map_err(|e| Error::Other(format!("Unable to parse TOML: {}", e)))?;
@@ -168,7 +168,7 @@ pub fn pyproject_uses_hatch_vcs(tree: &dyn Tree) -> Result<bool, Error> {
         Err(_) => return Ok(false),
     };
 
-    let parsed_toml: toml_edit::Document = String::from_utf8(content)
+    let parsed_toml: toml_edit::DocumentMut = String::from_utf8(content)
         .map_err(|e| Error::Other(format!("Invalid UTF-8 in pyproject.toml: {}", e)))?
         .parse()
         .map_err(|e| Error::Other(format!("Invalid TOML in pyproject.toml: {}", e)))?;
@@ -189,7 +189,7 @@ pub fn pyproject_uses_hatch_vcs(tree: &dyn Tree) -> Result<bool, Error> {
 pub fn find_name_in_pyproject_toml(tree: &dyn Tree) -> Option<String> {
     let content = tree.get_file_text(Path::new("pyproject.toml")).ok()?;
 
-    let parsed_toml: toml_edit::Document =
+    let parsed_toml: toml_edit::DocumentMut =
         String::from_utf8_lossy(content.as_slice()).parse().ok()?;
 
     parsed_toml
@@ -231,7 +231,7 @@ pub fn read_project_urls_from_pyproject_toml(
 ) -> Result<Vec<(url::Url, Option<String>)>, Error> {
     let content = std::fs::read(path)?;
 
-    let parsed_toml: toml_edit::Document = String::from_utf8(content)
+    let parsed_toml: toml_edit::DocumentMut = String::from_utf8(content)
         .map_err(|e| Error::Other(format!("Invalid UTF-8 in pyproject.toml: {}", e)))?
         .parse()
         .map_err(|e| Error::Other(format!("Invalid TOML in pyproject.toml: {}", e)))?;

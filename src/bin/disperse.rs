@@ -1,5 +1,6 @@
 use breezyshim::error::Error as BrzError;
 use breezyshim::tree::Tree;
+use breezyshim::workingtree::{WorkingTree,self};
 use clap::Parser;
 use disperse::project_config::{read_project_with_fallback, ProjectConfig};
 use disperse::version::Version;
@@ -192,7 +193,7 @@ struct InfoArgs {
 }
 
 pub fn find_last_version(
-    workingtree: &breezyshim::tree::WorkingTree,
+    workingtree: &WorkingTree,
     cfg: &ProjectConfig,
 ) -> Result<(Option<Version>, Option<disperse::Status>), Box<dyn std::error::Error>> {
     match find_last_version_in_files(workingtree, cfg) {
@@ -224,7 +225,7 @@ pub fn find_last_version(
     Ok((None, None))
 }
 
-pub fn info(tree: &breezyshim::tree::WorkingTree, branch: &dyn breezyshim::branch::Branch) -> i32 {
+pub fn info(tree: &WorkingTree, branch: &dyn breezyshim::branch::Branch) -> i32 {
     let cfg = match disperse::project_config::read_project_with_fallback(tree) {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -379,7 +380,7 @@ fn info_many(urls: &[Url]) -> i32 {
 }
 
 pub fn pick_new_version(
-    tree: &breezyshim::tree::WorkingTree,
+    tree: &WorkingTree,
     cfg: &ProjectConfig,
 ) -> Result<Version, String> {
     match disperse::find_pending_version(tree, cfg) {
@@ -712,7 +713,7 @@ fn publish_artifacts(
 
 fn determine_verify_command(
     cfg: &ProjectConfig,
-    wt: &breezyshim::tree::WorkingTree,
+    wt: &WorkingTree,
 ) -> Option<String> {
     if let Some(verify_command) = cfg.verify_command.as_ref() {
         Some(verify_command.clone())
@@ -1177,21 +1178,10 @@ pub fn release_project(
     }
 
     for update_manpage in &cfg.update_manpages {
-        for path in glob::glob(
-            ws.local_tree()
-                .abspath(Path::new(update_manpage.as_str()))
-                .unwrap()
-                .to_str()
-                .unwrap(),
-        )
-        .unwrap()
-        {
+        for path in disperse::iter_glob(ws.local_tree(), update_manpage.as_str()) {
             disperse::manpage::update_version_in_manpage(
                 ws.local_tree(),
-                ws.local_tree()
-                    .relpath(path.unwrap().as_path())
-                    .unwrap()
-                    .as_path(),
+                &path,
                 &new_version,
                 now.date().naive_utc(),
             )
@@ -1678,7 +1668,7 @@ fn release_many(
 }
 
 fn validate_config(path: &std::path::Path) -> i32 {
-    let wt = match breezyshim::tree::WorkingTree::open(path) {
+    let wt = match workingtree::open(path) {
         Ok(x) => x,
         Err(e) => {
             log::error!("Unable to open working tree: {}", e);
@@ -1713,11 +1703,13 @@ fn validate_config(path: &std::path::Path) -> i32 {
     }
 
     for update_manpage in cfg.update_manpages.iter() {
-        match disperse::manpage::validate_update_manpage(&wt, update_manpage) {
-            Ok(_) => {}
-            Err(e) => {
-                log::error!("Invalid update_manpage: {}", e);
-                return 1;
+        for path in disperse::iter_glob(&wt, update_manpage.as_str()) {
+            match disperse::manpage::validate_update_manpage(&wt, path.as_path()) {
+                Ok(_) => {}
+                Err(e) => {
+                    log::error!("Invalid update_manpage: {}", e);
+                    return 1;
+                }
             }
         }
     }
@@ -1725,7 +1717,7 @@ fn validate_config(path: &std::path::Path) -> i32 {
     0
 }
 
-fn verify(wt: &breezyshim::tree::WorkingTree) -> i32 {
+fn verify(wt: &WorkingTree) -> i32 {
     let cfg = match disperse::project_config::read_project_with_fallback(wt) {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -1874,11 +1866,11 @@ fn main() {
         }
         Commands::Validate(args) => validate_config(&args.path),
         Commands::Info(args) => {
-            let wt = breezyshim::tree::WorkingTree::open(args.path.as_ref()).unwrap();
+            let wt = workingtree::open(args.path.as_ref()).unwrap();
             info(&wt, wt.branch().as_ref())
         }
         Commands::Verify(args) => {
-            let wt = breezyshim::tree::WorkingTree::open(args.path.as_ref()).unwrap();
+            let wt = workingtree::open(args.path.as_ref()).unwrap();
             verify(&wt)
         }
     });

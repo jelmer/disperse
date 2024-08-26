@@ -10,8 +10,9 @@ pub mod python;
 pub mod version;
 use breezyshim::branch::Branch;
 use breezyshim::tree::Tree;
+use breezyshim::workingtree::WorkingTree;
 use log::warn;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub use version::Version;
 
@@ -152,7 +153,7 @@ pub fn find_last_version_in_tags(
 }
 
 pub fn find_last_version_in_files(
-    tree: &breezyshim::tree::WorkingTree,
+    tree: &WorkingTree,
     cfg: &project_config::ProjectConfig,
 ) -> Result<Option<(crate::version::Version, Option<Status>)>, Box<dyn std::error::Error>> {
     if tree.has_filename(Path::new("Cargo.toml")) {
@@ -284,4 +285,33 @@ fn test_drop_segment_parameters() {
         ),
         "https://example.com/foo/bar".parse().unwrap()
     );
+}
+
+
+
+pub fn iter_glob<'a>(local_tree: &'a WorkingTree, pattern: &str) -> impl Iterator<Item = PathBuf> + 'a {
+    let abspath =         local_tree
+            .basedir();
+
+    glob::glob(format!("{}/{}", abspath.to_str().unwrap(), pattern).as_str()).unwrap().filter_map(|e| e.ok())
+        .map(|path| local_tree.relpath(path.as_path()).unwrap()).filter(|p| !local_tree.is_control_filename(p))
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_iter_glob() {
+        let td = tempfile::tempdir().unwrap();
+        let local_tree = breezyshim::controldir::create_standalone_workingtree(td.path(), &breezyshim::controldir::ControlDirFormat::default()).unwrap();
+        std::fs::write(local_tree.basedir().join("foo"), "").unwrap();
+        std::fs::write(local_tree.basedir().join("bar"), "").unwrap();
+        assert_eq!(iter_glob(&local_tree, "*").collect::<Vec<_>>(), vec![PathBuf::from("bar"), PathBuf::from("foo")]);
+        assert_eq!(iter_glob(&local_tree, "foo").collect::<Vec<_>>(), vec![PathBuf::from("foo")]);
+        assert_eq!(iter_glob(&local_tree, "bar").collect::<Vec<_>>(), vec![PathBuf::from("bar")]);
+        assert_eq!(iter_glob(&local_tree, "baz").collect::<Vec<_>>(), Vec::<PathBuf>::new());
+        assert_eq!(iter_glob(&local_tree, "*o").collect::<Vec<_>>(), vec![PathBuf::from("foo")]);
+    }
 }
