@@ -100,7 +100,7 @@ pub fn find_version(tree: &dyn Tree) -> Result<crate::version::Version, Error> {
     let cargo_toml_contents = tree.get_file_text(Path::new("Cargo.toml"))?;
 
     // Parse Cargo.toml as TOML
-    let parsed_toml: toml_edit::Document = String::from_utf8(cargo_toml_contents)
+    let parsed_toml: toml_edit::DocumentMut = String::from_utf8(cargo_toml_contents)
         .map_err(|e| Error::Other(format!("Unable to parse Cargo.toml: {}", e)))?
         .parse()
         .map_err(|e| Error::Other(format!("Unable to parse Cargo.toml: {}", e)))?;

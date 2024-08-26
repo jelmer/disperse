@@ -150,9 +150,9 @@ fn validate_manpage_updateable(bufread: &mut dyn BufRead) -> Result<(), Error> {
 
 pub fn validate_update_manpage(
     tree: &dyn breezyshim::tree::Tree,
-    update_manpage: &str,
+    update_manpage: &Path,
 ) -> Result<(), Error> {
-    let file = tree.get_file(Path::new(update_manpage))?;
+    let file = tree.get_file(update_manpage)?;
 
     validate_manpage_updateable(&mut BufReader::new(file))
 }
