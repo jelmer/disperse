@@ -73,7 +73,7 @@ pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Error
     let cargo_toml_contents = tree.get_file_text(Path::new("Cargo.toml"))?;
 
     // Parse Cargo.toml as TOML
-    let mut parsed_toml: toml_edit::Document =
+    let mut parsed_toml: toml_edit::DocumentMut =
         String::from_utf8_lossy(cargo_toml_contents.as_slice())
             .parse()
             .map_err(|e| Error::Other(format!("Unable to parse Cargo.toml: {}", e)))?;
@@ -111,12 +111,24 @@ pub fn find_version(tree: &dyn Tree) -> Result<crate::version::Version, Error> {
         .get("package")
         .and_then(|p| p.as_table())
         .and_then(|t| t.get("version"))
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| Error::Other("Unable to find version in Cargo.toml".to_string()))?
-        .to_string();
+        .ok_or_else(|| Error::Other("Unable to find version in Cargo.toml".to_string()))?;
 
-    version
-        .as_str()
+
+    let version_str = if let Some(v) = version.as_str() {
+        v
+    } else if version.get("workspace").and_then(|b| b.as_bool())
+        .unwrap_or(false) {
+            parsed_toml.as_table().get("workspace").and_then(|p| p.as_table())
+                .and_then(|t| t.get("package"))
+                .and_then(|p| p.as_table())
+                .and_then(|t| t.get("version"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| Error::Other("Unable to find workspace.package version in Cargo.toml".to_string()))?
+    } else {
+        return Err(Error::Other("Unable to parse version in Cargo.toml".to_string()));
+    };
+
+    version_str
         .parse()
         .map_err(|e| Error::VersionError(format!("Unable to parse version: {}", e)))
 }
