@@ -1,6 +1,6 @@
 [package]
 name = "disperse"
-version = "0.0.9"
+version = "0.0.10"
 authors = [ "Jelmer Vernooĳ <jelmer@jelmer.uk>",]
 edition = "2021"
 description = "automation for creation of releases"
