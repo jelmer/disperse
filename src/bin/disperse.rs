@@ -1,6 +1,6 @@
 use breezyshim::error::Error as BrzError;
 use breezyshim::tree::Tree;
-use breezyshim::workingtree::{WorkingTree,self};
+use breezyshim::workingtree::{self, WorkingTree};
 use clap::Parser;
 use disperse::project_config::{read_project_with_fallback, ProjectConfig};
 use disperse::version::Version;
@@ -379,10 +379,7 @@ fn info_many(urls: &[Url]) -> i32 {
     ret
 }
 
-pub fn pick_new_version(
-    tree: &WorkingTree,
-    cfg: &ProjectConfig,
-) -> Result<Version, String> {
+pub fn pick_new_version(tree: &WorkingTree, cfg: &ProjectConfig) -> Result<Version, String> {
     match disperse::find_pending_version(tree, cfg) {
         Ok(new_version) => {
             return Ok(new_version);
@@ -711,10 +708,7 @@ fn publish_artifacts(
     Ok(artifacts)
 }
 
-fn determine_verify_command(
-    cfg: &ProjectConfig,
-    wt: &WorkingTree,
-) -> Option<String> {
+fn determine_verify_command(cfg: &ProjectConfig, wt: &WorkingTree) -> Option<String> {
     if let Some(verify_command) = cfg.verify_command.as_ref() {
         Some(verify_command.clone())
     } else if wt.has_filename(Path::new("tox.ini")) {
@@ -1464,7 +1458,7 @@ pub fn release_project(
     if !dry_run {
         if let Some(local_wt) = local_wt.as_ref() {
             local_wt
-                .pull(public_branch.unwrap().as_ref(), None)
+                .pull(public_branch.unwrap().as_ref(), None, None, None)
                 .unwrap();
         } else if let Some(local_branch) = local_branch.as_ref() {
             local_branch
