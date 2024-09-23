@@ -6,7 +6,6 @@ use disperse::project_config::{read_project_with_fallback, ProjectConfig};
 use disperse::version::Version;
 use disperse::{find_last_version_in_files, find_last_version_in_tags};
 use maplit::hashmap;
-use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 use url::Url;
@@ -1152,7 +1151,7 @@ pub fn release_project(
             disperse::news_file::NewsFile::new(ws.local_tree(), Path::new(news_file_path))
                 .map_err(|e| ReleaseError::Other(e.to_string()))?;
         let release_changes = news_file
-            .mark_released(&new_version, &now.date().naive_utc())
+            .mark_released(&new_version, &now.date_naive())
             .map_err(|e| ReleaseError::Other(e.to_string()))?;
         (Some(news_file), Some(release_changes))
     } else {
@@ -1177,7 +1176,7 @@ pub fn release_project(
                 ws.local_tree(),
                 &path,
                 &new_version,
-                now.date().naive_utc(),
+                now.date_naive(),
             )
             .map_err(|e| ReleaseError::Other(e.to_string()))?;
         }
@@ -1193,12 +1192,9 @@ pub fn release_project(
     }
     let revid = ws
         .local_tree()
-        .commit(
-            format!("Release {}.", new_version.to_string()).as_str(),
-            None,
-            None,
-            None,
-        )
+        .build_commit()
+        .message(format!("Release {}.", new_version.to_string()).as_str())
+        .commit()
         .map_err(|e| ReleaseError::CommitFailed(e.to_string()))?;
 
     if let Some(verify_command) = verify_command {
@@ -1427,12 +1423,9 @@ pub fn release_project(
             .add_pending(&new_pending_version)
             .map_err(|e| ReleaseError::Other(e.to_string()))?;
         ws.local_tree()
-            .commit(
-                format!("Start on {}", new_pending_version.to_string()).as_str(),
-                None,
-                None,
-                None,
-            )
+            .build_commit()
+            .message(format!("Start on {}", new_pending_version.to_string()).as_str())
+            .commit()
             .map_err(|e| ReleaseError::Other(e.to_string()))?;
         if !dry_run {
             ws.push(None)
