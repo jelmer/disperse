@@ -293,12 +293,12 @@ mod tests {
             &breezyshim::controldir::ControlDirFormat::default(),
         )
         .unwrap();
-        let path = tree.abspath(std::path::Path::new("test")).unwrap();
-        std::fs::write(path.as_path(), b"version = [1.2.3]\n").unwrap();
+        let path = std::path::Path::new("test");
+        std::fs::write(tree.abspath(path).unwrap(), b"version = [1.2.3]\n").unwrap();
         tree.add(&[std::path::Path::new("test")]).unwrap();
         super::update_version_in_file(
             &tree,
-            path.as_path(),
+            path,
             "version = [$VERSION]",
             None,
             &super::Version {
@@ -310,7 +310,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            tree.get_file_text(path.as_path()).unwrap(),
+            tree.get_file_text(path).unwrap(),
             b"version = [1.2.4]\n"
         );
     }
