@@ -38,7 +38,7 @@ octocrab = "0.39"
 glob = "0.3.1"
 launchpadlib = { version = "0.2.0", features = ["keyring", "api-v1_0"], default-features = false }
 tokio = { version = "1", features = ["full"] }
-keyring = "3.2.1"
+keyring = "3.3.0"
 
 [build-dependencies]
 protobuf-codegen = "3"
