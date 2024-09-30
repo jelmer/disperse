@@ -30,7 +30,7 @@ toml = "0.8.15"
 clap = { version = "4", features = ["env", "derive"], optional = true }
 prometheus = { version = "0.13.3", features = ["reqwest", "push"] }
 env_logger = { version = "0.11.5", optional = true }
-silver-platter = { version = "0.5.37" }
+silver-platter = { version = "0.5.39" }
 #silver-platter = { git = "https://github.com/jelmer/silver-platter" }
 maplit = "1.0.2"
 lazy_static = "1.4.0"
