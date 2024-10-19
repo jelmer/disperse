@@ -81,7 +81,20 @@ pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Error
     // Update the version field
     if let Some(package) = parsed_toml.as_table_mut().get_mut("package") {
         if let Some(version) = package.as_table_mut().and_then(|t| t.get_mut("version")) {
+            // If it has { workspace = true }, ignore it
+            if version.get("workspace").is_some() {
+                return Ok(());
+            }
             *version = toml_edit::value(new_version);
+        }
+    }
+
+    // Update workspace.package.version if it exists
+    if let Some(workspace) = parsed_toml.as_table_mut().get_mut("workspace") {
+        if let Some(package) = workspace.as_table_mut().and_then(|t| t.get_mut("package")) {
+            if let Some(version) = package.as_table_mut().and_then(|t| t.get_mut("version")) {
+                *version = toml_edit::value(new_version);
+            }
         }
     }
 
@@ -90,6 +103,21 @@ pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Error
 
     // Write the updated TOML back to Cargo.toml
     tree.put_file_bytes_non_atomic(Path::new("Cargo.toml"), updated_cargo_toml.as_bytes())?;
+
+    // If there is a Cargo.lock file, then run `cargo update -w` to update the version in it
+    if tree.has_filename(Path::new("Cargo.lock")) {
+        Command::new("cargo")
+            .arg("update")
+            .arg("-w")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit())
+            .current_dir(tree.basedir())
+            .spawn()
+            .map_err(|e| Error::Other(format!("Unable to spawn cargo update: {}", e)))?
+            .wait()
+            .map_err(|e| Error::Other(format!("Unable to wait for cargo update: {}", e)))?;
+    }
 
     Ok(())
 }
