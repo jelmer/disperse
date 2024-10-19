@@ -247,7 +247,7 @@ pub fn info(tree: &WorkingTree, branch: &dyn breezyshim::branch::Branch) -> i32 
 
     let (mut last_version, last_version_status) = match find_last_version(tree, &cfg) {
         Ok((Some(v), s)) => (v, s),
-        Ok((None, _)) => {
+        Ok((Option::None, _)) => {
             log::info!("No version found");
             return 1;
         }
@@ -395,7 +395,7 @@ pub fn pick_new_version(tree: &WorkingTree, cfg: &ProjectConfig) -> Result<Versi
 
     let mut last_version = match find_last_version(tree, cfg) {
         Ok((Some(v), _)) => v,
-        Ok((None, _)) => {
+        Ok((Option::None, _)) => {
             return Err("No version found".to_string());
         }
         Err(e) => {
@@ -1776,7 +1776,7 @@ fn main() {
             };
 
             let crates_io_user = match discover_args.crates_io_user.as_ref() {
-                None => config.crates_io.map(|crates_io| crates_io.username),
+                Option::None => config.crates_io.map(|crates_io| crates_io.username),
                 Some(crates_io_user) => Some(crates_io_user.clone()),
             };
 
@@ -1787,7 +1787,7 @@ fn main() {
                 .collect::<Vec<_>>();
 
             let crates_io_urls = match crates_io_user {
-                None => {
+                Option::None => {
                     vec![]
                 }
                 Some(crates_io_user) => {
