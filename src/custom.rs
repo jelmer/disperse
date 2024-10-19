@@ -320,25 +320,19 @@ pub fn validate_update_version(
     wt: &dyn breezyshim::tree::Tree,
     update_version: &crate::project_config::UpdateVersion,
 ) -> Result<(), String> {
-    let path = match update_version.path.as_ref() {
-        Some(p) => p,
-        None => return Err("path is required".to_string()),
-    };
+    let path = &update_version.path;
 
-    let new_line = match update_version.new_line.as_ref() {
-        Some(n) => n,
-        None => return Err("new_line is required".to_string()),
-    };
+    let new_line = &update_version.new_line;
 
     let mut lines = match wt.get_file_lines(std::path::Path::new(path)) {
         Ok(l) => l,
         Err(breezyshim::error::Error::NoSuchFile(_)) => {
-            return Err(format!("No such file: {}", path))
+            return Err(format!("No such file: {}", path.display()))
         }
-        Err(e) => return Err(format!("Failed to read {}: {}", path, e)),
+        Err(e) => return Err(format!("Failed to read {}: {}", path.display(), e)),
     };
     let mut matches = 0;
-    let r = if let Some(m) = &update_version.match_ {
+    let r = if let Some(m) = &update_version.r#match {
         regex::Regex::new(m).unwrap()
     } else {
         version_line_re(new_line)
@@ -355,7 +349,11 @@ pub fn validate_update_version(
         matches += 1;
     }
     if matches == 0 {
-        return Err(format!("No matches for {} in {}", r.as_str(), path));
+        return Err(format!(
+            "No matches for {} in {}",
+            r.as_str(),
+            path.display()
+        ));
     }
     Ok(())
 }

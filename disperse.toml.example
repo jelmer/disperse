@@ -1,0 +1,20 @@
+# vim: ft=toml
+
+news-file = "NEWS"
+release-timeout = 5
+tag-name = "dulwich-$VERSION"
+verify-command = "make check"
+pre-dist-command = "make init"
+
+[[update_version]]
+path = "setup.py"
+match = "^dulwich_version_string = '(.*)'$"
+new-line = "dulwich_version_string = '$VERSION'"
+
+[[update_version]]
+path = "dulwich/__init__.py"
+match = "^__version__ = \((.*)\)$"
+new-line = "__version__ = $TUPLED_VERSION"
+
+[launchpad]
+project = "example"

@@ -166,32 +166,19 @@ pub fn find_last_version_in_files(
             return Ok(Some((version, None)));
         }
         if python::pyproject_uses_hatch_vcs(tree)? {
-            let version = match python::find_hatch_vcs_version(tree) {
-                Some(version) => version,
-                None => {
-                    unimplemented!("hatch in use but unable to find hatch vcs version");
-                }
+            let version = if let Some(version) = python::find_hatch_vcs_version(tree) {
+                version
+            } else {
+                unimplemented!("hatch in use but unable to find hatch vcs version");
             };
             return Ok(Some((version, None)));
         }
     }
     for update_cfg in cfg.update_version.iter() {
-        let path = match update_cfg.path.as_ref() {
-            Some(path) => path,
-            None => {
-                warn!("update_version.path is required");
-                continue;
-            }
-        };
-        let new_line = match update_cfg.new_line.as_ref() {
-            Some(new_line) => new_line,
-            None => {
-                warn!("update_version.new_line is required");
-                continue;
-            }
-        };
-        log::debug!("Reading version from {}", path);
-        let f = tree.get_file(Path::new(path.as_str())).unwrap();
+        let path = &update_cfg.path;
+        let new_line = &update_cfg.new_line;
+        log::debug!("Reading version from {}", path.display());
+        let f = tree.get_file(path).unwrap();
         use std::io::BufRead;
         let buf = std::io::BufReader::new(f);
         let lines = buf.lines().map(|l| l.unwrap()).collect::<Vec<_>>();
@@ -244,7 +231,7 @@ pub fn find_pending_version(
     cfg: &project_config::ProjectConfig,
 ) -> Result<Version, FindPendingVersionError> {
     if let Some(news_file) = cfg.news_file.as_ref() {
-        match news_file::news_find_pending(tree, Path::new(news_file.as_str())) {
+        match news_file::news_find_pending(tree, news_file) {
             Ok(Some(version)) => Ok(version.parse().unwrap()),
             Ok(None) => Err(FindPendingVersionError::NoUnreleasedChanges),
             Err(news_file::Error::OddVersion(e)) => {
@@ -287,15 +274,17 @@ fn test_drop_segment_parameters() {
     );
 }
 
+pub fn iter_glob<'a>(
+    local_tree: &'a WorkingTree,
+    pattern: &str,
+) -> impl Iterator<Item = PathBuf> + 'a {
+    let abspath = local_tree.basedir();
 
-
-pub fn iter_glob<'a>(local_tree: &'a WorkingTree, pattern: &str) -> impl Iterator<Item = PathBuf> + 'a {
-    let abspath =         local_tree
-            .basedir();
-
-    glob::glob(format!("{}/{}", abspath.to_str().unwrap(), pattern).as_str()).unwrap().filter_map(|e| e.ok())
-        .map(|path| local_tree.relpath(path.as_path()).unwrap()).filter(|p| !local_tree.is_control_filename(p))
-
+    glob::glob(format!("{}/{}", abspath.to_str().unwrap(), pattern).as_str())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|path| local_tree.relpath(path.as_path()).unwrap())
+        .filter(|p| !local_tree.is_control_filename(p))
 }
 
 #[cfg(test)]
@@ -305,13 +294,32 @@ mod tests {
     #[test]
     fn test_iter_glob() {
         let td = tempfile::tempdir().unwrap();
-        let local_tree = breezyshim::controldir::create_standalone_workingtree(td.path(), &breezyshim::controldir::ControlDirFormat::default()).unwrap();
+        let local_tree = breezyshim::controldir::create_standalone_workingtree(
+            td.path(),
+            &breezyshim::controldir::ControlDirFormat::default(),
+        )
+        .unwrap();
         std::fs::write(local_tree.basedir().join("foo"), "").unwrap();
         std::fs::write(local_tree.basedir().join("bar"), "").unwrap();
-        assert_eq!(iter_glob(&local_tree, "*").collect::<Vec<_>>(), vec![PathBuf::from("bar"), PathBuf::from("foo")]);
-        assert_eq!(iter_glob(&local_tree, "foo").collect::<Vec<_>>(), vec![PathBuf::from("foo")]);
-        assert_eq!(iter_glob(&local_tree, "bar").collect::<Vec<_>>(), vec![PathBuf::from("bar")]);
-        assert_eq!(iter_glob(&local_tree, "baz").collect::<Vec<_>>(), Vec::<PathBuf>::new());
-        assert_eq!(iter_glob(&local_tree, "*o").collect::<Vec<_>>(), vec![PathBuf::from("foo")]);
+        assert_eq!(
+            iter_glob(&local_tree, "*").collect::<Vec<_>>(),
+            vec![PathBuf::from("bar"), PathBuf::from("foo")]
+        );
+        assert_eq!(
+            iter_glob(&local_tree, "foo").collect::<Vec<_>>(),
+            vec![PathBuf::from("foo")]
+        );
+        assert_eq!(
+            iter_glob(&local_tree, "bar").collect::<Vec<_>>(),
+            vec![PathBuf::from("bar")]
+        );
+        assert_eq!(
+            iter_glob(&local_tree, "baz").collect::<Vec<_>>(),
+            Vec::<PathBuf>::new()
+        );
+        assert_eq!(
+            iter_glob(&local_tree, "*o").collect::<Vec<_>>(),
+            vec![PathBuf::from("foo")]
+        );
     }
 }

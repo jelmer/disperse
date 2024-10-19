@@ -588,11 +588,11 @@ fn check_release_age(
         .repository()
         .get_revision(&branch.last_revision())
         .unwrap();
-    if let Some(timeout_days) = cfg.timeout_days {
+    if let Some(timeout_days) = cfg.release_timeout {
         let commit_time =
             chrono::FixedOffset::east(rev.timezone).timestamp(rev.timestamp as i64, 0);
         let time_delta = now.signed_duration_since(commit_time);
-        if (time_delta.num_days() as i32) < timeout_days {
+        if (time_delta.num_days() as u64) < timeout_days {
             return Err(RecentCommits {
                 min_commit_age: timeout_days as i64,
                 commit_age: time_delta.num_days(),
@@ -632,7 +632,7 @@ fn publish_artifacts(
         artifacts.extend(pypi_paths.iter().map(|x| x.to_path_buf()));
         if dry_run {
             log::info!("skipping twine upload due to dry run mode")
-        } else if cfg.skip_twine_upload == Some(true) {
+        } else if !cfg.twine_upload.unwrap_or(false) {
             log::info!("skipping twine upload; disabled in config")
         } else {
             disperse::python::upload_python_artifacts(&ws.local_tree(), pypi_paths).map_err(
@@ -864,13 +864,13 @@ pub fn release_project(
     let lp = launchpadlib::client::Client::authenticated(None, "disperse")
         .map_err(|e| ReleaseError::Other(e.to_string()))?;
 
-    let mut launchpad_project = if let Some(project) = cfg.launchpad_project.as_ref() {
-        disperse::launchpad::get_project(&lp, project).ok()
+    let mut launchpad_project = if let Some(launchpad) = cfg.launchpad.as_ref() {
+        disperse::launchpad::get_project(&lp, &launchpad.project).ok()
     } else {
         None
     };
 
-    let mut launchpad_series = if let Some(series) = cfg.launchpad_series.as_ref() {
+    let mut launchpad_series = if let Some(series) = cfg.launchpad.as_ref().and_then(|l| l.series.as_ref()) {
         let series = disperse::launchpad::find_project_series(
             &lp,
             &launchpad_project.as_ref().unwrap().self_().unwrap(),
@@ -930,7 +930,8 @@ pub fn release_project(
         }
     });
 
-    if let Some(url) = cfg.github_url.as_ref() {
+    if let Some(github) = cfg.github.as_ref() {
+        let url = &github.url;
         public_repo_url = Some(url.parse().unwrap());
         ws.set_main_branch(breezyshim::branch::open(public_repo_url.as_ref().unwrap()).unwrap())
             .unwrap();
@@ -941,7 +942,7 @@ pub fn release_project(
         match disperse::github::check_gh_repo_action_status(
             &gh,
             gh_repo.as_ref().unwrap(),
-            cfg.github_branch.as_deref(),
+            github.branch.as_deref(),
         ) {
             Ok(disperse::github::GitHubCIStatus::Ok) => {
                 log::info!("GitHub action succeeded");
@@ -1161,9 +1162,9 @@ pub fn release_project(
     for update_version in &cfg.update_version {
         disperse::custom::update_version_in_file(
             ws.local_tree(),
-            Path::new(update_version.path.as_ref().unwrap()),
-            update_version.new_line.as_ref().unwrap(),
-            update_version.match_.as_deref(),
+            &update_version.path,
+            &update_version.new_line,
+            update_version.r#match.as_deref(),
             &new_version,
             disperse::Status::Final,
         )
@@ -1171,7 +1172,7 @@ pub fn release_project(
     }
 
     for update_manpage in &cfg.update_manpages {
-        for path in disperse::iter_glob(ws.local_tree(), update_manpage.as_str()) {
+        for path in disperse::iter_glob(ws.local_tree(), update_manpage.to_str().unwrap()) {
             disperse::manpage::update_version_in_manpage(
                 ws.local_tree(),
                 &path,
@@ -1690,7 +1691,7 @@ fn validate_config(path: &std::path::Path) -> i32 {
     }
 
     for update_manpage in cfg.update_manpages.iter() {
-        for path in disperse::iter_glob(&wt, update_manpage.as_str()) {
+        for path in disperse::iter_glob(&wt, update_manpage.to_str().unwrap()) {
             match disperse::manpage::validate_update_manpage(&wt, path.as_path()) {
                 Ok(_) => {}
                 Err(e) => {
