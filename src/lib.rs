@@ -174,7 +174,7 @@ pub fn find_last_version_in_files(
             return Ok(Some((version, None)));
         }
     }
-    for update_cfg in cfg.update_version.iter() {
+    for update_cfg in cfg.update_version.as_ref().unwrap_or(&Vec::new()) {
         let path = &update_cfg.path;
         let new_line = &update_cfg.new_line;
         log::debug!("Reading version from {}", path.display());
