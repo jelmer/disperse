@@ -274,3 +274,38 @@ pub async fn create_github_release(
 
     Ok(())
 }
+
+pub fn login() -> Result<Octocrab, Error> {
+    let entry = keyring::Entry::new("github.com", "personal_token").unwrap();
+    let token = match std::env::var("GITHUB_TOKEN") {
+        Ok(token) => Some(token),
+        Err(std::env::VarError::NotPresent) => match entry.get_password() {
+            Ok(token) => Some(token),
+            Err(keyring::Error::NoEntry) => None,
+            Err(e) => {
+                log::error!("Unable to read GitHub personal token from keyring: {}", e);
+                None
+            }
+        },
+        Err(e) => {
+            log::error!(
+                "Unable to read GitHub personal token from environment: {}",
+                e
+            );
+            None
+        }
+    };
+
+    let builder = if let Some(token) = token {
+        log::info!("Using GitHub personal token from keyring");
+        octocrab::OctocrabBuilder::new().personal_token(token)
+    } else {
+        println!("Please enter your GitHub personal token");
+        let mut personal_token = String::new();
+        std::io::stdin().read_line(&mut personal_token).unwrap();
+        let personal_token = personal_token.trim();
+        entry.set_password(personal_token).unwrap();
+        octocrab::OctocrabBuilder::new().personal_token(personal_token.to_string())
+    };
+    Ok(builder.build()?)
+}

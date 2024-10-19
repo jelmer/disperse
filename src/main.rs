@@ -895,43 +895,7 @@ pub async fn release_project(
 
     let mut gh_repo = None;
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
-
-    let gh = rt.block_on(async {
-        let entry = keyring::Entry::new("github.com", "personal_token").unwrap();
-        let token = match std::env::var("GITHUB_TOKEN") {
-            Ok(token) => Some(token),
-            Err(std::env::VarError::NotPresent) => match entry.get_password() {
-                Ok(token) => Some(token),
-                Err(keyring::Error::NoEntry) => None,
-                Err(e) => {
-                    log::error!("Unable to read GitHub personal token from keyring: {}", e);
-                    None
-                }
-            },
-            Err(e) => {
-                log::error!(
-                    "Unable to read GitHub personal token from environment: {}",
-                    e
-                );
-                None
-            }
-        };
-        if let Some(token) = token {
-            log::info!("Using GitHub personal token from keyring");
-            let builder = octocrab::OctocrabBuilder::new().personal_token(token);
-            builder.build().unwrap()
-        } else {
-            println!("Please enter your GitHub personal token");
-            let mut personal_token = String::new();
-            std::io::stdin().read_line(&mut personal_token).unwrap();
-            let personal_token = personal_token.trim();
-            entry.set_password(personal_token).unwrap();
-            let builder =
-                octocrab::OctocrabBuilder::new().personal_token(personal_token.to_string());
-            builder.build().unwrap()
-        }
-    });
+    let gh = disperse::github::login().map_err(|e| ReleaseError::Other(e.to_string()))?;
 
     if let Some(github) = cfg.github.as_ref() {
         let url = &github.url;
@@ -939,14 +903,17 @@ pub async fn release_project(
         ws.set_main_branch(breezyshim::branch::open(public_repo_url.as_ref().unwrap()).unwrap())
             .unwrap();
         gh_repo = Some(
-            disperse::github::get_github_repo(&gh, public_repo_url.as_ref().unwrap()).await
+            disperse::github::get_github_repo(&gh, public_repo_url.as_ref().unwrap())
+                .await
                 .map_err(|e| ReleaseError::Other(e.to_string()))?,
         );
         match disperse::github::check_gh_repo_action_status(
             &gh,
             gh_repo.as_ref().unwrap(),
             github.branch.as_deref(),
-        ).await {
+        )
+        .await
+        {
             Ok(disperse::github::GitHubCIStatus::Ok) => {
                 log::info!("GitHub action succeeded");
             }
@@ -1023,14 +990,17 @@ pub async fn release_project(
                     continue;
                 }
                 gh_repo = Some(
-                    disperse::github::get_github_repo(&gh, parsed_url).await
+                    disperse::github::get_github_repo(&gh, parsed_url)
+                        .await
                         .map_err(|e| ReleaseError::Other(e.to_string()))?,
                 );
                 match disperse::github::check_gh_repo_action_status(
                     &gh,
                     gh_repo.as_ref().unwrap(),
                     branch_name.as_deref(),
-                ).await {
+                )
+                .await
+                {
                     Ok(disperse::github::GitHubCIStatus::Ok) => (),
                     Ok(disperse::github::GitHubCIStatus::Failed { html_url, sha }) => {
                         if ignore_ci {
@@ -1320,7 +1290,8 @@ pub async fn release_project(
             .collect::<Vec<_>>()
             .as_slice(),
         gh_repo.as_ref(),
-    ).await;
+    )
+    .await;
 
     let artifacts = match result {
         Ok(artifacts) => artifacts,
@@ -1389,9 +1360,6 @@ pub async fn release_project(
             }
         }
     }
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let gh = rt.block_on(async { octocrab::instance() });
 
     if let Some(gh_repo) = gh_repo.as_ref() {
         if dry_run {
@@ -1629,7 +1597,7 @@ async fn release_many(
                 ret = 1;
             }
             Err(ReleaseError::Other(o)) => {
-                log::error!("Other error: {}", o);
+                log::error!("Other error: {:?}", o);
                 failed.push((url.to_string(), format!("Other error: {}", o)));
                 ret = 1;
             }
