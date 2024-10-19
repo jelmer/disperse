@@ -281,13 +281,11 @@ pub fn info(tree: &WorkingTree, branch: &dyn breezyshim::branch::Branch) -> i32 
                 if missing.last().map(|r| r.is_null()).unwrap() {
                     log::info!("  last release not found in ancestry");
                 } else {
-                    use chrono::TimeZone;
                     let first = branch
                         .repository()
                         .get_revision(missing.last().unwrap())
                         .unwrap();
-                    let first_timestamp = chrono::FixedOffset::east(first.timezone)
-                        .timestamp(first.timestamp as i64, 0);
+                    let first_timestamp = first.datetime();
                     let first_age = chrono::Utc::now()
                         .signed_duration_since(first_timestamp)
                         .num_days();
@@ -370,7 +368,7 @@ fn info_many(urls: &[Url]) -> i32 {
                 .build()
                 .unwrap();
             let lock = ws.local_tree().lock_read();
-            let r = info(&ws.local_tree(), ws.local_tree().branch().as_ref());
+            let r = info(ws.local_tree(), ws.local_tree().branch().as_ref());
             std::mem::drop(lock);
             ret += r;
         }
@@ -583,16 +581,14 @@ fn check_release_age(
     cfg: &ProjectConfig,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<(), RecentCommits> {
-    use chrono::TimeZone;
     let rev = branch
         .repository()
         .get_revision(&branch.last_revision())
         .unwrap();
-    if let Some(timeout_days) = cfg.timeout_days {
-        let commit_time =
-            chrono::FixedOffset::east(rev.timezone).timestamp(rev.timestamp as i64, 0);
+    if let Some(timeout_days) = cfg.release_timeout {
+        let commit_time = rev.datetime();
         let time_delta = now.signed_duration_since(commit_time);
-        if (time_delta.num_days() as i32) < timeout_days {
+        if (time_delta.num_days() as u64) < timeout_days {
             return Err(RecentCommits {
                 min_commit_age: timeout_days as i64,
                 commit_age: time_delta.num_days(),
@@ -618,13 +614,8 @@ fn publish_artifacts(
         if dry_run {
             log::info!("In dry-run mode, so unable to wait for CI");
         } else {
-            disperse::github::wait_for_gh_actions(
-                gh,
-                gh_repo,
-                Some(tag_name),
-                cfg.ci_timeout.map(|x| x as u64),
-            )
-            .map_err(|e| ReleaseError::CIFailed(e.to_string()))?;
+            disperse::github::wait_for_gh_actions(gh, gh_repo, Some(tag_name), cfg.ci_timeout)
+                .map_err(|e| ReleaseError::CIFailed(e.to_string()))?;
         }
     }
 
@@ -632,10 +623,10 @@ fn publish_artifacts(
         artifacts.extend(pypi_paths.iter().map(|x| x.to_path_buf()));
         if dry_run {
             log::info!("skipping twine upload due to dry run mode")
-        } else if cfg.skip_twine_upload == Some(true) {
+        } else if !cfg.twine_upload.unwrap_or(false) {
             log::info!("skipping twine upload; disabled in config")
         } else {
-            disperse::python::upload_python_artifacts(&ws.local_tree(), pypi_paths).map_err(
+            disperse::python::upload_python_artifacts(ws.local_tree(), pypi_paths).map_err(
                 |e| ReleaseError::UploadCommandFailed {
                     command: "twine upload".to_string(),
                     status: None,
@@ -651,7 +642,7 @@ fn publish_artifacts(
         if dry_run {
             log::info!("skipping cargo upload due to dry run mode");
         } else {
-            disperse::cargo::publish(&ws.local_tree(), std::path::Path::new(".")).map_err(|e| {
+            disperse::cargo::publish(ws.local_tree(), std::path::Path::new(".")).map_err(|e| {
                 ReleaseError::UploadCommandFailed {
                     command: "cargo publish".to_string(),
                     status: None,
@@ -856,7 +847,7 @@ pub fn release_project(
                     .rsplit('/')
                     .next()
                     .map(|s| s.to_string())
-                    .unwrap_or_else(|| "".to_string())
+                    .unwrap_or_default()
             })
             .unwrap_or_else(|| "".to_string())
     };
@@ -864,31 +855,32 @@ pub fn release_project(
     let lp = launchpadlib::client::Client::authenticated(None, "disperse")
         .map_err(|e| ReleaseError::Other(e.to_string()))?;
 
-    let mut launchpad_project = if let Some(project) = cfg.launchpad_project.as_ref() {
-        disperse::launchpad::get_project(&lp, project).ok()
+    let mut launchpad_project = if let Some(launchpad) = cfg.launchpad.as_ref() {
+        disperse::launchpad::get_project(&lp, &launchpad.project).ok()
     } else {
         None
     };
 
-    let mut launchpad_series = if let Some(series) = cfg.launchpad_series.as_ref() {
-        let series = disperse::launchpad::find_project_series(
-            &lp,
-            &launchpad_project.as_ref().unwrap().self_().unwrap(),
-            Some(series),
-            None,
-        )
-        .map_err(ReleaseError::Other)?;
-        let b = series.branch();
-        public_repo_url = b.get(&lp).unwrap().web_link;
-        if let Some(url) = &public_repo_url {
-            let main_branch = breezyshim::branch::open(url).unwrap();
-            ws.set_main_branch(main_branch).unwrap();
-        }
-        // TODO: Check for git repository
-        Some(series)
-    } else {
-        None
-    };
+    let mut launchpad_series =
+        if let Some(series) = cfg.launchpad.as_ref().and_then(|l| l.series.as_ref()) {
+            let series = disperse::launchpad::find_project_series(
+                &lp,
+                &launchpad_project.as_ref().unwrap().self_().unwrap(),
+                Some(series),
+                None,
+            )
+            .map_err(ReleaseError::Other)?;
+            let b = series.branch();
+            public_repo_url = b.get(&lp).unwrap().web_link;
+            if let Some(url) = &public_repo_url {
+                let main_branch = breezyshim::branch::open(url).unwrap();
+                ws.set_main_branch(main_branch).unwrap();
+            }
+            // TODO: Check for git repository
+            Some(series)
+        } else {
+            None
+        };
 
     let mut gh_repo = None;
 
@@ -930,7 +922,8 @@ pub fn release_project(
         }
     });
 
-    if let Some(url) = cfg.github_url.as_ref() {
+    if let Some(github) = cfg.github.as_ref() {
+        let url = &github.url;
         public_repo_url = Some(url.parse().unwrap());
         ws.set_main_branch(breezyshim::branch::open(public_repo_url.as_ref().unwrap()).unwrap())
             .unwrap();
@@ -941,7 +934,7 @@ pub fn release_project(
         match disperse::github::check_gh_repo_action_status(
             &gh,
             gh_repo.as_ref().unwrap(),
-            cfg.github_branch.as_deref(),
+            github.branch.as_deref(),
         ) {
             Ok(disperse::github::GitHubCIStatus::Ok) => {
                 log::info!("GitHub action succeeded");
@@ -1110,7 +1103,7 @@ pub fn release_project(
     let new_version: Version = new_version.map_or_else(
         || {
             let new_version =
-                pick_new_version(&ws.local_tree(), &cfg).map_err(ReleaseError::Other)?;
+                pick_new_version(ws.local_tree(), &cfg).map_err(ReleaseError::Other)?;
             log::info!("Picked new version: {}", new_version.to_string());
             Ok::<Version, ReleaseError>(new_version)
         },
@@ -1143,7 +1136,7 @@ pub fn release_project(
         }
     }
 
-    let verify_command = determine_verify_command(&cfg, &ws.local_tree());
+    let verify_command = determine_verify_command(&cfg, ws.local_tree());
 
     log::info!("releasing {}", new_version.to_string());
     let (news_file, release_changes) = if let Some(news_file_path) = cfg.news_file.as_ref() {
@@ -1161,9 +1154,9 @@ pub fn release_project(
     for update_version in &cfg.update_version {
         disperse::custom::update_version_in_file(
             ws.local_tree(),
-            Path::new(update_version.path.as_ref().unwrap()),
-            update_version.new_line.as_ref().unwrap(),
-            update_version.match_.as_deref(),
+            &update_version.path,
+            &update_version.new_line,
+            update_version.r#match.as_deref(),
             &new_version,
             disperse::Status::Final,
         )
@@ -1171,7 +1164,7 @@ pub fn release_project(
     }
 
     for update_manpage in &cfg.update_manpages {
-        for path in disperse::iter_glob(ws.local_tree(), update_manpage.as_str()) {
+        for path in disperse::iter_glob(ws.local_tree(), update_manpage.to_str().unwrap()) {
             disperse::manpage::update_version_in_manpage(
                 ws.local_tree(),
                 &path,
@@ -1183,11 +1176,11 @@ pub fn release_project(
     }
 
     if ws.local_tree().has_filename(Path::new("Cargo.toml")) {
-        disperse::cargo::update_version(&ws.local_tree(), new_version.to_string().as_str())
+        disperse::cargo::update_version(ws.local_tree(), new_version.to_string().as_str())
             .map_err(|e| ReleaseError::Other(e.to_string()))?;
     }
     if ws.local_tree().has_filename(Path::new("pyproject.toml")) {
-        disperse::python::update_version_in_pyproject_toml(&ws.local_tree(), &new_version)
+        disperse::python::update_version_in_pyproject_toml(ws.local_tree(), &new_version)
             .map_err(|e| ReleaseError::Other(e.to_string()))?;
     }
     let revid = ws
@@ -1277,9 +1270,9 @@ pub fn release_project(
             })?;
     }
     let pypi_paths = if ws.local_tree().has_filename(Path::new("setup.py")) {
-        disperse::python::create_setup_py_artifacts(&ws.local_tree()).unwrap()
+        disperse::python::create_setup_py_artifacts(ws.local_tree()).unwrap()
     } else if ws.local_tree().has_filename(Path::new("pyproject.toml")) {
-        disperse::python::create_python_artifacts(&ws.local_tree()).unwrap()
+        disperse::python::create_python_artifacts(ws.local_tree()).unwrap()
     } else {
         vec![]
     };
@@ -1690,7 +1683,7 @@ fn validate_config(path: &std::path::Path) -> i32 {
     }
 
     for update_manpage in cfg.update_manpages.iter() {
-        for path in disperse::iter_glob(&wt, update_manpage.as_str()) {
+        for path in disperse::iter_glob(&wt, update_manpage.to_str().unwrap()) {
             match disperse::manpage::validate_update_manpage(&wt, path.as_path()) {
                 Ok(_) => {}
                 Err(e) => {
@@ -1778,7 +1771,7 @@ fn main() {
                 [] => config
                     .pypi
                     .map(|pypi| vec![pypi.username])
-                    .unwrap_or(vec![]),
+                    .unwrap_or_default(),
                 pypi_usernames => pypi_usernames.to_vec(),
             };
 
@@ -1805,7 +1798,7 @@ fn main() {
             let repositories_urls = config
                 .repositories
                 .and_then(|repositories| repositories.owned)
-                .unwrap_or(vec![]);
+                .unwrap_or_default();
 
             let urls: Vec<Url> = vec![pypi_urls, crates_io_urls, repositories_urls]
                 .into_iter()
