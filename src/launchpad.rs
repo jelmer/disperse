@@ -60,7 +60,7 @@ pub fn create_milestone(
     series_name: Option<&str>,
 ) -> Result<Milestone, String> {
     let series = find_project_series(client, project, series_name, None)?;
-    let release_date = chrono::Utc::now().date().naive_utc();
+    let release_date = chrono::Utc::now().date_naive();
     Ok(series
         .self_()
         .unwrap()

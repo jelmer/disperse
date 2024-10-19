@@ -117,6 +117,7 @@ fn read_toml_project(f: &mut dyn std::io::Read) -> ProjectConfig {
 }
 
 pub fn read_project_with_fallback(tree: &dyn Tree) -> Result<ProjectConfig, BrzError> {
+    #[allow(unused_assignments)]
     let mut first_error = None;
 
     match tree.get_file(Path::new("disperse.toml")) {
