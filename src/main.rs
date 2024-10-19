@@ -1,5 +1,5 @@
 use breezyshim::error::Error as BrzError;
-use breezyshim::tree::Tree;
+use breezyshim::tree::{MutableTree, Tree};
 use breezyshim::workingtree::{self, WorkingTree};
 use clap::Parser;
 use disperse::project_config::{read_project_with_fallback, ProjectConfig};
@@ -120,6 +120,9 @@ enum Commands {
 
     /// Run the verify command
     Verify(VerifyArgs),
+
+    /// Migrate configuration to a new version
+    Migrate(MigrateArgs),
 }
 
 #[derive(clap::Args)]
@@ -191,6 +194,13 @@ struct InfoArgs {
     path: std::path::PathBuf,
 }
 
+#[derive(clap::Args)]
+struct MigrateArgs {
+    /// Path or URL for project
+    #[clap(default_value = ".")]
+    path: std::path::PathBuf,
+}
+
 pub fn find_last_version(
     workingtree: &WorkingTree,
     cfg: &ProjectConfig,
@@ -199,7 +209,7 @@ pub fn find_last_version(
         Ok(Some((v, s))) => {
             return Ok((Some(v), s));
         }
-        Ok(None) => {
+        Ok(Option::None) => {
             log::debug!("No version found in files");
         }
         Err(e) => {
@@ -212,7 +222,7 @@ pub fn find_last_version(
             Ok((Some(v), s)) => {
                 return Ok((Some(v), s));
             }
-            Ok((None, _)) => {
+            Ok((Option::None, _)) => {
                 log::debug!("No version found in tags");
             }
             Err(e) => {
@@ -1151,7 +1161,7 @@ pub fn release_project(
         (None, None)
     };
 
-    for update_version in &cfg.update_version {
+    for update_version in cfg.update_version.as_ref().unwrap_or(&vec![]) {
         disperse::custom::update_version_in_file(
             ws.local_tree(),
             &update_version.path,
@@ -1163,7 +1173,7 @@ pub fn release_project(
         .map_err(ReleaseError::Other)?;
     }
 
-    for update_manpage in &cfg.update_manpages {
+    for update_manpage in cfg.update_manpages.as_ref().unwrap_or(&vec![]) {
         for path in disperse::iter_glob(ws.local_tree(), update_manpage.to_str().unwrap()) {
             disperse::manpage::update_version_in_manpage(
                 ws.local_tree(),
@@ -1672,7 +1682,7 @@ fn validate_config(path: &std::path::Path) -> i32 {
         }
     }
 
-    for update_version in cfg.update_version.iter() {
+    for update_version in cfg.update_version.unwrap_or_default().iter() {
         match disperse::custom::validate_update_version(&wt, update_version) {
             Ok(_) => {}
             Err(e) => {
@@ -1682,7 +1692,7 @@ fn validate_config(path: &std::path::Path) -> i32 {
         }
     }
 
-    for update_manpage in cfg.update_manpages.iter() {
+    for update_manpage in cfg.update_manpages.unwrap_or_default().iter() {
         for path in disperse::iter_glob(&wt, update_manpage.to_str().unwrap()) {
             match disperse::manpage::validate_update_manpage(&wt, path.as_path()) {
                 Ok(_) => {}
@@ -1697,12 +1707,12 @@ fn validate_config(path: &std::path::Path) -> i32 {
     0
 }
 
-fn verify(wt: &WorkingTree) -> i32 {
+fn verify(wt: &WorkingTree) -> Result<(), i32> {
     let cfg = match disperse::project_config::read_project_with_fallback(wt) {
         Ok(cfg) => cfg,
         Err(e) => {
             log::info!("Error loading configuration: {}", e);
-            return 1;
+            return Err(1);
         }
     };
 
@@ -1710,7 +1720,7 @@ fn verify(wt: &WorkingTree) -> i32 {
 
     if verify_command.is_none() {
         log::info!("No verify command configured or detected");
-        return 0;
+        return Ok(());
     }
 
     let verify_command = verify_command.unwrap();
@@ -1727,10 +1737,79 @@ fn verify(wt: &WorkingTree) -> i32 {
 
     if !status.success() {
         log::error!("Verify command failed");
-        return 1;
+        return Err(1);
     }
 
-    0
+    Ok(())
+}
+
+fn migrate(wt: &WorkingTree) -> Result<(), i32> {
+    if wt.has_filename(Path::new("disperse.toml")) {
+        log::info!("Already migrated");
+        return Ok(());
+    }
+
+    // TODO: Check that the old configuration files have no changes
+
+    let cfg = match disperse::project_config::read_project_with_fallback(wt) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            log::error!("Unable to read project configuration: {}", e);
+            return Err(1);
+        }
+    };
+
+    wt.put_file_bytes_non_atomic(
+        Path::new("disperse.toml"),
+        toml::to_string_pretty(&cfg).unwrap().as_bytes(),
+    )
+    .map_err(|e| {
+        log::error!("Unable to write disperse.toml: {}", e);
+        1
+    })?;
+
+    wt.add(&[Path::new("disperse.toml")]).map_err(|e| {
+        log::error!("Unable to add disperse.toml: {}", e);
+        1
+    })?;
+
+    let mut paths = vec![Path::new("disperse.toml")];
+
+    match wt.remove(&[Path::new("disperse.conf")]) {
+        Ok(_) => {
+            let p = Path::new("disperse.conf");
+            if wt.has_filename(p) {
+                paths.push(p);
+            }
+        }
+        Err(BrzError::NoSuchFile(_)) => {}
+        Err(e) => {
+            log::error!("Unable to remove disperse.conf: {}", e);
+        }
+    }
+    match wt.remove(&[Path::new("release.conf")]) {
+        Ok(_) => {
+            let p = Path::new("release.conf");
+            if wt.has_filename(p) {
+                paths.push(p);
+            }
+        }
+        Err(BrzError::NoSuchFile(_)) => {}
+        Err(e) => {
+            log::error!("Unable to remove release.conf: {}", e);
+        }
+    }
+
+    wt.build_commit()
+        .message("Migrate to disperse.toml")
+        .specific_files(paths.as_slice())
+        .commit()
+        .map_err(|e| {
+            log::error!("Unable to commit migration: {}", e);
+            1
+        })?;
+
+    Ok(())
 }
 
 fn main() {
@@ -1851,7 +1930,17 @@ fn main() {
         }
         Commands::Verify(args) => {
             let wt = workingtree::open(args.path.as_ref()).unwrap();
-            verify(&wt)
+            match verify(&wt) {
+                Ok(_) => 0,
+                Err(e) => e,
+            }
+        }
+        Commands::Migrate(args) => {
+            let wt = workingtree::open(args.path.as_ref()).unwrap();
+            match migrate(&wt) {
+                Ok(_) => 0,
+                Err(e) => e,
+            }
         }
     });
 }

@@ -3,7 +3,7 @@ use breezyshim::tree::Tree;
 use std::path::{Path, PathBuf};
 include!(concat!(env!("OUT_DIR"), "/generated/mod.rs"));
 
-#[derive(serde::Deserialize, Default)]
+#[derive(serde::Deserialize, serde::Serialize, Default)]
 pub struct ProjectConfig {
     #[serde(default)]
     pub name: Option<String>,
@@ -12,10 +12,10 @@ pub struct ProjectConfig {
     pub tag_name: Option<String>,
 
     #[serde(default)]
-    pub update_version: Vec<UpdateVersion>,
+    pub update_version: Option<Vec<UpdateVersion>>,
 
     #[serde(default, rename = "update-manpage")]
-    pub update_manpages: Vec<PathBuf>,
+    pub update_manpages: Option<Vec<PathBuf>>,
 
     #[serde(default)]
     pub launchpad: Option<Launchpad>,
@@ -45,19 +45,19 @@ pub struct ProjectConfig {
     pub ci_timeout: Option<u64>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct GitHub {
     pub url: String,
     pub branch: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct Launchpad {
     pub project: String,
     pub series: Option<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, serde::Serialize)]
 pub struct UpdateVersion {
     pub path: std::path::PathBuf,
     pub r#match: Option<String>,
@@ -79,7 +79,14 @@ impl From<config::Project> for ProjectConfig {
     fn from(p: config::Project) -> Self {
         ProjectConfig {
             name: p.name,
-            update_version: p.update_version.into_iter().map(|u| u.into()).collect(),
+            update_version: {
+                let vs: Vec<_> = p.update_version.into_iter().map(|u| u.into()).collect();
+                if vs.is_empty() {
+                    None
+                } else {
+                    Some(vs)
+                }
+            },
             launchpad: p.launchpad_project.as_ref().map(|_l| Launchpad {
                 project: p.launchpad_project.clone().unwrap(),
                 series: p.launchpad_series.clone(),
@@ -89,7 +96,14 @@ impl From<config::Project> for ProjectConfig {
                 branch: p.github_branch.clone(),
             }),
             news_file: p.news_file.clone().map(|n| n.into()),
-            update_manpages: p.update_manpages.into_iter().map(|u| u.into()).collect(),
+            update_manpages: {
+                let mps: Vec<_> = p.update_manpages.into_iter().map(|u| u.into()).collect();
+                if mps.is_empty() {
+                    None
+                } else {
+                    Some(mps)
+                }
+            },
             tag_name: p.tag_name.clone(),
             pre_dist_command: p.pre_dist_command.clone(),
             verify_command: p.verify_command.clone(),
