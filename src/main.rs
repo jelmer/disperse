@@ -609,7 +609,7 @@ fn check_release_age(
     Ok(())
 }
 
-fn publish_artifacts(
+async fn publish_artifacts(
     ws: &silver_platter::workspace::Workspace,
     tag_name: &str,
     dry_run: bool,
@@ -625,6 +625,7 @@ fn publish_artifacts(
             log::info!("In dry-run mode, so unable to wait for CI");
         } else {
             disperse::github::wait_for_gh_actions(gh, gh_repo, Some(tag_name), cfg.ci_timeout)
+                .await
                 .map_err(|e| ReleaseError::CIFailed(e.to_string()))?;
         }
     }
@@ -720,7 +721,7 @@ fn determine_verify_command(cfg: &ProjectConfig, wt: &WorkingTree) -> Option<Str
     }
 }
 
-pub fn release_project(
+pub async fn release_project(
     repo_url: &str,
     force: Option<bool>,
     new_version: Option<&Version>,
@@ -938,14 +939,14 @@ pub fn release_project(
         ws.set_main_branch(breezyshim::branch::open(public_repo_url.as_ref().unwrap()).unwrap())
             .unwrap();
         gh_repo = Some(
-            disperse::github::get_github_repo(&gh, public_repo_url.as_ref().unwrap())
+            disperse::github::get_github_repo(&gh, public_repo_url.as_ref().unwrap()).await
                 .map_err(|e| ReleaseError::Other(e.to_string()))?,
         );
         match disperse::github::check_gh_repo_action_status(
             &gh,
             gh_repo.as_ref().unwrap(),
             github.branch.as_deref(),
-        ) {
+        ).await {
             Ok(disperse::github::GitHubCIStatus::Ok) => {
                 log::info!("GitHub action succeeded");
             }
@@ -1022,14 +1023,14 @@ pub fn release_project(
                     continue;
                 }
                 gh_repo = Some(
-                    disperse::github::get_github_repo(&gh, parsed_url)
+                    disperse::github::get_github_repo(&gh, parsed_url).await
                         .map_err(|e| ReleaseError::Other(e.to_string()))?,
                 );
                 match disperse::github::check_gh_repo_action_status(
                     &gh,
                     gh_repo.as_ref().unwrap(),
                     branch_name.as_deref(),
-                ) {
+                ).await {
                     Ok(disperse::github::GitHubCIStatus::Ok) => (),
                     Ok(disperse::github::GitHubCIStatus::Failed { html_url, sha }) => {
                         if ignore_ci {
@@ -1319,7 +1320,7 @@ pub fn release_project(
             .collect::<Vec<_>>()
             .as_slice(),
         gh_repo.as_ref(),
-    );
+    ).await;
 
     let artifacts = match result {
         Ok(artifacts) => artifacts,
@@ -1403,6 +1404,7 @@ pub fn release_project(
                 &new_version.to_string(),
                 release_changes.as_deref(),
             )
+            .await
             .map_err(|e| ReleaseError::Other(e.to_string()))?;
         }
     }
@@ -1476,7 +1478,7 @@ pub fn release_project(
     Ok((name, new_version))
 }
 
-fn release_many(
+async fn release_many(
     urls: &[String],
     new_version: Option<String>,
     ignore_ci: Option<bool>,
@@ -1503,7 +1505,9 @@ fn release_many(
             dry_run,
             ignore_ci,
             ignore_verify_command,
-        ) {
+        )
+        .await
+        {
             Err(ReleaseError::RecentCommits {
                 min_commit_age,
                 commit_age,
@@ -1821,7 +1825,8 @@ fn migrate(wt: &WorkingTree) -> Result<(), i32> {
     Ok(())
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
 
     env_logger::builder()
@@ -1846,15 +1851,18 @@ fn main() {
     breezyshim::plugin::load_plugins();
 
     std::process::exit(match &args.command {
-        Commands::Release(release_args) => release_many(
-            release_args.url.as_slice(),
-            release_args.new_version.clone(),
-            Some(release_args.ignore_ci),
-            Some(release_args.ignore_verify_command),
-            Some(args.dry_run),
-            release_args.discover,
-            Some(true),
-        ),
+        Commands::Release(release_args) => {
+            release_many(
+                release_args.url.as_slice(),
+                release_args.new_version.clone(),
+                Some(release_args.ignore_ci),
+                Some(release_args.ignore_verify_command),
+                Some(args.dry_run),
+                release_args.discover,
+                Some(true),
+            )
+            .await
+        }
         Commands::Discover(discover_args) => {
             let pypi_usernames = match discover_args.pypi_user.as_slice() {
                 [] => config
@@ -1922,6 +1930,7 @@ fn main() {
                         true,
                         Some(false),
                     )
+                    .await
                 };
                 if let Some(prometheus) = args.prometheus {
                     push_to_gateway(prometheus.as_str()).unwrap();
