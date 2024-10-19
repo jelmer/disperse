@@ -956,6 +956,7 @@ pub fn release_project(
                     log::warn!("Ignoring failing CI: {}", html_url);
                 } else {
                     log::error!("CI failed: {}", html_url);
+                    log::info!("Pass --ignore-ci to ignore failing CI");
                     return Err(ReleaseError::CIFailed(format!(
                         "for revision {}: {}",
                         sha, html_url
@@ -969,6 +970,7 @@ pub fn release_project(
                     log::warn!("Ignoring failing CI: {}", html_url);
                 } else {
                     log::error!("CI pending: {}", html_url);
+                    log::info!("Pass --ignore-ci to ignore pending CI");
                     return Err(ReleaseError::CIPending(format!(
                         "for revision {}: {}",
                         sha, html_url
@@ -1279,6 +1281,8 @@ pub fn release_project(
                 reason: Some(e.to_string()),
             })?;
     }
+
+    log::info!("Creating Python artifacts");
     let pypi_paths = if ws.local_tree().has_filename(Path::new("setup.py")) {
         disperse::python::create_setup_py_artifacts(ws.local_tree()).unwrap()
     } else if ws.local_tree().has_filename(Path::new("pyproject.toml")) {
@@ -1288,6 +1292,11 @@ pub fn release_project(
     };
 
     if !dry_run {
+        log::info!(
+            "Pushing tag {} to {}",
+            tag_name,
+            ws.main_branch().unwrap().get_user_url()
+        );
         ws.push_tags(hashmap! {
             tag_name.clone() => revid.clone(),
         })
@@ -1834,6 +1843,7 @@ fn main() {
     pyo3::prepare_freethreaded_python();
 
     breezyshim::init();
+    breezyshim::plugin::load_plugins();
 
     std::process::exit(match &args.command {
         Commands::Release(release_args) => release_many(
