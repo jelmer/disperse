@@ -32,5 +32,9 @@ jobs:
         run: pip install breezy
       - name: Build
         run: cargo build --verbose
+        env:
+          RUSTFLAGS: -D warnings
       - name: Run tests
         run: cargo test --verbose
+      - name: Check formatting
+        run: cargo fmt -- --check

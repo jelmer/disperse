@@ -870,25 +870,26 @@ pub fn release_project(
         None
     };
 
-    let mut launchpad_series = if let Some(series) = cfg.launchpad.as_ref().and_then(|l| l.series.as_ref()) {
-        let series = disperse::launchpad::find_project_series(
-            &lp,
-            &launchpad_project.as_ref().unwrap().self_().unwrap(),
-            Some(series),
-            None,
-        )
-        .map_err(ReleaseError::Other)?;
-        let b = series.branch();
-        public_repo_url = b.get(&lp).unwrap().web_link;
-        if let Some(url) = &public_repo_url {
-            let main_branch = breezyshim::branch::open(url).unwrap();
-            ws.set_main_branch(main_branch).unwrap();
-        }
-        // TODO: Check for git repository
-        Some(series)
-    } else {
-        None
-    };
+    let mut launchpad_series =
+        if let Some(series) = cfg.launchpad.as_ref().and_then(|l| l.series.as_ref()) {
+            let series = disperse::launchpad::find_project_series(
+                &lp,
+                &launchpad_project.as_ref().unwrap().self_().unwrap(),
+                Some(series),
+                None,
+            )
+            .map_err(ReleaseError::Other)?;
+            let b = series.branch();
+            public_repo_url = b.get(&lp).unwrap().web_link;
+            if let Some(url) = &public_repo_url {
+                let main_branch = breezyshim::branch::open(url).unwrap();
+                ws.set_main_branch(main_branch).unwrap();
+            }
+            // TODO: Check for git repository
+            Some(series)
+        } else {
+            None
+        };
 
     let mut gh_repo = None;
 

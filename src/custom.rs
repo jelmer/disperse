@@ -309,10 +309,7 @@ mod tests {
             super::Status::Final,
         )
         .unwrap();
-        assert_eq!(
-            tree.get_file_text(path).unwrap(),
-            b"version = [1.2.4]\n"
-        );
+        assert_eq!(tree.get_file_text(path).unwrap(), b"version = [1.2.4]\n");
     }
 }
 
