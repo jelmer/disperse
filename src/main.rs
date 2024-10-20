@@ -1442,14 +1442,14 @@ pub async fn release_project(
         }
     }
     if !dry_run {
-        if let Some(local_wt) = local_wt.as_ref() {
-            local_wt
-                .pull(public_branch.unwrap().as_ref(), None, None, None)
-                .unwrap();
-        } else if let Some(local_branch) = local_branch.as_ref() {
-            local_branch
-                .pull(public_branch.unwrap().as_ref(), None)
-                .unwrap();
+        if let Some(public_branch) = ws.main_branch() {
+            if let Some(local_wt) = local_wt.as_ref() {
+                local_wt.pull(public_branch, None, None, None).unwrap();
+            } else if let Some(local_branch) = local_branch.as_ref() {
+                local_branch.pull(public_branch, None).unwrap();
+            }
+        } else {
+            log::info!("No public branch to pull from");
         }
     }
 
