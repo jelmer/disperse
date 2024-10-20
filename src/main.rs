@@ -69,7 +69,7 @@ lazy_static::lazy_static! {
         &["project"]).unwrap();
 }
 
-fn push_to_gateway(prometheus_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn push_to_gateway(prometheus_url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut buffer = vec![];
     let encoder = TextEncoder::new();
     encoder.encode(&default_registry().gather(), &mut buffer)?;
@@ -77,10 +77,11 @@ fn push_to_gateway(prometheus_url: &str) -> Result<(), Box<dyn std::error::Error
     let metrics = String::from_utf8(buffer)?;
 
     let url = format!("{}/metrics/job/disperse", prometheus_url);
-    reqwest::blocking::Client::new()
+    reqwest::Client::new()
         .post(url)
         .body(metrics)
-        .send()?
+        .send()
+        .await?
         .error_for_status()?;
 
     Ok(())
@@ -863,11 +864,14 @@ pub async fn release_project(
             .unwrap_or_else(|| "".to_string())
     };
 
-    let lp = launchpadlib::client::Client::authenticated(None, "disperse")
+    let lp = launchpadlib::r#async::client::Client::authenticated("launchpad.net", "disperse")
+        .await
         .map_err(|e| ReleaseError::Other(e.to_string()))?;
 
     let mut launchpad_project = if let Some(launchpad) = cfg.launchpad.as_ref() {
-        disperse::launchpad::get_project(&lp, &launchpad.project).ok()
+        disperse::launchpad::get_project(&lp, &launchpad.project)
+            .await
+            .ok()
     } else {
         None
     };
@@ -880,9 +884,10 @@ pub async fn release_project(
                 Some(series),
                 None,
             )
+            .await
             .map_err(ReleaseError::Other)?;
             let b = series.branch();
-            public_repo_url = b.get(&lp).unwrap().web_link;
+            public_repo_url = b.get(&lp).await.unwrap().web_link;
             if let Some(url) = &public_repo_url {
                 let main_branch = breezyshim::branch::open(url).unwrap();
                 ws.set_main_branch(main_branch).unwrap();
@@ -1036,7 +1041,9 @@ pub async fn release_project(
             Some("launchpad.net") => {
                 let parts = parsed_url.path_segments().unwrap().collect::<Vec<_>>();
                 launchpad_project = Some(
-                    disperse::launchpad::get_project(&lp, parts[0]).map_err(ReleaseError::Other)?,
+                    disperse::launchpad::get_project(&lp, parts[0])
+                        .await
+                        .map_err(ReleaseError::Other)?,
                 );
                 if parts.len() > 1 && !parts[1].starts_with('+') {
                     launchpad_series = Some(
@@ -1046,6 +1053,7 @@ pub async fn release_project(
                             Some(parts[1]),
                             None,
                         )
+                        .await
                         .map_err(ReleaseError::Other)?,
                     );
                 }
@@ -1388,8 +1396,10 @@ pub async fn release_project(
                 launchpad_series.as_ref().map(|s| s.name.as_str()),
                 release_changes.as_deref(),
             )
+            .await
             .map_err(ReleaseError::Other)?;
             disperse::launchpad::add_release_files(&lp, &lp_release, artifacts)
+                .await
                 .map_err(ReleaseError::Other)?;
         }
     }
@@ -1427,6 +1437,7 @@ pub async fn release_project(
                 &new_pending_version.to_string(),
                 launchpad_series.as_ref().map(|s| s.name.as_str()),
             )
+            .await
             .map_err(ReleaseError::Other)?;
         }
     }
@@ -1901,7 +1912,7 @@ async fn main() {
                     .await
                 };
                 if let Some(prometheus) = args.prometheus {
-                    push_to_gateway(prometheus.as_str()).unwrap();
+                    push_to_gateway(prometheus.as_str()).await.unwrap();
                 }
                 if discover_args.r#try {
                     0
