@@ -1,10 +1,11 @@
-use launchpadlib::v1_0::{
+use futures::TryStreamExt;
+use launchpadlib::r#async::v1_0::{
     Milestone, Project, ProjectFull, ProjectRelease, ProjectReleaseDiff, ProjectReleaseFull,
     ProjectSeriesFull,
 };
-use launchpadlib::Client;
+use launchpadlib::r#async::Client;
 
-pub fn find_project_series(
+pub async fn find_project_series(
     client: &Client,
     project: &Project,
     series_name: Option<&str>,
@@ -12,12 +13,15 @@ pub fn find_project_series(
 ) -> Result<ProjectSeriesFull, String> {
     let project = project
         .get(client)
+        .await
         .map_err(|e| format!("Failed to get project: {}", e))?;
     let mut series = project
         .series(client)
+        .await
         .map_err(|e| format!("Failed to get series: {}", e))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("Failed to get series: {}", e))?;
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap();
 
     if let Some(series_name) = series_name {
         series
@@ -46,6 +50,7 @@ pub fn find_project_series(
             return project
                 .development_focus()
                 .get(client)
+                .await
                 .map_err(|e| format!("Failed to get development focus: {}", e));
         }
     } else {
@@ -53,24 +58,26 @@ pub fn find_project_series(
     }
 }
 
-pub fn create_milestone(
+pub async fn create_milestone(
     client: &Client,
     project: &Project,
     version: &str,
     series_name: Option<&str>,
 ) -> Result<Milestone, String> {
-    let series = find_project_series(client, project, series_name, None)?;
+    let series = find_project_series(client, project, series_name, None).await?;
     let release_date = chrono::Utc::now().date_naive();
     Ok(series
         .self_()
         .unwrap()
         .new_milestone(client, version, Some(&release_date), None, None)
+        .await
         .map_err(|e| format!("Failed to create milestone: {}", e))?
         .unwrap())
 }
 
-pub fn get_project(client: &Client, project: &str) -> Result<ProjectFull, String> {
-    let root = launchpadlib::v1_0::service_root(client)
+pub async fn get_project(client: &Client, project: &str) -> Result<ProjectFull, String> {
+    let root = launchpadlib::r#async::v1_0::service_root(client)
+        .await
         .map_err(|e| format!("Failed to get service root: {}", e))?;
 
     // Look up the project using the Launchpad instance.
@@ -78,8 +85,10 @@ pub fn get_project(client: &Client, project: &str) -> Result<ProjectFull, String
         .projects()
         .unwrap()
         .iter(client)
+        .await
         .unwrap()
-        .collect::<Result<Vec<_>, _>>()
+        .try_collect::<Vec<_>>()
+        .await
         .unwrap();
 
     projects
@@ -88,16 +97,18 @@ pub fn get_project(client: &Client, project: &str) -> Result<ProjectFull, String
         .ok_or_else(|| format!("No project named {} found", project))
 }
 
-pub fn find_release(
+pub async fn find_release(
     client: &Client,
     project: &Project,
     release: &str,
 ) -> Option<ProjectReleaseFull> {
-    let project = project.get(client).unwrap();
+    let project = project.get(client).await.unwrap();
     let releases = project
         .releases(client)
+        .await
         .unwrap()
-        .collect::<Result<Vec<_>, _>>()
+        .try_collect::<Vec<_>>()
+        .await
         .unwrap();
 
     releases
@@ -105,14 +116,16 @@ pub fn find_release(
         .find(|r| r.version.to_string() == release)
 }
 
-pub fn create_release_from_milestone(
+pub async fn create_release_from_milestone(
     client: &Client,
     project: &Project,
     version: &str,
 ) -> Option<ProjectRelease> {
-    let project = project.get(client).unwrap();
-    for milestone in project.all_milestones(client).unwrap() {
-        let milestone = milestone.unwrap();
+    let project = project.get(client).await.unwrap();
+
+    let mut milestones = project.all_milestones(client).await.unwrap();
+
+    while let Some(milestone) = milestones.try_next().await.unwrap() {
         if milestone.name == version {
             let today = chrono::Utc::now();
             return Some(
@@ -120,6 +133,7 @@ pub fn create_release_from_milestone(
                     .self_()
                     .unwrap()
                     .create_product_release(client, &today, None, None)
+                    .await
                     .unwrap()
                     .unwrap(),
             );
@@ -128,14 +142,14 @@ pub fn create_release_from_milestone(
     None
 }
 
-pub fn ensure_release(
+pub async fn ensure_release(
     client: &Client,
     proj: &Project,
     version: &str,
     series_name: Option<&str>,
     release_notes: Option<&str>,
 ) -> Result<ProjectRelease, String> {
-    if let Some(release) = find_release(client, proj, version) {
+    if let Some(release) = find_release(client, proj, version).await {
         let release = release.self_().unwrap();
         let diff = ProjectReleaseDiff {
             release_notes: release_notes.map(|s| s.to_string()),
@@ -144,28 +158,31 @@ pub fn ensure_release(
 
         release
             .patch(client, &diff)
+            .await
             .map_err(|e| format!("Failed to update release: {}", e))?;
         Ok(release)
-    } else if let Some(release) = create_release_from_milestone(client, proj, version) {
+    } else if let Some(release) = create_release_from_milestone(client, proj, version).await {
         let diff = ProjectReleaseDiff {
             release_notes: release_notes.map(|s| s.to_string()),
             ..Default::default()
         };
         release
             .patch(client, &diff)
+            .await
             .map_err(|e| format!("Failed to update release: {}", e))?;
         Ok(release)
     } else {
-        let milestone = create_milestone(client, proj, version, series_name)?;
+        let milestone = create_milestone(client, proj, version, series_name).await?;
         let today = chrono::Utc::now();
         Ok(milestone
             .create_product_release(client, &today, None, release_notes)
+            .await
             .map_err(|e| format!("Failed to create release: {}", e))?
             .unwrap())
     }
 }
 
-pub fn add_release_files(
+pub async fn add_release_files(
     client: &Client,
     release: &ProjectRelease,
     artifacts: Vec<std::path::PathBuf>,
@@ -179,10 +196,11 @@ pub fn add_release_files(
                     artifact.file_name().unwrap().to_str().unwrap(),
                     None,
                     "application/x-gzip",
-                    reqwest::blocking::multipart::Part::file(&artifact).unwrap(),
+                    reqwest::multipart::Part::file(&artifact).await.unwrap(),
                     None,
-                    Some(&launchpadlib::v1_0::FileType::CodeReleaseTarball),
+                    Some(&launchpadlib::r#async::v1_0::FileType::CodeReleaseTarball),
                 )
+                .await
                 .map_err(|e| format!("Failed to add release file: {}", e))
                 .unwrap();
         }
