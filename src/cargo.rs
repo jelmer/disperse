@@ -72,17 +72,14 @@ pub fn update_version_in_toml(
     new_version: &str,
 ) -> Result<(), Error> {
     // Update the version field
-    if let Some(package) = parsed_toml.as_table_mut().get_mut("package") {
-        if let Some(version) = package.as_table_mut().and_then(|t| t.get_mut("version")) {
-            // If it has { workspace = true }, ignore it
-            if version.get("workspace").is_none() {
-                *version = toml_edit::value(new_version);
-                return Ok(());
-            }
-        } else {
-            return Err(Error::Other(
-                "Unable to find version in Cargo.toml".to_string(),
-            ));
+    if let Some(version) = parsed_toml
+        .get_mut("package")
+        .and_then(|p| p.get_mut("version"))
+    {
+        // If it has { workspace = true }, ignore it
+        if version.get("workspace").is_none() {
+            *version = toml_edit::value(new_version);
+            return Ok(());
         }
     } else {
         return Err(Error::Other(
@@ -91,20 +88,12 @@ pub fn update_version_in_toml(
     }
 
     // Update workspace.package.version if it exists
-    if let Some(workspace) = parsed_toml.get_mut("workspace") {
-        if let Some(package) = workspace.get_mut("package") {
-            if let Some(version) = package.get_mut("version") {
-                *version = toml_edit::value(new_version);
-            } else {
-                return Err(Error::Other(
-                    "Unable to find workspace.package.version in Cargo.toml".to_string(),
-                ));
-            }
-        } else {
-            return Err(Error::Other(
-                "Unable to find workspace.package in Cargo.toml".to_string(),
-            ));
-        }
+    if let Some(version) = parsed_toml
+        .get_mut("workspace")
+        .and_then(|w| w.get_mut("package"))
+        .and_then(|p| p.get_mut("version"))
+    {
+        *version = toml_edit::value(new_version);
     } else {
         return Err(Error::Other(
             "Unable to find workspace in Cargo.toml".to_string(),
@@ -129,6 +118,8 @@ pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Error
 
     // Serialize the updated TOML back to a string
     let updated_cargo_toml = parsed_toml.to_string();
+
+    eprintln!("{}", updated_cargo_toml);
 
     // Write the updated TOML back to Cargo.toml
     tree.put_file_bytes_non_atomic(Path::new("Cargo.toml"), updated_cargo_toml.as_bytes())?;
@@ -240,6 +231,17 @@ mod tests {
         super::update_version_in_toml(&mut parsed_toml, "0.2.0").unwrap();
 
         assert_eq!(parsed_toml.to_string(), "[package]\nversion = \"0.2.0\"\n");
+
+        let text = "[package]\nversion = \"0.1.0\"\n[dependencies.test]\nversion = \"0.3.0\"\n";
+
+        let mut parsed_toml: toml_edit::DocumentMut = text.parse().unwrap();
+
+        super::update_version_in_toml(&mut parsed_toml, "0.2.0").unwrap();
+
+        assert_eq!(
+            parsed_toml.to_string(),
+            "[package]\nversion = \"0.2.0\"\n[dependencies.test]\nversion = \"0.3.0\"\n"
+        );
 
         let text = "[package]\nversion = { workspace = true }\n[workspace]\npackage = { version = \"0.1.0\" }\n";
 
