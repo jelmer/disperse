@@ -152,6 +152,10 @@ struct ReleaseArgs {
 
     #[clap(long)]
     discover: bool,
+
+    #[clap(long)]
+    /// Preserve the temporary directory used for building
+    preserve_temp: bool,
 }
 
 #[derive(clap::Args)]
@@ -729,6 +733,7 @@ pub async fn release_project(
     dry_run: Option<bool>,
     ignore_ci: Option<bool>,
     ignore_verify_command: Option<bool>,
+    preserve_temp: bool,
 ) -> Result<(String, Version), ReleaseError> {
     let force = force.unwrap_or(false);
     let dry_run = dry_run.unwrap_or(false);
@@ -831,6 +836,10 @@ pub async fn release_project(
     }
 
     let mut ws = wsbuilder.build().unwrap();
+
+    if preserve_temp {
+        ws.defer_destroy();
+    }
 
     let cfg = match disperse::project_config::read_project_with_fallback(ws.local_tree()) {
         Ok(cfg) => cfg,
@@ -1465,6 +1474,7 @@ async fn release_many(
     dry_run: Option<bool>,
     discover: bool,
     force: Option<bool>,
+    preserve_temp: bool,
 ) -> i32 {
     let mut failed: Vec<(String, String)> = Vec::new();
     let mut skipped: Vec<(String, String)> = Vec::new();
@@ -1484,6 +1494,7 @@ async fn release_many(
             dry_run,
             ignore_ci,
             ignore_verify_command,
+            preserve_temp,
         )
         .await
         {
@@ -1839,6 +1850,7 @@ async fn main() {
                 Some(args.dry_run),
                 release_args.discover,
                 Some(true),
+                release_args.preserve_temp,
             )
             .await
         }
@@ -1908,6 +1920,7 @@ async fn main() {
                         Some(false),
                         true,
                         Some(false),
+                        false,
                     )
                     .await
                 };
