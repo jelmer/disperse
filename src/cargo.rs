@@ -119,8 +119,6 @@ pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Error
     // Serialize the updated TOML back to a string
     let updated_cargo_toml = parsed_toml.to_string();
 
-    eprintln!("{}", updated_cargo_toml);
-
     // Write the updated TOML back to Cargo.toml
     tree.put_file_bytes_non_atomic(Path::new("Cargo.toml"), updated_cargo_toml.as_bytes())?;
 
