@@ -81,6 +81,13 @@ pub fn update_version_in_toml(
             *version = toml_edit::value(new_version);
             return Ok(());
         }
+    } else if parsed_toml
+        .get("workspace")
+        .and_then(|w| w.get("package"))
+        .and_then(|p| p.get("version"))
+        .is_some()
+    {
+        log::info!("No package.version found, but workspace.package.version exists");
     } else {
         return Err(Error::Other(
             "Unable to find package in Cargo.toml".to_string(),
@@ -251,5 +258,27 @@ mod tests {
             parsed_toml.to_string(),
             "[package]\nversion = { workspace = true }\n[workspace]\npackage = { version = \"0.2.0\" }\n"
         );
+
+        let text = "[workspace]\npackage = { version = \"0.1.0\" }\n";
+
+        let mut parsed_toml: toml_edit::DocumentMut = text.parse().unwrap();
+
+        super::update_version_in_toml(&mut parsed_toml, "0.2.0").unwrap();
+
+        assert_eq!(
+            parsed_toml.to_string(),
+            "[workspace]\npackage = { version = \"0.2.0\" }\n"
+        );
+    }
+
+    #[test]
+    fn test_update_version_in_toml_invalid() {
+        let text = "";
+
+        let mut parsed_toml: toml_edit::DocumentMut = text.parse().unwrap();
+
+        let result = super::update_version_in_toml(&mut parsed_toml, "0.2.0");
+
+        assert!(result.is_err());
     }
 }
