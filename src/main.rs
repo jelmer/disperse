@@ -1418,6 +1418,7 @@ pub async fn release_project(
     //  * Update NEWS and version strings for next version
     let mut new_pending_version: Version = new_version.clone();
     disperse::version::increase_version(&mut new_pending_version, -1);
+    assert!(new_pending_version > new_version);
     log::info!("Using new version {}", new_pending_version.to_string());
     if let Some(news_file) = news_file {
         news_file

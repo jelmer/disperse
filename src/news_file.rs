@@ -2,11 +2,11 @@ use crate::Version;
 use breezyshim::tree::MutableTree;
 use lazy_regex::regex_is_match;
 
-pub fn check_date(d: &str) -> bool {
-    d == "UNRELEASED" || d.starts_with("NEXT ")
+fn date_is_placeholder(d: &str) -> bool {
+    d == "UNRELEASED" || d.starts_with("NEXT ") || d == "NEXT" || d == "%(date)s"
 }
 
-pub fn check_version(v: &str) -> Result<bool, Error> {
+fn check_version(v: &str) -> Result<bool, Error> {
     if v == "UNRELEASED" || v == "%(version)s" || v == "NEXT" {
         return Ok(true);
     }
@@ -27,17 +27,24 @@ pub fn expand_template(template: &str, version: &Version, date: &str) -> String 
 pub fn skip_header<'a, I: Iterator<Item = &'a [u8]>>(iter: &mut std::iter::Peekable<I>) -> usize {
     let mut i = 0;
     while let Some(line) = iter.peek() {
-        i += 1;
         if line.starts_with(b"Changelog for ") {
+            iter.next();
+            i += 1;
             continue;
         }
         if line.ends_with(b" release notes") {
+            iter.next();
+            i += 1;
             continue;
         }
         if line.iter().all(|&x| x == b'=' || x == b'-') {
+            iter.next();
+            i += 1;
             continue;
         }
         if line.is_empty() {
+            iter.next();
+            i += 1;
             continue;
         }
         break;
@@ -53,11 +60,15 @@ pub fn skip_header<'a, I: Iterator<Item = &'a [u8]>>(iter: &mut std::iter::Peeka
 ///
 /// # Returns
 /// * version string
-pub fn news_find_pending(
+pub fn tree_news_find_pending(
     tree: &dyn breezyshim::tree::Tree,
     path: &std::path::Path,
 ) -> Result<Option<String>, Error> {
     let lines = tree.get_file_lines(path)?;
+    news_find_pending(&lines)
+}
+
+pub fn news_find_pending(lines: &[Vec<u8>]) -> Result<Option<String>, Error> {
     let mut iter = lines.iter().map(|x| x.as_slice()).peekable();
     skip_header(&mut iter);
     let line = String::from_utf8(iter.next().unwrap().to_vec())
@@ -83,7 +94,7 @@ fn parse_version_line(line: &str) -> Result<(Option<&str>, Option<&str>, String,
     if line.contains('\t') {
         if let Some((version, date)) = line.split_once('\t') {
             let version_is_placeholder = check_version(version)?;
-            let date_is_placeholder = check_date(date);
+            let date_is_placeholder = date_is_placeholder(date);
             let pending = version_is_placeholder || date_is_placeholder;
 
             return Ok((
@@ -115,7 +126,7 @@ fn parse_version_line(line: &str) -> Result<(Option<&str>, Option<&str>, String,
             assert!(!version.is_empty());
 
             let version_is_placeholder = check_version(version)?;
-            let date_is_placeholder = check_date(date);
+            let date_is_placeholder = date_is_placeholder(date);
             let pending = version_is_placeholder || date_is_placeholder;
 
             return Ok((
@@ -150,12 +161,7 @@ fn parse_version_line(line: &str) -> Result<(Option<&str>, Option<&str>, String,
     ))
 }
 
-pub fn news_add_pending(
-    tree: &dyn breezyshim::tree::MutableTree,
-    path: &std::path::Path,
-    new_version: &crate::Version,
-) -> Result<(), Error> {
-    let mut lines = tree.get_file_lines(path)?;
+fn news_add_pending(lines: &mut Vec<Vec<u8>>, new_version: &crate::Version) -> Result<(), Error> {
     let mut line_iter = lines.iter().map(|x| x.as_slice()).peekable();
     let i = skip_header(&mut line_iter);
 
@@ -183,6 +189,16 @@ pub fn news_add_pending(
     new_version_line.push(b'\n');
 
     lines.insert(i, new_version_line);
+    Ok(())
+}
+
+fn tree_news_add_pending(
+    tree: &dyn breezyshim::tree::MutableTree,
+    path: &std::path::Path,
+    new_version: &crate::Version,
+) -> Result<(), Error> {
+    let mut lines = tree.get_file_lines(path)?;
+    news_add_pending(&mut lines, new_version)?;
     tree.put_file_bytes_non_atomic(path, lines.concat().as_slice())?;
     Ok(())
 }
@@ -243,6 +259,13 @@ impl From<breezyshim::error::Error> for Error {
     }
 }
 
+/// Mark version as released in news file.
+///
+/// # Arguments
+/// * `tree`: Tree object
+/// * `path`: Path to news file in tree
+/// * `expected_version`: Version to mark as released
+/// * `release_date`: Date to mark as released
 pub fn news_mark_released(
     tree: &dyn MutableTree,
     path: &std::path::Path,
@@ -308,10 +331,19 @@ impl<'a> NewsFile<'a> {
         })
     }
 
+    /// Add a new pending version to the news file.
+    ///
+    /// # Arguments
+    /// * `new_version`: Version to add
     pub fn add_pending(&self, new_version: &crate::Version) -> Result<(), Error> {
-        news_add_pending(self.tree, self.path.as_path(), new_version)
+        tree_news_add_pending(self.tree, self.path.as_path(), new_version)
     }
 
+    /// Mark version as released in news file.
+    ///
+    /// # Arguments
+    /// * `expected_version`: Version to mark as released
+    /// * `release_date`: Date to mark as released
     pub fn mark_released(
         &self,
         expected_version: &Version,
@@ -323,5 +355,105 @@ impl<'a> NewsFile<'a> {
             expected_version,
             release_date,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_parse_version_line() {
+        let (version, date, line_format, pending) =
+            super::parse_version_line("1.2.3 2021-01-01").expect("parse failed");
+        assert_eq!(version, Some("1.2.3"));
+        assert_eq!(date, Some("2021-01-01"));
+        assert_eq!(line_format, "%(version)s %(date)s");
+        assert!(!pending);
+
+        let (version, date, line_format, pending) =
+            super::parse_version_line("1.2.3 (2021-01-01)").expect("parse failed");
+        assert_eq!(version, Some("1.2.3"));
+        assert_eq!(date, Some("2021-01-01"));
+        assert_eq!(line_format, "%(version)s (%(date)s)");
+        assert!(!pending);
+
+        let (version, date, line_format, pending) =
+            super::parse_version_line("1.2.3").expect("parse failed");
+        assert_eq!(version, Some("1.2.3"));
+        assert_eq!(date, None);
+        assert_eq!(line_format, "%(version)s");
+        assert!(!pending);
+
+        let (version, date, line_format, pending) =
+            super::parse_version_line("1.2.3 UNRELEASED").expect("parse failed");
+        assert_eq!(version, Some("1.2.3"));
+        assert_eq!(date, None);
+        assert_eq!(line_format, "%(version)s %(date)s");
+        assert!(pending);
+
+        let (version, date, line_format, pending) =
+            super::parse_version_line("1.2.3 NEXT").expect("parse failed");
+        assert_eq!(version, Some("1.2.3"));
+        assert_eq!(date, None);
+        assert_eq!(line_format, "%(version)s %(date)s");
+        assert!(pending);
+
+        let (version, date, line_format, pending) =
+            super::parse_version_line("1.2.3 %(date)s").expect("parse failed");
+        assert_eq!(version, Some("1.2.3"));
+        assert_eq!(date, None);
+        assert_eq!(line_format, "%(version)s %(date)s");
+        assert!(pending);
+    }
+
+    #[test]
+    fn test_news_add_pending() {
+        let mut lines = vec![
+            b"Changelog for foo\n".to_vec(),
+            b"1.2.3 2021-01-01\n".to_vec(),
+            b"\n".to_vec(),
+            b"  * Change 1\n".to_vec(),
+            b"  * Change 2\n".to_vec(),
+        ];
+        let new_version: crate::Version = "1.2.4".parse().expect("parse failed");
+        super::news_add_pending(&mut lines, &new_version).expect("add pending failed");
+        assert_eq!(
+            String::from_utf8(lines.concat()).unwrap(),
+            [
+                "Changelog for foo\n",
+                "1.2.4 UNRELEASED\n",
+                "\n",
+                "1.2.3 2021-01-01\n",
+                "\n",
+                "  * Change 1\n",
+                "  * Change 2\n",
+            ]
+            .concat()
+        );
+    }
+
+    #[test]
+    fn test_news_find_pending() {
+        let lines = vec![
+            b"Changelog for foo\n".to_vec(),
+            b"1.2.3 UNRELEASED\n".to_vec(),
+            b"\n".to_vec(),
+            b"  * Change 1\n".to_vec(),
+            b"  * Change 2\n".to_vec(),
+        ];
+        let version = super::news_find_pending(&lines).expect("find pending failed");
+        assert_eq!(version, Some("1.2.3".to_string()));
+    }
+
+    #[test]
+    fn test_news_pending_not_found() {
+        let lines = vec![
+            b"Changelog for foo\n".to_vec(),
+            b"1.2.3 2021-01-01\n".to_vec(),
+            b"\n".to_vec(),
+            b"  * Change 1\n".to_vec(),
+            b"  * Change 2\n".to_vec(),
+        ];
+        let version = super::news_find_pending(&lines).expect("find pending failed");
+        assert_eq!(version, None);
     }
 }
