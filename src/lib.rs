@@ -231,7 +231,7 @@ pub fn find_pending_version(
     cfg: &project_config::ProjectConfig,
 ) -> Result<Version, FindPendingVersionError> {
     if let Some(news_file) = cfg.news_file.as_ref() {
-        match news_file::news_find_pending(tree, news_file) {
+        match news_file::tree_news_find_pending(tree, news_file) {
             Ok(Some(version)) => Ok(version.parse().unwrap()),
             Ok(None) => Err(FindPendingVersionError::NoUnreleasedChanges),
             Err(news_file::Error::OddVersion(e)) => {
