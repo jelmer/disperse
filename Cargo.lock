@@ -390,7 +390,7 @@ checksum = "200ad30d24892baf2168f2df366939264d02f2fa0be0914f8e2da4bd3407c58c"
 dependencies = [
  "chrono",
  "futures",
- "reqwest 0.12.8",
+ "reqwest 0.12.9",
  "serde",
  "serde_derive",
  "serde_json",
@@ -519,7 +519,7 @@ dependencies = [
  "protoc-rust",
  "pyo3",
  "regex",
- "reqwest 0.12.8",
+ "reqwest 0.12.9",
  "serde",
  "serde_json",
  "shlex",
@@ -1264,7 +1264,7 @@ dependencies = [
  "mime",
  "percent-encoding",
  "rand",
- "reqwest 0.12.8",
+ "reqwest 0.12.9",
  "serde",
  "serde_json",
  "url",
@@ -1874,7 +1874,7 @@ dependencies = [
  "memchr",
  "parking_lot",
  "protobuf 2.28.0",
- "reqwest 0.12.8",
+ "reqwest 0.12.9",
  "thiserror",
 ]
 
@@ -2137,6 +2137,7 @@ dependencies = [
  "js-sys",
  "log",
  "mime",
+ "mime_guess",
  "native-tls",
  "once_cell",
  "percent-encoding",
@@ -2159,9 +2160,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.12.8"
+version = "0.12.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f713147fbe92361e52392c73b8c9e48c04c6625bce969ef54dc901e58e042a7b"
+checksum = "a77c62af46e79de0a562e1a9849205ffcb7fc1238876e9bd743357570e04046f"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -3213,7 +3214,7 @@ dependencies = [
  "mime",
  "proc-macro2",
  "quote",
- "reqwest 0.12.8",
+ "reqwest 0.11.27",
  "serde_json",
  "syn 2.0.80",
  "url",
