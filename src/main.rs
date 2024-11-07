@@ -726,6 +726,20 @@ fn determine_verify_command(cfg: &ProjectConfig, wt: &WorkingTree) -> Option<Str
     }
 }
 
+async fn launchpad_client() -> Result<&'static launchpadlib::r#async::client::Client, ReleaseError>
+{
+    static LAUNCHPAD_CLIENT: tokio::sync::OnceCell<launchpadlib::r#async::client::Client> =
+        tokio::sync::OnceCell::const_new();
+
+    LAUNCHPAD_CLIENT
+        .get_or_try_init(|| async {
+            launchpadlib::r#async::client::Client::authenticated("launchpad.net", "disperse")
+                .await
+                .map_err(|e| ReleaseError::Other(e.to_string()))
+        })
+        .await
+}
+
 pub async fn release_project(
     repo_url: &str,
     force: Option<bool>,
@@ -873,12 +887,8 @@ pub async fn release_project(
             .unwrap_or_else(|| "".to_string())
     };
 
-    let lp = launchpadlib::r#async::client::Client::authenticated("launchpad.net", "disperse")
-        .await
-        .map_err(|e| ReleaseError::Other(e.to_string()))?;
-
     let mut launchpad_project = if let Some(launchpad) = cfg.launchpad.as_ref() {
-        disperse::launchpad::get_project(&lp, &launchpad.project)
+        disperse::launchpad::get_project(launchpad_client().await?, &launchpad.project)
             .await
             .ok()
     } else {
@@ -887,8 +897,9 @@ pub async fn release_project(
 
     let mut launchpad_series =
         if let Some(series) = cfg.launchpad.as_ref().and_then(|l| l.series.as_ref()) {
+            let lp = launchpad_client().await?;
             let series = disperse::launchpad::find_project_series(
-                &lp,
+                lp,
                 &launchpad_project.as_ref().unwrap().self_().unwrap(),
                 Some(series),
                 None,
@@ -896,7 +907,7 @@ pub async fn release_project(
             .await
             .map_err(ReleaseError::Other)?;
             let b = series.branch();
-            public_repo_url = b.get(&lp).await.unwrap().web_link;
+            public_repo_url = b.get(lp).await.unwrap().web_link;
             if let Some(url) = &public_repo_url {
                 let main_branch = breezyshim::branch::open(url).unwrap();
                 ws.set_main_branch(main_branch).unwrap();
@@ -1048,16 +1059,17 @@ pub async fn release_project(
                 break;
             }
             Some("launchpad.net") => {
+                let lp = launchpad_client().await?;
                 let parts = parsed_url.path_segments().unwrap().collect::<Vec<_>>();
                 launchpad_project = Some(
-                    disperse::launchpad::get_project(&lp, parts[0])
+                    disperse::launchpad::get_project(lp, parts[0])
                         .await
                         .map_err(ReleaseError::Other)?,
                 );
                 if parts.len() > 1 && !parts[1].starts_with('+') {
                     launchpad_series = Some(
                         disperse::launchpad::find_project_series(
-                            &lp,
+                            lp,
                             &launchpad_project.as_ref().unwrap().self_().unwrap(),
                             Some(parts[1]),
                             None,
@@ -1398,8 +1410,9 @@ pub async fn release_project(
         if dry_run {
             log::info!("skipping upload of tarball to Launchpad");
         } else {
+            let lp = launchpad_client().await?;
             let lp_release = disperse::launchpad::ensure_release(
-                &lp,
+                lp,
                 &launchpad_project.self_().unwrap(),
                 &new_version.to_string(),
                 launchpad_series.as_ref().map(|s| s.name.as_str()),
@@ -1407,7 +1420,7 @@ pub async fn release_project(
             )
             .await
             .map_err(ReleaseError::Other)?;
-            disperse::launchpad::add_release_files(&lp, &lp_release, artifacts)
+            disperse::launchpad::add_release_files(lp, &lp_release, artifacts)
                 .await
                 .map_err(ReleaseError::Other)?;
         }
@@ -1442,7 +1455,7 @@ pub async fn release_project(
             );
         } else {
             disperse::launchpad::create_milestone(
-                &lp,
+                launchpad_client().await?,
                 &launchpad_project.self_().unwrap(),
                 &new_pending_version.to_string(),
                 launchpad_series.as_ref().map(|s| s.name.as_str()),
