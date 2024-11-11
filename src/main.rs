@@ -124,6 +124,9 @@ enum Commands {
 
     /// Migrate configuration to a new version
     Migrate(MigrateArgs),
+
+    /// Initialize a new project
+    Init(InitArgs),
 }
 
 #[derive(clap::Args)]
@@ -201,6 +204,13 @@ struct InfoArgs {
 
 #[derive(clap::Args)]
 struct MigrateArgs {
+    /// Path or URL for project
+    #[clap(default_value = ".")]
+    path: std::path::PathBuf,
+}
+
+#[derive(clap::Args)]
+struct InitArgs {
     /// Path or URL for project
     #[clap(default_value = ".")]
     path: std::path::PathBuf,
@@ -1760,6 +1770,39 @@ fn verify(wt: &WorkingTree) -> Result<(), i32> {
     Ok(())
 }
 
+fn init(wt: &WorkingTree) -> Result<(), i32> {
+    if wt.has_filename(Path::new("disperse.toml")) {
+        log::info!("Already initialized");
+        return Ok(());
+    }
+
+    let cfg = disperse::project_config::ProjectConfig::default();
+
+    wt.put_file_bytes_non_atomic(
+        Path::new("disperse.toml"),
+        toml::to_string_pretty(&cfg).unwrap().as_bytes(),
+    )
+    .map_err(|e| {
+        log::error!("Unable to write disperse.toml: {}", e);
+        1
+    })?;
+
+    wt.add(&[Path::new("disperse.toml")]).map_err(|e| {
+        log::error!("Unable to add disperse.toml: {}", e);
+        1
+    })?;
+
+    wt.build_commit()
+        .message("Initialize disperse.toml")
+        .commit()
+        .map_err(|e| {
+            log::error!("Unable to commit initialization: {}", e);
+            1
+        })?;
+
+    Ok(())
+}
+
 fn migrate(wt: &WorkingTree) -> Result<(), i32> {
     if wt.has_filename(Path::new("disperse.toml")) {
         log::info!("Already migrated");
@@ -1963,6 +2006,13 @@ async fn main() {
         Commands::Migrate(args) => {
             let wt = workingtree::open(args.path.as_ref()).unwrap();
             match migrate(&wt) {
+                Ok(_) => 0,
+                Err(e) => e,
+            }
+        }
+        Commands::Init(args) => {
+            let wt = workingtree::open(args.path.as_ref()).unwrap();
+            match init(&wt) {
                 Ok(_) => 0,
                 Err(e) => e,
             }
