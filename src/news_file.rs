@@ -1,4 +1,4 @@
-use crate::Version;
+use create::Version;
 use breezyshim::tree::MutableTree;
 use lazy_regex::regex_is_match;
 
@@ -161,7 +161,7 @@ fn parse_version_line(line: &str) -> Result<(Option<&str>, Option<&str>, String,
     ))
 }
 
-fn news_add_pending(lines: &mut Vec<Vec<u8>>, new_version: &crate::Version) -> Result<(), Error> {
+fn news_add_pending(lines: &mut Vec<Vec<u8>>, new_version: &create::Version) -> Result<(), Error> {
     let mut line_iter = lines.iter().map(|x| x.as_slice()).peekable();
     let i = skip_header(&mut line_iter);
 
@@ -195,7 +195,7 @@ fn news_add_pending(lines: &mut Vec<Vec<u8>>, new_version: &crate::Version) -> R
 fn tree_news_add_pending(
     tree: &dyn breezyshim::tree::MutableTree,
     path: &std::path::Path,
-    new_version: &crate::Version,
+    new_version: &create::Version,
 ) -> Result<(), Error> {
     let mut lines = tree.get_file_lines(path)?;
     news_add_pending(&mut lines, new_version)?;
@@ -335,7 +335,7 @@ impl<'a> NewsFile<'a> {
     ///
     /// # Arguments
     /// * `new_version`: Version to add
-    pub fn add_pending(&self, new_version: &crate::Version) -> Result<(), Error> {
+    pub fn add_pending(&self, new_version: &create::Version) -> Result<(), Error> {
         tree_news_add_pending(self.tree, self.path.as_path(), new_version)
     }
 
@@ -414,7 +414,7 @@ mod tests {
             b"  * Change 1\n".to_vec(),
             b"  * Change 2\n".to_vec(),
         ];
-        let new_version: crate::Version = "1.2.4".parse().expect("parse failed");
+        let new_version: create::Version = "1.2.4".parse().expect("parse failed");
         super::news_add_pending(&mut lines, &new_version).expect("add pending failed");
         assert_eq!(
             String::from_utf8(lines.concat()).unwrap(),

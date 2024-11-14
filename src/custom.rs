@@ -1,4 +1,4 @@
-use crate::{Status, Version};
+use create::{Status, Version};
 use maplit::hashmap;
 use std::collections::HashMap;
 
@@ -78,7 +78,7 @@ pub fn expand_version_vars(
 #[cfg(test)]
 mod expand_version_vars_tests {
     use super::expand_version_vars;
-    use crate::{Status, Version};
+    use create::{Status, Version};
     use std::str::FromStr;
 
     #[test]
@@ -315,7 +315,7 @@ mod tests {
 
 pub fn validate_update_version(
     wt: &dyn breezyshim::tree::Tree,
-    update_version: &crate::project_config::UpdateVersion,
+    update_version: &create::project_config::UpdateVersion,
 ) -> Result<(), String> {
     let path = &update_version.path;
 

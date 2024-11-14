@@ -54,7 +54,7 @@ impl Version {
         self.micro
     }
 
-    pub fn from_tupled(text: &str) -> Result<(Self, Option<crate::Status>), Error> {
+    pub fn from_tupled(text: &str) -> Result<(Self, Option<create::Status>), Error> {
         if text.starts_with('(') && text.ends_with(')') {
             return Self::from_tupled(&text[1..text.len() - 1]);
         }
@@ -78,9 +78,9 @@ impl Version {
             .map_err(|e| Error(format!("invalid micro version: {}", e)))?;
         let status = if let Some(s) = parts.get(3).map(|x| x.trim()) {
             if s == "\"dev\"" || s == "'dev'" {
-                Some(crate::Status::Dev)
+                Some(create::Status::Dev)
             } else if s == "\"final\"" || s == "'final'" {
-                Some(crate::Status::Final)
+                Some(create::Status::Final)
             } else {
                 return Err(Error(format!("invalid status: {}", s)));
             }
@@ -111,7 +111,7 @@ mod tests {
                     minor: Some(2),
                     micro: Some(3),
                 },
-                Some(crate::Status::Dev)
+                Some(create::Status::Dev)
             )
         );
         assert_eq!(

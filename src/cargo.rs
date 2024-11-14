@@ -38,7 +38,7 @@ impl std::error::Error for Error {}
 
 pub fn get_owned_crates(user: &str) -> Result<Vec<url::Url>, Error> {
     let client =
-        crates_io_api::SyncClient::new(crate::USER_AGENT, std::time::Duration::from_millis(1000))
+        crates_io_api::SyncClient::new(create::USER_AGENT, std::time::Duration::from_millis(1000))
             .map_err(|e| Error::Other(format!("Unable to create crates.io client: {}", e)))?;
 
     let user = client.user(user)?;
@@ -147,7 +147,7 @@ pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Error
     Ok(())
 }
 
-pub fn find_version_in_toml(cargo_toml_contents: &str) -> Result<crate::version::Version, Error> {
+pub fn find_version_in_toml(cargo_toml_contents: &str) -> Result<create::version::Version, Error> {
     // Parse Cargo.toml as TOML
     let parsed_toml: toml_edit::DocumentMut = cargo_toml_contents
         .parse()
@@ -188,7 +188,7 @@ pub fn find_version_in_toml(cargo_toml_contents: &str) -> Result<crate::version:
 }
 
 // Define a function to find the version in the Cargo.toml file
-pub fn find_version(tree: &dyn Tree) -> Result<crate::version::Version, Error> {
+pub fn find_version(tree: &dyn Tree) -> Result<create::version::Version, Error> {
     // Read the Cargo.toml file
     let cargo_toml_contents = tree.get_file_text(Path::new("Cargo.toml"))?;
 

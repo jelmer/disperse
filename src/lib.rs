@@ -136,7 +136,7 @@ pub fn find_last_version_in_tags(
         .unwrap();
 
     for tag in tags {
-        let release = match crate::version::unexpand_tag(tag_name, tag) {
+        let release = match create::version::unexpand_tag(tag_name, tag) {
             Ok(release) => release,
             Err(_) => continue,
         };
@@ -155,7 +155,7 @@ pub fn find_last_version_in_tags(
 pub fn find_last_version_in_files(
     tree: &WorkingTree,
     cfg: &project_config::ProjectConfig,
-) -> Result<Option<(crate::version::Version, Option<Status>)>, Box<dyn std::error::Error>> {
+) -> Result<Option<(create::version::Version, Option<Status>)>, Box<dyn std::error::Error>> {
     if tree.has_filename(Path::new("Cargo.toml")) {
         log::debug!("Reading version from Cargo.toml");
         return Ok(Some((cargo::find_version(tree)?, None)));

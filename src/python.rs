@@ -1,4 +1,4 @@
-use crate::Version;
+use create::Version;
 use breezyshim::error::Error as BrzError;
 use breezyshim::tree::{Tree, WorkingTree};
 use pyo3::prelude::*;
@@ -45,7 +45,7 @@ impl std::error::Error for Error {}
 
 pub fn update_version_in_pyproject_toml(
     tree: &WorkingTree,
-    new_version: &crate::Version,
+    new_version: &create::Version,
 ) -> Result<bool, Error> {
     let cargo_toml_contents = tree.get_file_text(Path::new("pyproject.toml"))?;
 
@@ -104,7 +104,7 @@ pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Error> {
     let mut ret = vec![];
 
     let client = reqwest::blocking::ClientBuilder::new()
-        .user_agent(crate::USER_AGENT)
+        .user_agent(create::USER_AGENT)
         .build()
         .map_err(|e| Error::Other(format!("Error building HTTP client: {}", e)))?;
 

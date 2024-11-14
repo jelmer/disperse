@@ -1,6 +1,6 @@
 use breezyshim::github::retrieve_github_token;
 use log::{debug, error, info};
-use octocrab::params::repos::Commitish;
+use octocrab::params::repos::Committish;
 use octocrab::Octocrab;
 use std::time::Duration;
 use url::Url;
@@ -101,7 +101,7 @@ pub async fn get_github_repo(
     let parsed_url = Url::parse(repo_url)
         .map_err(|_| Error::InvalidGitHubUrl(repo_url.to_string(), "Invalid URL".to_string()))?;
 
-    let parsed_url = crate::drop_segment_parameters(&parsed_url);
+    let parsed_url = create::drop_segment_parameters(&parsed_url);
 
     // Extract the owner and repo name from the URL
     let path_segments: Vec<&str> = parsed_url.path_segments().unwrap().collect();
@@ -129,7 +129,7 @@ pub async fn check_gh_repo_action_status(
 
     for check in instance
         .checks(&repo.owner.as_ref().unwrap().login, &repo.name)
-        .list_check_runs_for_git_ref(Commitish(commit.sha.clone()))
+        .list_check_runs_for_git_ref(Committish(commit.sha.clone()))
         .send()
         .await?
         .check_runs
@@ -188,7 +188,7 @@ pub async fn wait_for_gh_actions(
     while start_time.elapsed().as_secs() < timeout {
         let check_runs = instance
             .checks(&repo.owner.as_ref().unwrap().login, &repo.name)
-            .list_check_runs_for_git_ref(Commitish(commit.sha.clone()))
+            .list_check_runs_for_git_ref(Committish(commit.sha.clone()))
             .send()
             .await?
             .check_runs;
