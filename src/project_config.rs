@@ -35,7 +35,11 @@ pub struct ProjectConfig {
     #[serde(default, rename = "twine-upload")]
     pub twine_upload: Option<bool>,
 
-    #[serde(default, rename = "tarball-location")]
+    #[serde(
+        default,
+        rename = "tarball-location",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub tarball_location: Vec<String>,
 
     #[serde(default, rename = "release-timeout")]
