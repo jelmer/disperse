@@ -34,7 +34,7 @@ silver-platter = { version = "0.5.42", default-features = false }
 #silver-platter = { git = "https://github.com/jelmer/silver-platter" }
 maplit = "1.0.2"
 lazy_static = "1.4.0"
-octocrab = "0.41"
+octocrab = "0.42"
 glob = "0.3.1"
 launchpadlib = { version = ">=0.4.2", features = ["keyring", "api-v1_0", "async"], default-features = false }
 #launchpadlib = { path = "../launchpadlib-rs", features = ["keyring", "api-v1_0", "async"], default-features = false }
