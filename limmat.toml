@@ -1,0 +1,9 @@
+# Check that the formatting is correct
+[[tests]]
+name = "fmt"
+command = "cargo fmt --check"
+
+# Check that the tests pass.
+[[tests]]
+name = "test"
+command = "cargo test"
