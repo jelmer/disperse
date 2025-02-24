@@ -23,7 +23,7 @@ log = "0.4.25"
 xmlrpc = "0.15.1"
 reqwest = { version = "0.12", features = ["stream"] }
 url = "2.5.3"
-serde_json = "1.0.138"
+serde_json = "1.0.139"
 xdg = "2.5.2"
 serde = { version = "1.0.218", features = ["derive"] }
 toml = "0.8.20"
