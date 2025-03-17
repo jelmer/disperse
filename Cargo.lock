@@ -2706,9 +2706,9 @@ dependencies = [
 
 [[package]]
 name = "silver-platter"
-version = "0.5.44"
+version = "0.5.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d006da872d6e1a1205b515c9407bc0aca28186a5f2d119b2b09793d6a0925d6e"
+checksum = "018045c11a4eeaf9072bbe85673e28c06d48b719b264f3c5566d93cd23520f4b"
 dependencies = [
  "breezyshim",
  "chrono",
@@ -2718,7 +2718,7 @@ dependencies = [
  "libc",
  "log",
  "percent-encoding",
- "rand 0.8.5",
+ "rand 0.9.0",
  "regex",
  "serde",
  "serde_json",
