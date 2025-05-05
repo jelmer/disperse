@@ -17,7 +17,7 @@ lazy-regex = "3.4.1"
 pyo3 = { workspace = true }
 regex = "1.11.1"
 shlex = "1.2.0"
-toml_edit = "0.22.25"
+toml_edit = "0.22.26"
 protobuf = "3"
 log = "0.4.27"
 xmlrpc = "0.15.1"
