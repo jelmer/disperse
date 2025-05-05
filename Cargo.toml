@@ -26,7 +26,7 @@ url = "2.5.3"
 serde_json = "1.0.140"
 xdg = "2.5.2"
 serde = { version = "1.0.219", features = ["derive"] }
-toml = "0.8.21"
+toml = "0.8.22"
 clap = { version = "4", features = ["env", "derive"] }
 prometheus = { version = "0.14.0", features = ["reqwest", "push"] }
 env_logger = { version = "0.11.6" }
