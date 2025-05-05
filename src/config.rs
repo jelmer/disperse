@@ -39,7 +39,7 @@ pub struct CratesIoConfig {
 }
 
 pub fn load_config() -> Result<Option<Config>, Box<dyn std::error::Error>> {
-    let xdg = xdg::BaseDirectories::with_prefix("disperse")?;
+    let xdg = xdg::BaseDirectories::with_prefix("disperse");
 
     let config_file_path = xdg.place_config_file(CONFIG_FILE_NAME)?;
 
