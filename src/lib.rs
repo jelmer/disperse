@@ -9,7 +9,7 @@ pub mod project_config;
 pub mod python;
 pub mod version;
 use breezyshim::branch::Branch;
-use breezyshim::tree::Tree;
+use breezyshim::repository::Repository;
 use breezyshim::workingtree::WorkingTree;
 use log::warn;
 use std::path::{Path, PathBuf};
@@ -35,16 +35,24 @@ impl pyo3::FromPyObject<'_> for Status {
 }
 
 #[cfg(feature = "pyo3")]
-impl pyo3::ToPyObject for Status {
-    fn to_object(&self, py: pyo3::Python) -> pyo3::PyObject {
-        self.to_string().to_object(py)
+impl<'py> pyo3::IntoPyObject<'py> for Status {
+    type Target = pyo3::types::PyString;
+    type Output = pyo3::Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(pyo3::types::PyString::new(py, &self.to_string()))
     }
 }
 
 #[cfg(feature = "pyo3")]
-impl pyo3::IntoPy<pyo3::PyObject> for Status {
-    fn into_py(self, py: pyo3::Python) -> pyo3::PyObject {
-        self.to_string().into_py(py)
+impl<'py> pyo3::IntoPyObject<'py> for &Status {
+    type Target = pyo3::types::PyString;
+    type Output = pyo3::Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(pyo3::types::PyString::new(py, &self.to_string()))
     }
 }
 
@@ -77,7 +85,7 @@ pub fn check_new_revisions(
     let repository = branch.repository();
     let graph = repository.get_graph();
     let from_revid = graph
-        .iter_lefthand_ancestry(&branch.last_revision(), None)
+        .iter_lefthand_ancestry(&branch.last_revision(), None)?
         .find_map(|revid| {
             let revid = revid.ok()?;
             if tags.contains_key(&revid) {
@@ -128,7 +136,7 @@ pub fn find_last_version_in_tags(
     let graph = branch.repository().get_graph();
 
     let (revid, tags) = graph
-        .iter_lefthand_ancestry(&branch.last_revision(), None)
+        .iter_lefthand_ancestry(&branch.last_revision(), None)?
         .find_map(|r| {
             let revid = r.ok()?;
             rev_tag_dict.get(&revid).map(|tags| (revid, tags))
@@ -153,7 +161,7 @@ pub fn find_last_version_in_tags(
 }
 
 pub fn find_last_version_in_files(
-    tree: &WorkingTree,
+    tree: &dyn WorkingTree,
     cfg: &project_config::ProjectConfig,
 ) -> Result<Option<(crate::version::Version, Option<Status>)>, Box<dyn std::error::Error>> {
     if tree.has_filename(Path::new("Cargo.toml")) {
@@ -275,7 +283,7 @@ fn test_drop_segment_parameters() {
 }
 
 pub fn iter_glob<'a>(
-    local_tree: &'a WorkingTree,
+    local_tree: &'a dyn WorkingTree,
     pattern: &str,
 ) -> impl Iterator<Item = PathBuf> + 'a {
     let abspath = local_tree.basedir();

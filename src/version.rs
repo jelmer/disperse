@@ -162,16 +162,24 @@ mod tests {
 }
 
 #[cfg(feature = "pyo3")]
-impl ToPyObject for Version {
-    fn to_object(&self, py: pyo3::Python) -> pyo3::PyObject {
-        self.to_string().to_object(py)
+impl<'py> pyo3::IntoPyObject<'py> for Version {
+    type Target = pyo3::types::PyString;
+    type Output = pyo3::Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(pyo3::types::PyString::new(py, &self.to_string()))
     }
 }
 
 #[cfg(feature = "pyo3")]
-impl IntoPy<pyo3::PyObject> for Version {
-    fn into_py(self, py: pyo3::Python) -> pyo3::PyObject {
-        self.to_string().into_py(py)
+impl<'py> pyo3::IntoPyObject<'py> for &Version {
+    type Target = pyo3::types::PyString;
+    type Output = pyo3::Bound<'py, Self::Target>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(pyo3::types::PyString::new(py, &self.to_string()))
     }
 }
 

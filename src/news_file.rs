@@ -316,13 +316,13 @@ pub fn news_mark_released(
 }
 
 pub struct NewsFile<'a> {
-    tree: &'a breezyshim::tree::WorkingTree,
+    tree: &'a dyn breezyshim::tree::WorkingTree,
     path: std::path::PathBuf,
 }
 
 impl<'a> NewsFile<'a> {
     pub fn new(
-        tree: &'a breezyshim::tree::WorkingTree,
+        tree: &'a dyn breezyshim::tree::WorkingTree,
         path: &std::path::Path,
     ) -> Result<Self, Error> {
         Ok(Self {

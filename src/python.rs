@@ -44,7 +44,7 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 pub fn update_version_in_pyproject_toml(
-    tree: &WorkingTree,
+    tree: &dyn WorkingTree,
     new_version: &crate::Version,
 ) -> Result<bool, Error> {
     let cargo_toml_contents = tree.get_file_text(Path::new("pyproject.toml"))?;
@@ -201,7 +201,7 @@ pub fn find_name_in_pyproject_toml(tree: &dyn Tree) -> Option<String> {
         .map(|v| v.to_string())
 }
 
-pub fn find_hatch_vcs_version(tree: &WorkingTree) -> Option<Version> {
+pub fn find_hatch_vcs_version(tree: &dyn WorkingTree) -> Option<Version> {
     let cwd = tree.abspath(Path::new(".")).unwrap();
 
     // run "hatchling version"
@@ -270,7 +270,7 @@ pub fn read_project_urls_from_setup_cfg(
     path: &std::path::Path,
 ) -> pyo3::PyResult<Vec<(url::Url, Option<String>)>> {
     pyo3::Python::with_gil(|py| {
-        let setuptools = py.import_bound("setuptools.config.setupcfg")?;
+        let setuptools = py.import("setuptools.config.setupcfg")?;
 
         let config = setuptools.call_method1("read_configuration", (path,))?;
 
@@ -315,7 +315,7 @@ impl std::fmt::Display for UploadCommandFailed {
 impl std::error::Error for UploadCommandFailed {}
 
 pub fn upload_python_artifacts(
-    local_tree: &WorkingTree,
+    local_tree: &dyn WorkingTree,
     pypi_paths: &[&std::path::Path],
 ) -> Result<(), UploadCommandFailed> {
     let mut command = vec!["twine", "upload", "--non-interactive"];
@@ -347,16 +347,16 @@ pub fn upload_python_artifacts(
 }
 
 pub fn create_setup_py_artifacts(
-    local_tree: &WorkingTree,
+    local_tree: &dyn WorkingTree,
 ) -> pyo3::PyResult<Vec<std::path::PathBuf>> {
     pyo3::Python::with_gil(|py| {
         // Initialize an empty vector to store pypi_paths
         let mut pypi_paths: Vec<std::path::PathBuf> = Vec::new();
 
         // Import required Python modules
-        let os = py.import_bound("os")?;
-        let run_setup = py.import_bound("distutils.core")?.getattr("run_setup")?;
-        let _setuptools = py.import_bound("setuptools")?;
+        let os = py.import("os")?;
+        let run_setup = py.import("distutils.core")?.getattr("run_setup")?;
+        let _setuptools = py.import("setuptools")?;
 
         // Save the original directory
         let orig_dir = os.call_method0("getcwd")?;
@@ -386,7 +386,7 @@ pub fn create_setup_py_artifacts(
                 .unwrap_or(false);
 
         let builder = py
-            .import_bound("build")?
+            .import("build")?
             .call_method1("ProjectBuilder", (setup_dir,))?;
 
         if is_pure {
@@ -410,12 +410,12 @@ pub fn create_setup_py_artifacts(
 }
 
 pub fn create_python_artifacts(
-    local_tree: &WorkingTree,
+    local_tree: &dyn WorkingTree,
 ) -> pyo3::PyResult<Vec<std::path::PathBuf>> {
     pyo3::Python::with_gil(|py| {
         let mut pypi_paths = Vec::new();
 
-        let project_builder = py.import_bound("build")?.call_method1(
+        let project_builder = py.import("build")?.call_method1(
             "ProjectBuilder",
             (local_tree.abspath(Path::new(".")).unwrap(),),
         )?;
