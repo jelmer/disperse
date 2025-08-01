@@ -1,4 +1,4 @@
-use breezyshim::tree::{MutableTree, Tree, WorkingTree};
+use breezyshim::tree::{Tree, WorkingTree};
 
 use std::path::Path;
 use std::process::Command;
@@ -56,7 +56,7 @@ pub fn get_owned_crates(user: &str) -> Result<Vec<url::Url>, Error> {
 }
 
 // Define a function to publish a Rust package using Cargo
-pub fn publish(tree: &WorkingTree, subpath: &Path) -> Result<(), Error> {
+pub fn publish(tree: &dyn WorkingTree, subpath: &Path) -> Result<(), Error> {
     Command::new("cargo")
         .arg("publish")
         .current_dir(tree.abspath(subpath)?)
@@ -110,7 +110,7 @@ pub fn update_version_in_toml(
 }
 
 // Define a function to update the version in the Cargo.toml file
-pub fn update_version(tree: &WorkingTree, new_version: &str) -> Result<(), Error> {
+pub fn update_version(tree: &dyn WorkingTree, new_version: &str) -> Result<(), Error> {
     // Read the Cargo.toml file
     let cargo_toml_contents = tree.get_file_text(Path::new("Cargo.toml"))?;
 

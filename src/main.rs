@@ -1,4 +1,6 @@
+use breezyshim::branch::Branch;
 use breezyshim::error::Error as BrzError;
+use breezyshim::repository::Repository;
 use breezyshim::tree::{MutableTree, Tree};
 use breezyshim::workingtree::{self, WorkingTree};
 use clap::Parser;
@@ -217,7 +219,7 @@ struct InitArgs {
 }
 
 pub fn find_last_version(
-    workingtree: &WorkingTree,
+    workingtree: &dyn WorkingTree,
     cfg: &ProjectConfig,
 ) -> Result<(Option<Version>, Option<disperse::Status>), Box<dyn std::error::Error>> {
     match find_last_version_in_files(workingtree, cfg) {
@@ -233,7 +235,7 @@ pub fn find_last_version(
     }
 
     if let Some(tag_name) = cfg.tag_name.as_deref() {
-        match find_last_version_in_tags(workingtree.branch().as_ref(), tag_name) {
+        match find_last_version_in_tags(&workingtree.branch(), tag_name) {
             Ok((Some(v), s)) => {
                 return Ok((Some(v), s));
             }
@@ -249,7 +251,7 @@ pub fn find_last_version(
     Ok((None, None))
 }
 
-pub fn info(tree: &WorkingTree, branch: &dyn breezyshim::branch::Branch) -> i32 {
+pub fn info(tree: &dyn WorkingTree, branch: &dyn breezyshim::branch::Branch) -> i32 {
     let cfg = match disperse::project_config::read_project_with_fallback(tree) {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -299,10 +301,15 @@ pub fn info(tree: &WorkingTree, branch: &dyn breezyshim::branch::Branch) -> i32 
 
             if rev.revision_id != branch.last_revision() {
                 let graph = branch.repository().get_graph();
-                let missing = graph
+                let missing = match graph
                     .iter_lefthand_ancestry(&branch.last_revision(), Some(&[release_revid]))
-                    .collect::<Result<Vec<_>, _>>()
-                    .unwrap();
+                {
+                    Ok(iter) => iter.collect::<Result<Vec<_>, _>>().unwrap(),
+                    Err(e) => {
+                        log::error!("Failed to get ancestry: {}", e);
+                        return 1;
+                    }
+                };
                 if missing.last().map(|r| r.is_null()).unwrap() {
                     log::info!("  last release not found in ancestry");
                 } else {
@@ -384,16 +391,22 @@ fn info_many(urls: &[Url]) -> i32 {
 
         if let Some(wt) = local_wt {
             let lock = wt.lock_read();
-            ret += info(&wt, branch.as_ref());
+            ret += info(&wt, &*branch);
             std::mem::drop(lock);
         } else {
-            let main_branch = breezyshim::branch::open(url).unwrap();
+            let main_branch_box = breezyshim::branch::open(url).unwrap();
+            // Downcast Box<dyn Branch> to GenericBranch
+            let main_branch = main_branch_box
+                .as_any()
+                .downcast_ref::<breezyshim::branch::GenericBranch>()
+                .expect("Expected GenericBranch")
+                .clone();
             let ws = silver_platter::workspace::Workspace::builder()
                 .main_branch(main_branch)
                 .build()
                 .unwrap();
             let lock = ws.local_tree().lock_read();
-            let r = info(ws.local_tree(), ws.local_tree().branch().as_ref());
+            let r = info(ws.local_tree(), &ws.local_tree().branch());
             std::mem::drop(lock);
             ret += r;
         }
@@ -401,7 +414,7 @@ fn info_many(urls: &[Url]) -> i32 {
     ret
 }
 
-pub fn pick_new_version(tree: &WorkingTree, cfg: &ProjectConfig) -> Result<Version, String> {
+pub fn pick_new_version(tree: &dyn WorkingTree, cfg: &ProjectConfig) -> Result<Version, String> {
     match disperse::find_pending_version(tree, cfg) {
         Ok(new_version) => {
             return Ok(new_version);
@@ -578,9 +591,21 @@ impl std::fmt::Display for ReleaseError {
 
 impl std::error::Error for ReleaseError {}
 
-fn is_git_repo(repository: &breezyshim::repository::Repository) -> bool {
+fn is_git_repo(repository: &dyn breezyshim::repository::Repository) -> bool {
+    use breezyshim::repository::PyRepository;
     use pyo3::prelude::*;
-    pyo3::Python::with_gil(|py| repository.to_object(py).bind(py).hasattr("_git")).unwrap()
+
+    // Try to downcast to GenericRepository which implements PyRepository
+    if let Some(py_repo) = repository
+        .as_any()
+        .downcast_ref::<breezyshim::repository::GenericRepository>()
+    {
+        pyo3::Python::with_gil(|py| py_repo.to_object(py).bind(py).hasattr("_git")).unwrap()
+    } else {
+        // If it's not a GenericRepository, we can't determine if it's a git repo
+        // This might happen with test repositories or other special implementations
+        panic!("Cannot determine if repository is git: not a GenericRepository");
+    }
 }
 
 #[derive(Debug)]
@@ -724,7 +749,7 @@ async fn publish_artifacts(
     Ok(artifacts)
 }
 
-fn determine_verify_command(cfg: &ProjectConfig, wt: &WorkingTree) -> Option<String> {
+fn determine_verify_command(cfg: &ProjectConfig, wt: &dyn WorkingTree) -> Option<String> {
     if let Some(verify_command) = cfg.verify_command.as_ref() {
         Some(verify_command.clone())
     } else if wt.has_filename(Path::new("tox.ini")) {
@@ -852,11 +877,21 @@ pub async fn release_project(
     let mut wsbuilder = silver_platter::workspace::Workspace::builder();
 
     if let Some(public_branch) = public_branch.take() {
-        wsbuilder = wsbuilder.main_branch(public_branch);
+        let generic_branch = public_branch
+            .as_any()
+            .downcast_ref::<breezyshim::branch::GenericBranch>()
+            .expect("Expected GenericBranch")
+            .clone();
+        wsbuilder = wsbuilder.main_branch(generic_branch);
     }
 
     if let Some(local_branch) = local_branch.take() {
-        wsbuilder = wsbuilder.cached_branch(local_branch);
+        let generic_branch = local_branch
+            .as_any()
+            .downcast_ref::<breezyshim::branch::GenericBranch>()
+            .expect("Expected GenericBranch")
+            .clone();
+        wsbuilder = wsbuilder.cached_branch(generic_branch);
     }
 
     let mut ws = wsbuilder.build().unwrap();
@@ -919,7 +954,12 @@ pub async fn release_project(
             let b = series.branch();
             public_repo_url = b.get(lp).await.unwrap().web_link;
             if let Some(url) = &public_repo_url {
-                let main_branch = breezyshim::branch::open(url).unwrap();
+                let main_branch_box = breezyshim::branch::open(url).unwrap();
+                let main_branch = main_branch_box
+                    .as_any()
+                    .downcast_ref::<breezyshim::branch::GenericBranch>()
+                    .expect("Expected GenericBranch")
+                    .clone();
                 ws.set_main_branch(main_branch).unwrap();
             }
             // TODO: Check for git repository
@@ -935,8 +975,13 @@ pub async fn release_project(
     if let Some(github) = cfg.github.as_ref() {
         let url = &github.url;
         public_repo_url = Some(url.parse().unwrap());
-        ws.set_main_branch(breezyshim::branch::open(public_repo_url.as_ref().unwrap()).unwrap())
-            .unwrap();
+        let main_branch_box = breezyshim::branch::open(public_repo_url.as_ref().unwrap()).unwrap();
+        let main_branch = main_branch_box
+            .as_any()
+            .downcast_ref::<breezyshim::branch::GenericBranch>()
+            .expect("Expected GenericBranch")
+            .clone();
+        ws.set_main_branch(main_branch).unwrap();
         gh_repo = Some(
             disperse::github::get_github_repo(&gh, public_repo_url.as_ref().unwrap())
                 .await
@@ -1096,7 +1141,7 @@ pub async fn release_project(
     }
 
     if !disperse::check_new_revisions(
-        ws.local_tree().branch().as_ref(),
+        &ws.local_tree().branch(),
         cfg.news_file.as_ref().map(Path::new),
     )
     .map_err(|e| ReleaseError::Other(e.to_string()))?
@@ -1111,7 +1156,7 @@ pub async fn release_project(
     if let Err(RecentCommits {
         min_commit_age,
         commit_age,
-    }) = check_release_age(ws.local_tree().branch().as_ref(), &cfg, now)
+    }) = check_release_age(&ws.local_tree().branch(), &cfg, now)
     {
         RECENT_COMMITS_COUNT.with_label_values(&[&name]).inc();
         if !force {
@@ -1378,6 +1423,7 @@ pub async fn release_project(
                         None,
                         None,
                         None,
+                        None, // work_in_progress
                     )?;
                     Some(mp)
                 } else {
@@ -1734,7 +1780,7 @@ fn validate_config(path: &std::path::Path) -> i32 {
     0
 }
 
-fn verify(wt: &WorkingTree) -> Result<(), i32> {
+fn verify(wt: &dyn WorkingTree) -> Result<(), i32> {
     let cfg = match disperse::project_config::read_project_with_fallback(wt) {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -1770,7 +1816,7 @@ fn verify(wt: &WorkingTree) -> Result<(), i32> {
     Ok(())
 }
 
-fn init(wt: &WorkingTree) -> Result<(), i32> {
+fn init(wt: &dyn WorkingTree) -> Result<(), i32> {
     if wt.has_filename(Path::new("disperse.toml")) {
         log::info!("Already initialized");
         return Ok(());
@@ -1803,7 +1849,7 @@ fn init(wt: &WorkingTree) -> Result<(), i32> {
     Ok(())
 }
 
-fn migrate(wt: &WorkingTree) -> Result<(), i32> {
+fn migrate(wt: &dyn WorkingTree) -> Result<(), i32> {
     if wt.has_filename(Path::new("disperse.toml")) {
         log::info!("Already migrated");
         return Ok(());
@@ -1994,7 +2040,7 @@ async fn main() {
         Commands::Validate(args) => validate_config(&args.path),
         Commands::Info(args) => {
             let wt = workingtree::open(args.path.as_ref()).unwrap();
-            info(&wt, wt.branch().as_ref())
+            info(&wt, &wt.branch())
         }
         Commands::Verify(args) => {
             let wt = workingtree::open(args.path.as_ref()).unwrap();

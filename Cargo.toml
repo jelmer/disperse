@@ -30,8 +30,8 @@ toml = "0.8.23"
 clap = { version = "4", features = ["env", "derive"] }
 prometheus = { version = "0.14.0", features = ["reqwest", "push"] }
 env_logger = { version = "0.11.6" }
-silver-platter = { version = "0.5.48", default-features = false }
-#silver-platter = { git = "https://github.com/jelmer/silver-platter" }
+#silver-platter = { version = "0.5.48", default-features = false }
+silver-platter = { git = "https://github.com/jelmer/silver-platter", default-features = false }
 maplit = "1.0.2"
 lazy_static = "1.4.0"
 octocrab = "0.44"
@@ -51,7 +51,7 @@ default = ["pyo3"]
 pyo3 = []
 
 [workspace.dependencies]
-pyo3 = { version = ">=0.20", features = ["serde"] }
+pyo3 = { version = "0.25", features = ["serde"] }
 chrono = "0.4.41"
 
 [[bin]]
@@ -60,4 +60,4 @@ path = "src/main.rs"
 
 [dev-dependencies]
 tempfile = "3.20.0"
-pyo3 = { features = ["auto-initialize"], version = "0.22" }
+pyo3 = { features = ["auto-initialize"], version = "0.25" }

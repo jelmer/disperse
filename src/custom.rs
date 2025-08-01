@@ -283,7 +283,7 @@ pub fn update_version_in_file(
 
 #[cfg(test)]
 mod tests {
-    use breezyshim::tree::Tree;
+    use breezyshim::tree::{MutableTree, Tree, WorkingTree};
     #[test]
     fn test_update_version_in_file() {
         breezyshim::init();
