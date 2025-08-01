@@ -505,7 +505,7 @@ dependencies = [
 
 [[package]]
 name = "disperse"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "breezyshim",
  "chrono",
@@ -2713,8 +2713,9 @@ dependencies = [
 
 [[package]]
 name = "silver-platter"
-version = "0.5.48"
-source = "git+https://github.com/jelmer/silver-platter#b36ac02e8c0721734d5d1fba3e2ae19c0ad47c48"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "804be3733ff91cff0e9e6df5b545d83474b92fa59176bdcac0a25c16a97c49ac"
 dependencies = [
  "breezyshim",
  "chrono",
