@@ -94,16 +94,19 @@ pub fn find_version_in_pyproject_toml(tree: &dyn Tree) -> Result<Option<Version>
         .transpose()
 }
 
-pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Error> {
-    let request = Request::new("user_packages").arg(pypi_user);
-
-    let response = request
-        .call_url("https://pypi.org/pypi")
-        .map_err(|e| Error::Other(format!("Error calling PyPI: {}", e)))?;
+pub async fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Error> {
+    let pypi_user = pypi_user.to_string();
+    let response = tokio::task::spawn_blocking(move || {
+        let request = Request::new("user_packages").arg(pypi_user);
+        request.call_url("https://pypi.org/pypi")
+    })
+    .await
+    .map_err(|e| Error::Other(format!("Error joining task: {}", e)))?
+    .map_err(|e| Error::Other(format!("Error calling PyPI: {}", e)))?;
 
     let mut ret = vec![];
 
-    let client = reqwest::blocking::ClientBuilder::new()
+    let client = reqwest::ClientBuilder::new()
         .user_agent(crate::USER_AGENT)
         .build()
         .map_err(|e| Error::Other(format!("Error building HTTP client: {}", e)))?;
@@ -115,10 +118,12 @@ pub fn pypi_discover_urls(pypi_user: &str) -> Result<Vec<url::Url>, Error> {
         let resp = client
             .get(&req_url)
             .send()
+            .await
             .map_err(|e| Error::Other(format!("Error fetching {}: {}", req_url, e)))?;
 
         let data: Value = resp
             .json()
+            .await
             .map_err(|e| Error::Other(format!("Error parsing JSON from {}: {}", req_url, e)))?;
         if let Some(project_urls) = data["info"]["project_urls"].as_object() {
             if project_urls.is_empty() {

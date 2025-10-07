@@ -1971,11 +1971,16 @@ async fn main() {
                 Some(crates_io_user) => Some(crates_io_user.clone()),
             };
 
-            let pypi_urls = pypi_usernames
-                .iter()
-                .flat_map(|pypi_username| disperse::python::pypi_discover_urls(pypi_username))
-                .flatten()
-                .collect::<Vec<_>>();
+            let pypi_urls = futures::future::join_all(
+                pypi_usernames
+                    .iter()
+                    .map(|pypi_username| disperse::python::pypi_discover_urls(pypi_username)),
+            )
+            .await
+            .into_iter()
+            .filter_map(|r| r.ok())
+            .flatten()
+            .collect::<Vec<_>>();
 
             let crates_io_urls = match crates_io_user {
                 Option::None => {
