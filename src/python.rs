@@ -274,7 +274,7 @@ pub fn read_project_urls_from_pyproject_toml(
 pub fn read_project_urls_from_setup_cfg(
     path: &std::path::Path,
 ) -> pyo3::PyResult<Vec<(url::Url, Option<String>)>> {
-    pyo3::Python::with_gil(|py| {
+    pyo3::Python::attach(|py| {
         let setuptools = py.import("setuptools.config.setupcfg")?;
 
         let config = setuptools.call_method1("read_configuration", (path,))?;
@@ -354,7 +354,7 @@ pub fn upload_python_artifacts(
 pub fn create_setup_py_artifacts(
     local_tree: &dyn WorkingTree,
 ) -> pyo3::PyResult<Vec<std::path::PathBuf>> {
-    pyo3::Python::with_gil(|py| {
+    pyo3::Python::attach(|py| {
         // Initialize an empty vector to store pypi_paths
         let mut pypi_paths: Vec<std::path::PathBuf> = Vec::new();
 
@@ -417,7 +417,7 @@ pub fn create_setup_py_artifacts(
 pub fn create_python_artifacts(
     local_tree: &dyn WorkingTree,
 ) -> pyo3::PyResult<Vec<std::path::PathBuf>> {
-    pyo3::Python::with_gil(|py| {
+    pyo3::Python::attach(|py| {
         let mut pypi_paths = Vec::new();
 
         let project_builder = py.import("build")?.call_method1(
