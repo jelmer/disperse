@@ -184,9 +184,10 @@ impl<'py> pyo3::IntoPyObject<'py> for &Version {
 }
 
 #[cfg(feature = "pyo3")]
-impl FromPyObject<'_> for Version {
-    fn extract_bound(ob: &pyo3::Bound<pyo3::PyAny>) -> pyo3::PyResult<Self> {
-        use pyo3::prelude::*;
+impl<'py> FromPyObject<'_, 'py> for Version {
+    type Error = pyo3::PyErr;
+
+    fn extract(ob: pyo3::Borrowed<'_, 'py, pyo3::PyAny>) -> Result<Self, Self::Error> {
         let s = ob.extract::<String>()?;
         Version::from_str(s.as_str())
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid version: {}", e)))

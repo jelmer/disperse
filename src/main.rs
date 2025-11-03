@@ -600,7 +600,7 @@ fn is_git_repo(repository: &dyn breezyshim::repository::Repository) -> bool {
         .as_any()
         .downcast_ref::<breezyshim::repository::GenericRepository>()
     {
-        pyo3::Python::with_gil(|py| py_repo.to_object(py).bind(py).hasattr("_git")).unwrap()
+        pyo3::Python::attach(|py| py_repo.to_object(py).bind(py).hasattr("_git")).unwrap()
     } else {
         // If it's not a GenericRepository, we can't determine if it's a git repo
         // This might happen with test repositories or other special implementations
@@ -1938,7 +1938,7 @@ async fn main() {
 
     log::debug!("Config: {:?}", config);
 
-    pyo3::prepare_freethreaded_python();
+    pyo3::Python::initialize();
 
     breezyshim::init();
     breezyshim::plugin::load_plugins();
