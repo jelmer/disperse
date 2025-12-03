@@ -44,7 +44,7 @@ fn quoted_version(v: &Version, _s: Status) -> Option<String> {
     Some(format!("\"{}\"", v.to_string()))
 }
 
-type VersionFormatter = Box<dyn Fn(&Version, Status) -> Option<String> + Sync>;
+type VersionFormatter = Box<dyn Fn(&Version, Status) -> Option<String> + Sync + Send>;
 
 lazy_static::lazy_static! {
     pub static ref VERSION_VARIABLES: HashMap<&'static str, VersionFormatter> = hashmap! {

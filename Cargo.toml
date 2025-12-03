@@ -30,12 +30,12 @@ toml = "0.9.5"
 clap = { version = "4", features = ["env", "derive"] }
 prometheus = { version = "0.14.0", features = ["reqwest", "push"] }
 env_logger = { version = "0.11.6" }
-silver-platter = { version = "0.7.0", default-features = false }
+silver-platter = { version = ">=0.8,<0.9", default-features = false }
 maplit = "1.0.2"
 lazy_static = "1.4.0"
-octocrab = "0.47"
+octocrab = ">=0.47,<0.49"
 glob = "0.3.2"
-launchpadlib = { version = "0.5.3", features = ["keyring", "api-v1_0", "async"], default-features = false }
+launchpadlib = { version = "0.5.3", features = ["keyring", "api-v1_0", "async", "blocking", "bugs", "code"], default-features = false }
 #launchpadlib = { path = "../launchpadlib-rs", features = ["keyring", "api-v1_0", "async"], default-features = false }
 tokio = { version = "1", features = ["full"] }
 keyring = { version = "3.6.2", features = ["apple-native", "windows-native", "linux-native"] }
