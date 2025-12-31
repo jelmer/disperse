@@ -456,4 +456,45 @@ mod tests {
         let version = super::news_find_pending(&lines).expect("find pending failed");
         assert_eq!(version, None);
     }
+
+    #[test]
+    fn test_skip_header() {
+        // Test with "Changelog for" header
+        let lines = vec![
+            b"Changelog for foo".as_slice(),
+            b"====================".as_slice(),
+            b"1.2.3 2021-01-01".as_slice(),
+        ];
+        let mut iter = lines.into_iter().peekable();
+        let count = super::skip_header(&mut iter);
+        assert_eq!(count, 2);
+        assert_eq!(iter.next(), Some(b"1.2.3 2021-01-01".as_slice()));
+
+        // Test with "release notes" header
+        let lines2 = vec![
+            b"My Project release notes".as_slice(),
+            b"========================".as_slice(),
+            b"1.2.3 2021-01-01".as_slice(),
+        ];
+        let mut iter2 = lines2.into_iter().peekable();
+        let count2 = super::skip_header(&mut iter2);
+        assert_eq!(count2, 2);
+        assert_eq!(iter2.next(), Some(b"1.2.3 2021-01-01".as_slice()));
+
+        // Test with no header
+        let lines3 = vec![b"1.2.3 2021-01-01".as_slice(), b"  * Change 1".as_slice()];
+        let mut iter3 = lines3.into_iter().peekable();
+        let count3 = super::skip_header(&mut iter3);
+        assert_eq!(count3, 0);
+        assert_eq!(iter3.next(), Some(b"1.2.3 2021-01-01".as_slice()));
+    }
+
+    #[test]
+    fn test_error_display() {
+        let err = super::Error::NoUnreleasedChanges;
+        assert_eq!(err.to_string(), "No unreleased changes");
+
+        let err2 = super::Error::OddVersion("1.2.3.4".to_string());
+        assert_eq!(err2.to_string(), "Odd version: 1.2.3.4");
+    }
 }

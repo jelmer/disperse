@@ -281,4 +281,10 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_error_display() {
+        let err = super::Error::Other("test error".to_string());
+        assert_eq!(err.to_string(), "Other: test error");
+    }
 }
