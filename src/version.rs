@@ -158,6 +158,185 @@ mod tests {
                 None
             )
         );
+
+        // Test error cases to catch logic errors
+        assert!(Version::from_tupled("").is_err());
+        assert!(Version::from_tupled("not_a_number").is_err());
+        assert!(Version::from_tupled("(1, 2, not_a_number)").is_err());
+    }
+
+    #[test]
+    fn test_increase_version_major() {
+        let mut v = Version {
+            major: 1,
+            minor: Some(2),
+            micro: Some(3),
+        };
+        increase_version(&mut v, 0);
+        assert_eq!(v.major, 2);
+        assert_eq!(v.minor, Some(2));
+        assert_eq!(v.micro, Some(3));
+    }
+
+    #[test]
+    fn test_increase_version_minor() {
+        let mut v = Version {
+            major: 1,
+            minor: Some(2),
+            micro: Some(3),
+        };
+        increase_version(&mut v, 1);
+        assert_eq!(v.major, 1);
+        assert_eq!(v.minor, Some(3));
+        assert_eq!(v.micro, Some(3));
+
+        // Test when minor is None
+        let mut v2 = Version {
+            major: 1,
+            minor: None,
+            micro: Some(3),
+        };
+        increase_version(&mut v2, 1);
+        assert_eq!(v2.major, 1);
+        assert_eq!(v2.minor, Some(1));
+        assert_eq!(v2.micro, Some(3));
+    }
+
+    #[test]
+    fn test_increase_version_micro() {
+        let mut v = Version {
+            major: 1,
+            minor: Some(2),
+            micro: Some(3),
+        };
+        increase_version(&mut v, 2);
+        assert_eq!(v.major, 1);
+        assert_eq!(v.minor, Some(2));
+        assert_eq!(v.micro, Some(4));
+
+        // Test when micro is None
+        let mut v2 = Version {
+            major: 1,
+            minor: Some(2),
+            micro: None,
+        };
+        increase_version(&mut v2, 2);
+        assert_eq!(v2.major, 1);
+        assert_eq!(v2.minor, Some(2));
+        assert_eq!(v2.micro, Some(1));
+    }
+
+    #[test]
+    fn test_increase_version_auto() {
+        // Test -1 index (auto increment rightmost component)
+        let mut v = Version {
+            major: 1,
+            minor: Some(2),
+            micro: Some(3),
+        };
+        increase_version(&mut v, -1);
+        assert_eq!(v.major, 1);
+        assert_eq!(v.minor, Some(2));
+        assert_eq!(v.micro, Some(4));
+
+        // Test when micro is None but minor exists
+        let mut v2 = Version {
+            major: 1,
+            minor: Some(2),
+            micro: None,
+        };
+        increase_version(&mut v2, -1);
+        assert_eq!(v2.major, 1);
+        assert_eq!(v2.minor, Some(3));
+        assert_eq!(v2.micro, None);
+
+        // Test when both minor and micro are None
+        let mut v3 = Version {
+            major: 1,
+            minor: None,
+            micro: None,
+        };
+        increase_version(&mut v3, -1);
+        assert_eq!(v3.major, 2);
+        assert_eq!(v3.minor, None);
+        assert_eq!(v3.micro, None);
+    }
+
+    #[test]
+    fn test_expand_tag() {
+        let v = Version {
+            major: 1,
+            minor: Some(2),
+            micro: Some(3),
+        };
+        assert_eq!(expand_tag("v$VERSION", &v), "v1.2.3");
+        assert_eq!(expand_tag("release-$VERSION", &v), "release-1.2.3");
+        assert_eq!(expand_tag("$VERSION", &v), "1.2.3");
+    }
+
+    #[test]
+    fn test_unexpand_tag() {
+        let result = unexpand_tag("v$VERSION", "v1.2.3").unwrap();
+        assert_eq!(result.major, 1);
+        assert_eq!(result.minor, Some(2));
+        assert_eq!(result.micro, Some(3));
+
+        let result2 = unexpand_tag("release-$VERSION", "release-2.0.0").unwrap();
+        assert_eq!(result2.major, 2);
+        assert_eq!(result2.minor, Some(0));
+        assert_eq!(result2.micro, Some(0));
+
+        // Test error case
+        assert!(unexpand_tag("v$VERSION", "1.2.3").is_err());
+        assert!(unexpand_tag("v$VERSION", "v-invalid").is_err());
+    }
+
+    #[test]
+    fn test_version_display() {
+        let v1 = Version {
+            major: 1,
+            minor: Some(2),
+            micro: Some(3),
+        };
+        assert_eq!(v1.to_string(), "1.2.3");
+
+        let v2 = Version {
+            major: 1,
+            minor: Some(2),
+            micro: None,
+        };
+        assert_eq!(v2.to_string(), "1.2");
+
+        let v3 = Version {
+            major: 1,
+            minor: None,
+            micro: None,
+        };
+        assert_eq!(v3.to_string(), "1");
+    }
+
+    #[test]
+    fn test_version_major() {
+        let v1 = Version {
+            major: 5,
+            minor: Some(2),
+            micro: Some(3),
+        };
+        assert_eq!(v1.major(), 5);
+
+        let v2 = Version {
+            major: 0,
+            minor: None,
+            micro: None,
+        };
+        assert_eq!(v2.major(), 0);
+    }
+
+    #[test]
+    fn test_error_display() {
+        let err = Error("test error message".to_string());
+        assert_eq!(err.to_string(), "test error message");
+        assert_eq!(format!("{}", err), "test error message");
     }
 }
 

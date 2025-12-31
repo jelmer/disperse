@@ -309,3 +309,50 @@ pub fn login() -> Result<Octocrab, Error> {
     };
     Ok(builder.build()?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_display() {
+        let err = Error::InvalidGitHubUrl(
+            "https://github.com/user/repo".to_string(),
+            "test error".to_string(),
+        );
+        assert_eq!(
+            err.to_string(),
+            "Invalid GitHub URL https://github.com/user/repo: test error"
+        );
+
+        let err2 = Error::TimedOut;
+        assert_eq!(err2.to_string(), "Timed out waiting for GitHub");
+    }
+
+    #[test]
+    fn test_github_ci_status_display() {
+        let status = GitHubCIStatus::Ok;
+        assert_eq!(status.to_string(), "GitHub CI Status: OK");
+        assert!(status.is_ok());
+
+        let status2 = GitHubCIStatus::Failed {
+            sha: "abc123".to_string(),
+            html_url: Some("https://github.com/run".to_string()),
+        };
+        assert_eq!(
+            status2.to_string(),
+            "GitHub CI Status: Failed: SHA abc123, URL https://github.com/run"
+        );
+        assert!(!status2.is_ok());
+
+        let status3 = GitHubCIStatus::Pending {
+            sha: "def456".to_string(),
+            html_url: None,
+        };
+        assert_eq!(
+            status3.to_string(),
+            "GitHub CI Status: Pending: SHA def456, URL None"
+        );
+        assert!(!status3.is_ok());
+    }
+}

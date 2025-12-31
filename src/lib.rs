@@ -331,4 +331,23 @@ mod tests {
             vec![PathBuf::from("foo")]
         );
     }
+
+    #[test]
+    fn test_status_to_string() {
+        assert_eq!(Status::Final.to_string(), "final");
+        assert_eq!(Status::Dev.to_string(), "dev");
+    }
+
+    #[test]
+    fn test_status_from_str() {
+        assert_eq!("final".parse::<Status>().unwrap(), Status::Final);
+        assert_eq!("dev".parse::<Status>().unwrap(), Status::Dev);
+        assert!("invalid".parse::<Status>().is_err());
+    }
+
+    #[test]
+    fn test_find_pending_version_error_display() {
+        let err = FindPendingVersionError::NoUnreleasedChanges;
+        assert_eq!(err.to_string(), "No unreleased changes");
+    }
 }

@@ -164,4 +164,10 @@ mod tests {
         let b = b".TH BZR 1 \"2019-12-31\" \"Bazaar 2.7.0\" \"Bazaar Reference Manual\"\n";
         super::validate_manpage_updateable(&mut std::io::Cursor::new(b)).unwrap();
     }
+
+    #[test]
+    fn test_error_display() {
+        let err = super::Error::NoMatches;
+        assert_eq!(err.to_string(), "NoMatches");
+    }
 }
