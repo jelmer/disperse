@@ -51,7 +51,7 @@ pyo3 = []
 
 [workspace.dependencies]
 pyo3 = { version = "0.27", features = ["serde"] }
-chrono = "0.4.41"
+chrono = "0.4.43"
 
 [[bin]]
 name = "disperse"
