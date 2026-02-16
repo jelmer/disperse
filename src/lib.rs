@@ -57,11 +57,11 @@ impl<'py> pyo3::IntoPyObject<'py> for &Status {
     }
 }
 
-impl ToString for Status {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for Status {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Status::Final => "final".to_string(),
-            Status::Dev => "dev".to_string(),
+            Status::Final => write!(f, "final"),
+            Status::Dev => write!(f, "dev"),
         }
     }
 }

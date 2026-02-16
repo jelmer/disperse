@@ -17,23 +17,23 @@ lazy-regex = "3.4.1"
 pyo3 = { workspace = true }
 regex = "1.11.1"
 shlex = "1.2.0"
-toml_edit = "0.23.3"
+toml_edit = ">=0.23.3,<0.26"
 protobuf = "3"
 log = "0.4.27"
 xmlrpc = "0.15.1"
-reqwest = { version = "0.12", features = ["stream"] }
+reqwest = { version = ">=0.12,<0.14", features = ["stream"] }
 url = "2.5.3"
 serde_json = "1.0.141"
 xdg = "3"
 serde = { version = "1.0.219", features = ["derive"] }
-toml = "0.9.5"
+toml = ">=0.9.5,<2"
 clap = { version = "4", features = ["env", "derive"] }
 prometheus = { version = "0.14.0", features = ["reqwest", "push"] }
 env_logger = { version = "0.11.6" }
 silver-platter = { version = ">=0.8,<0.9", default-features = false }
 maplit = "1.0.2"
 lazy_static = "1.4.0"
-octocrab = ">=0.47,<0.49"
+octocrab = ">=0.47,<0.50"
 glob = "0.3.2"
 launchpadlib = { version = "0.5.3", features = ["keyring", "api-v1_0", "async", "blocking", "bugs", "code"], default-features = false }
 #launchpadlib = { path = "../launchpadlib-rs", features = ["keyring", "api-v1_0", "async"], default-features = false }
@@ -50,7 +50,7 @@ default = ["pyo3"]
 pyo3 = []
 
 [workspace.dependencies]
-pyo3 = { version = "0.27", features = ["serde"] }
+pyo3 = { version = ">=0.27,<0.29", features = ["serde"] }
 chrono = "0.4.41"
 
 [[bin]]
@@ -59,4 +59,4 @@ path = "src/main.rs"
 
 [dev-dependencies]
 tempfile = "3.20.0"
-pyo3 = { features = ["auto-initialize"], version = "0.27" }
+pyo3 = { features = ["auto-initialize"], workspace = true }

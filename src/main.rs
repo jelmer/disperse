@@ -394,13 +394,7 @@ fn info_many(urls: &[Url]) -> i32 {
             ret += info(&wt, &*branch);
             std::mem::drop(lock);
         } else {
-            let main_branch_box = breezyshim::branch::open(url).unwrap();
-            // Downcast Box<dyn Branch> to GenericBranch
-            let main_branch = main_branch_box
-                .as_any()
-                .downcast_ref::<breezyshim::branch::GenericBranch>()
-                .expect("Expected GenericBranch")
-                .clone();
+            let main_branch = breezyshim::branch::open_as_generic(url).unwrap();
             let ws = silver_platter::workspace::Workspace::builder()
                 .main_branch(main_branch)
                 .build()
@@ -802,7 +796,7 @@ pub async fn release_project(
     };
 
     let mut public_repo_url = None;
-    let mut public_branch = None;
+    let mut public_branch: Option<breezyshim::branch::GenericBranch> = None;
     let mut local_branch = None;
 
     if branch.user_transport().base().scheme() == "file" {
@@ -812,7 +806,7 @@ pub async fn release_project(
             let url: url::Url = public_branch_url.as_str().parse().unwrap();
             let url = disperse::drop_segment_parameters(&url);
             public_repo_url = Some(url.clone());
-            public_branch = Some(breezyshim::branch::open(&url).map_err(|e| {
+            public_branch = Some(breezyshim::branch::open_as_generic(&url).map_err(|e| {
                 ReleaseError::RepositoryUnavailable {
                     url: url.to_string(),
                     reason: e.to_string(),
@@ -823,7 +817,7 @@ pub async fn release_project(
             let url = disperse::drop_segment_parameters(&url);
             log::info!("Using public branch {}", &submit_branch_url);
             public_repo_url = Some(url.clone());
-            public_branch = Some(breezyshim::branch::open(&url).map_err(|e| {
+            public_branch = Some(breezyshim::branch::open_as_generic(&url).map_err(|e| {
                 ReleaseError::RepositoryUnavailable {
                     url: url.to_string(),
                     reason: e.to_string(),
@@ -834,7 +828,7 @@ pub async fn release_project(
             let url = disperse::drop_segment_parameters(&url);
             log::info!("Using public branch {}", &push_location);
             public_repo_url = Some(url.clone());
-            public_branch = Some(breezyshim::branch::open(&url).map_err(|e| {
+            public_branch = Some(breezyshim::branch::open_as_generic(&url).map_err(|e| {
                 ReleaseError::RepositoryUnavailable {
                     url: url.to_string(),
                     reason: e.to_string(),
@@ -844,7 +838,13 @@ pub async fn release_project(
     } else if ["git+ssh", "https", "http", "git"].contains(&branch.user_transport().base().scheme())
     {
         public_repo_url = Some(branch.user_transport().base());
-        public_branch = Some(branch);
+        public_branch = Some(
+            branch
+                .as_any()
+                .downcast_ref::<breezyshim::branch::GenericBranch>()
+                .expect("Expected GenericBranch")
+                .clone(),
+        );
     } else {
         log::info!(
             "Unknown repository type. Scheme: {}",
@@ -877,12 +877,7 @@ pub async fn release_project(
     let mut wsbuilder = silver_platter::workspace::Workspace::builder();
 
     if let Some(public_branch) = public_branch.take() {
-        let generic_branch = public_branch
-            .as_any()
-            .downcast_ref::<breezyshim::branch::GenericBranch>()
-            .expect("Expected GenericBranch")
-            .clone();
-        wsbuilder = wsbuilder.main_branch(generic_branch);
+        wsbuilder = wsbuilder.main_branch(public_branch);
     }
 
     if let Some(local_branch) = local_branch.take() {
@@ -954,12 +949,7 @@ pub async fn release_project(
             let b = series.branch();
             public_repo_url = b.get(lp).await.unwrap().web_link;
             if let Some(url) = &public_repo_url {
-                let main_branch_box = breezyshim::branch::open(url).unwrap();
-                let main_branch = main_branch_box
-                    .as_any()
-                    .downcast_ref::<breezyshim::branch::GenericBranch>()
-                    .expect("Expected GenericBranch")
-                    .clone();
+                let main_branch = breezyshim::branch::open_as_generic(url).unwrap();
                 ws.set_main_branch(main_branch).unwrap();
             }
             // TODO: Check for git repository
@@ -975,12 +965,8 @@ pub async fn release_project(
     if let Some(github) = cfg.github.as_ref() {
         let url = &github.url;
         public_repo_url = Some(url.parse().unwrap());
-        let main_branch_box = breezyshim::branch::open(public_repo_url.as_ref().unwrap()).unwrap();
-        let main_branch = main_branch_box
-            .as_any()
-            .downcast_ref::<breezyshim::branch::GenericBranch>()
-            .expect("Expected GenericBranch")
-            .clone();
+        let main_branch =
+            breezyshim::branch::open_as_generic(public_repo_url.as_ref().unwrap()).unwrap();
         ws.set_main_branch(main_branch).unwrap();
         gh_repo = Some(
             disperse::github::get_github_repo(&gh, public_repo_url.as_ref().unwrap())
@@ -1536,8 +1522,7 @@ pub async fn release_project(
     Ok((name, new_version))
 }
 
-async fn release_many(
-    urls: &[String],
+struct ReleaseOptions {
     new_version: Option<String>,
     ignore_ci: Option<bool>,
     ignore_verify_command: Option<bool>,
@@ -1545,7 +1530,9 @@ async fn release_many(
     discover: bool,
     force: Option<bool>,
     preserve_temp: bool,
-) -> i32 {
+}
+
+async fn release_many(urls: &[String], options: ReleaseOptions) -> i32 {
     let mut failed: Vec<(String, String)> = Vec::new();
     let mut skipped: Vec<(String, String)> = Vec::new();
     let mut success: Vec<String> = Vec::new();
@@ -1556,15 +1543,16 @@ async fn release_many(
         }
         match release_project(
             url,
-            force,
-            new_version
+            options.force,
+            options
+                .new_version
                 .as_ref()
                 .map(|v| v.as_str().parse().unwrap())
                 .as_ref(),
-            dry_run,
-            ignore_ci,
-            ignore_verify_command,
-            preserve_temp,
+            options.dry_run,
+            options.ignore_ci,
+            options.ignore_verify_command,
+            options.preserve_temp,
         )
         .await
         {
@@ -1577,7 +1565,7 @@ async fn release_many(
                     url.to_string(),
                     format!("Recent commits exist ({} < {})", min_commit_age, commit_age),
                 ));
-                if !discover {
+                if !options.discover {
                     ret = 1;
                 }
             }
@@ -1624,7 +1612,7 @@ async fn release_many(
                         version.to_string()
                     ),
                 ));
-                if !discover {
+                if !options.discover {
                     ret = 1;
                 }
             }
@@ -1636,14 +1624,14 @@ async fn release_many(
             Err(ReleaseError::NoUnreleasedChanges) => {
                 log::error!("No unreleased changes");
                 skipped.push((url.to_string(), "No unreleased changes".to_string()));
-                if !discover {
+                if !options.discover {
                     ret = 1;
                 }
             }
             Err(ReleaseError::NoDisperseConfig) => {
                 log::error!("No configuration for disperse");
                 skipped.push((url.to_string(), "No configuration for disperse".to_string()));
-                if !discover {
+                if !options.discover {
                     ret = 1;
                 }
             }
@@ -1718,7 +1706,7 @@ async fn release_many(
         }
     }
 
-    if discover {
+    if options.discover {
         log::info!(
             "{} successfully released, {} skipped, {} failed",
             success.len(),
@@ -1947,13 +1935,15 @@ async fn main() {
         Commands::Release(release_args) => {
             release_many(
                 release_args.url.as_slice(),
-                release_args.new_version.clone(),
-                Some(release_args.ignore_ci),
-                Some(release_args.ignore_verify_command),
-                Some(args.dry_run),
-                release_args.discover,
-                Some(true),
-                release_args.preserve_temp,
+                ReleaseOptions {
+                    new_version: release_args.new_version.clone(),
+                    ignore_ci: Some(release_args.ignore_ci),
+                    ignore_verify_command: Some(release_args.ignore_verify_command),
+                    dry_run: Some(args.dry_run),
+                    discover: release_args.discover,
+                    force: Some(true),
+                    preserve_temp: release_args.preserve_temp,
+                },
             )
             .await
         }
@@ -2022,13 +2012,15 @@ async fn main() {
                             .map(|x| x.to_string())
                             .collect::<Vec<_>>()
                             .as_slice(),
-                        None,
-                        Some(false),
-                        Some(false),
-                        Some(false),
-                        true,
-                        Some(false),
-                        false,
+                        ReleaseOptions {
+                            new_version: None,
+                            ignore_ci: Some(false),
+                            ignore_verify_command: Some(false),
+                            dry_run: Some(false),
+                            discover: true,
+                            force: Some(false),
+                            preserve_temp: false,
+                        },
                     )
                     .await
                 };

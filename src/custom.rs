@@ -41,7 +41,7 @@ fn version_version(v: &Version, _s: Status) -> Option<String> {
 }
 
 fn quoted_version(v: &Version, _s: Status) -> Option<String> {
-    Some(format!("\"{}\"", v.to_string()))
+    Some(format!("\"{}\"", v))
 }
 
 type VersionFormatter = Box<dyn Fn(&Version, Status) -> Option<String> + Sync + Send>;

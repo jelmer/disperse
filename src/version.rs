@@ -28,16 +28,16 @@ impl std::str::FromStr for Version {
     }
 }
 
-impl ToString for Version {
-    fn to_string(&self) -> String {
-        let mut s = self.major.to_string();
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.major)?;
         if let Some(minor) = self.minor {
-            s.push_str(format!(".{}", minor).as_str());
+            write!(f, ".{}", minor)?;
         }
         if let Some(micro) = self.micro {
-            s.push_str(format!(".{}", micro).as_str());
+            write!(f, ".{}", micro)?;
         }
-        s
+        Ok(())
     }
 }
 

@@ -239,7 +239,7 @@ impl std::fmt::Display for Error {
                 write!(
                     f,
                     "Pending version already exists: {} {}",
-                    last_version.to_string(),
+                    last_version,
                     last_date.map_or_else(
                         || "UNRELEASED".to_string(),
                         |x| x.format("%Y-%m-%d").to_string()
@@ -286,7 +286,7 @@ pub fn news_mark_released(
             expected_version.to_string().as_str(),
             version,
             "unexpected version: {} != {}",
-            expected_version.to_string(),
+            expected_version,
             version
         );
     }
