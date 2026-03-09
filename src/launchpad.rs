@@ -42,7 +42,7 @@ pub async fn find_project_series(
             })
             .collect::<Vec<_>>();
         if possible_series.len() == 1 {
-            return Ok(possible_series.pop().unwrap());
+            Ok(possible_series.pop().unwrap())
         } else {
             log::warn!(
                 "Multiple release series exist, but none specified. Assuming development focus"
