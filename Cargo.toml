@@ -40,6 +40,8 @@ launchpadlib = { version = "0.5.3", features = ["keyring", "api-v1_0", "async", 
 tokio = { version = "1", features = ["full"] }
 keyring = { version = "3.6.2", features = ["apple-native", "windows-native", "linux-native"] }
 futures = "0.3.31"
+rmcp = { version = "1.2", features = ["server", "macros", "transport-io"] }
+schemars = "1.0"
 
 [build-dependencies]
 protobuf-codegen = "3"

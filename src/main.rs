@@ -1,3 +1,5 @@
+mod mcp;
+
 use breezyshim::branch::Branch;
 use breezyshim::error::Error as BrzError;
 use breezyshim::repository::Repository;
@@ -129,6 +131,9 @@ enum Commands {
 
     /// Initialize a new project
     Init(InitArgs),
+
+    /// Run as an MCP (Model Context Protocol) server over stdio
+    Mcp,
 }
 
 #[derive(clap::Args)]
@@ -2060,5 +2065,12 @@ async fn main() {
                 Err(e) => e,
             }
         }
+        Commands::Mcp => match mcp::run_mcp_server().await {
+            Ok(()) => 0,
+            Err(e) => {
+                log::error!("MCP server error: {}", e);
+                1
+            }
+        },
     });
 }
