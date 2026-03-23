@@ -16,8 +16,11 @@ This starts the MCP server over stdio.
 
 ### Claude Code
 
-Add the following to your `.claude/settings.json` or project-level
-`.mcp.json`:
+```sh
+claude mcp add -s project disperse -- disperse mcp
+```
+
+Or manually add to your `.mcp.json`:
 
 ```json
 {

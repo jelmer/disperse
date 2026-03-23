@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "disperse": {
+      "type": "stdio",
+      "command": "disperse",
+      "args": [
+        "mcp"
+      ],
+      "env": {}
+    }
+  }
+}
