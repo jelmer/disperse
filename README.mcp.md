@@ -16,8 +16,16 @@ This starts the MCP server over stdio.
 
 ### Claude Code
 
+For the current project:
+
 ```sh
 claude mcp add -s project disperse -- disperse mcp
+```
+
+For all projects (global):
+
+```sh
+claude mcp add -s user disperse -- disperse mcp
 ```
 
 Or manually add to your `.mcp.json`:
