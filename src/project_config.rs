@@ -32,13 +32,6 @@ pub struct ProjectConfig {
     #[serde(default, rename = "verify-command")]
     pub verify_command: Option<String>,
 
-    #[serde(
-        default,
-        rename = "tarball-location",
-        skip_serializing_if = "Vec::is_empty"
-    )]
-    pub tarball_location: Vec<String>,
-
     #[serde(default, rename = "release-timeout")]
     pub release_timeout: Option<u64>,
 
@@ -108,7 +101,6 @@ impl From<config::Project> for ProjectConfig {
             tag_name: p.tag_name.clone(),
             pre_dist_command: p.pre_dist_command.clone(),
             verify_command: p.verify_command.clone(),
-            tarball_location: p.tarball_location.clone(),
             release_timeout: p.timeout_days.map(|t| t as u64),
             ci_timeout: p.ci_timeout.map(|t| t as u64),
         }

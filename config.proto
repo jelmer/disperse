@@ -13,7 +13,8 @@ message Project {
 
     optional string news_file = 3;
 
-    repeated string tarball_location = 4;
+    reserved 4;
+    reserved "tarball_location";
 
     optional int32 timeout_days = 5;
 

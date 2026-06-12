@@ -475,11 +475,6 @@ pub enum ReleaseError {
         command: String,
         status: Option<std::process::ExitStatus>,
     },
-    UploadCommandFailed {
-        command: String,
-        status: Option<std::process::ExitStatus>,
-        reason: Option<String>,
-    },
     VerifyCommandFailed {
         command: String,
         status: Option<std::process::ExitStatus>,
@@ -501,7 +496,6 @@ pub enum ReleaseError {
     },
     CIFailed(String),
     CIPending(String),
-    PublishArtifactsFailed(String),
     DistCreationFailed,
     NoPublicBranch,
     Other(String),
@@ -529,16 +523,6 @@ impl std::fmt::Display for ReleaseError {
             ReleaseError::PreDistCommandFailed { command, status } => write!(
                 f,
                 "Pre-dist command failed: {}: {}",
-                command,
-                status.map_or_else(|| "unknown".to_string(), |s| s.to_string())
-            ),
-            ReleaseError::UploadCommandFailed {
-                command,
-                status,
-                reason: _,
-            } => write!(
-                f,
-                "Upload command failed: {}: {}",
                 command,
                 status.map_or_else(|| "unknown".to_string(), |s| s.to_string())
             ),
@@ -579,9 +563,6 @@ impl std::fmt::Display for ReleaseError {
             ReleaseError::Other(msg) => write!(f, "{}", msg),
             ReleaseError::CIFailed(n) => write!(f, "CI failed: {}", n),
             ReleaseError::CIPending(n) => write!(f, "CI pending: {}", n),
-            ReleaseError::PublishArtifactsFailed(msg) => {
-                write!(f, "Publish artifacts failed: {}", msg)
-            }
             ReleaseError::DistCreationFailed => write!(f, "Dist creation failed"),
             ReleaseError::NoPublicBranch => write!(f, "No public branch"),
         }
@@ -648,15 +629,13 @@ fn check_release_age(
     Ok(())
 }
 
-async fn publish_artifacts(
+async fn wait_for_ci(
     tag_name: &str,
     dry_run: bool,
     gh: &octocrab::Octocrab,
     cfg: &ProjectConfig,
     gh_repo: Option<&octocrab::models::Repository>,
-) -> Result<Vec<std::path::PathBuf>, ReleaseError> {
-    let artifacts: Vec<std::path::PathBuf> = vec![];
-    // Wait for CI to go green
+) -> Result<(), ReleaseError> {
     if let Some(gh_repo) = gh_repo {
         if dry_run {
             log::info!("In dry-run mode, so unable to wait for CI");
@@ -667,51 +646,7 @@ async fn publish_artifacts(
         }
     }
 
-    for loc in cfg.tarball_location.iter() {
-        if dry_run {
-            log::info!("skipping scp to {} due to dry run mode", loc);
-        } else {
-            let args = artifacts
-                .iter()
-                .map(|s| s.to_path_buf().into_os_string())
-                .chain([std::ffi::OsString::from(loc)])
-                .collect::<Vec<std::ffi::OsString>>();
-            match std::process::Command::new("scp")
-                .args(args.clone())
-                .status()
-            {
-                Ok(status) => {
-                    if !status.success() {
-                        return Err(ReleaseError::UploadCommandFailed {
-                            command: format!(
-                                "scp {}",
-                                args.into_iter()
-                                    .map(|s| s.into_string().unwrap())
-                                    .collect::<Vec<String>>()
-                                    .join(" ")
-                            ),
-                            status: Some(status),
-                            reason: None,
-                        });
-                    }
-                }
-                Err(e) => {
-                    return Err(ReleaseError::UploadCommandFailed {
-                        command: format!(
-                            "scp {}",
-                            args.into_iter()
-                                .map(|s| s.into_string().unwrap())
-                                .collect::<Vec<String>>()
-                                .join(" ")
-                        ),
-                        status: None,
-                        reason: Some(e.to_string()),
-                    });
-                }
-            }
-        }
-    }
-    Ok(artifacts)
+    Ok(())
 }
 
 fn determine_verify_command(cfg: &ProjectConfig, wt: &dyn WorkingTree) -> Option<String> {
@@ -1310,20 +1245,15 @@ pub async fn release_project(
         })?;
     }
 
-    let result = publish_artifacts(&tag_name, dry_run, &gh, &cfg, gh_repo.as_ref()).await;
-
-    let artifacts = match result {
-        Ok(artifacts) => artifacts,
-        Err(e) => {
-            log::error!("Failed to publish artifacts: {}", e);
-            log::info!("Deleting remote tag {}", tag_name);
-            if !dry_run {
-                tags.delete_tag(tag_name.as_str())
-                    .map_err(|e| ReleaseError::Other(e.to_string()))?;
-            }
-            return Err(ReleaseError::PublishArtifactsFailed(e.to_string()));
+    if let Err(e) = wait_for_ci(&tag_name, dry_run, &gh, &cfg, gh_repo.as_ref()).await {
+        log::error!("CI failed: {}", e);
+        log::info!("Deleting remote tag {}", tag_name);
+        if !dry_run {
+            tags.delete_tag(tag_name.as_str())
+                .map_err(|e| ReleaseError::Other(e.to_string()))?;
         }
-    };
+        return Err(e);
+    }
 
     // At this point, it's official - so let's push.
     if !dry_run {
@@ -1399,10 +1329,10 @@ pub async fn release_project(
 
     if let Some(launchpad_project) = launchpad_project.as_ref() {
         if dry_run {
-            log::info!("skipping upload of tarball to Launchpad");
+            log::info!("skipping creation of Launchpad release");
         } else {
             let lp = launchpad_client().await?;
-            let lp_release = disperse::launchpad::ensure_release(
+            disperse::launchpad::ensure_release(
                 lp,
                 &launchpad_project.self_().unwrap(),
                 &new_version.to_string(),
@@ -1411,9 +1341,6 @@ pub async fn release_project(
             )
             .await
             .map_err(ReleaseError::Other)?;
-            disperse::launchpad::add_release_files(lp, &lp_release, artifacts)
-                .await
-                .map_err(ReleaseError::Other)?;
         }
     }
 
@@ -1534,14 +1461,6 @@ async fn release_many(urls: &[String], options: ReleaseOptions) -> i32 {
                 ));
                 ret = 1;
             }
-            Err(ReleaseError::UploadCommandFailed { command, .. }) => {
-                log::error!("Upload command ({}) failed to run.", command);
-                failed.push((
-                    url.to_string(),
-                    format!("Upload command ({}) failed to run.", command),
-                ));
-                ret = 1;
-            }
             Err(ReleaseError::ReleaseTagExists {
                 project,
                 tag,
@@ -1633,14 +1552,6 @@ async fn release_many(urls: &[String], options: ReleaseOptions) -> i32 {
             Err(ReleaseError::CommitFailed(..)) => {
                 log::error!("Failed to commit");
                 failed.push((url.to_string(), "Failed to commit".to_string()));
-                ret = 1;
-            }
-            Err(ReleaseError::PublishArtifactsFailed(o)) => {
-                log::error!("Failed to publish artifacts: {}", o);
-                failed.push((
-                    url.to_string(),
-                    format!("Failed to publish artifacts: {}", o),
-                ));
                 ret = 1;
             }
             Err(ReleaseError::NoPublicBranch) => {

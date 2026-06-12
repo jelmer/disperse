@@ -181,29 +181,3 @@ pub async fn ensure_release(
             .unwrap())
     }
 }
-
-pub async fn add_release_files(
-    client: &Client,
-    release: &ProjectRelease,
-    artifacts: Vec<std::path::PathBuf>,
-) -> Result<(), String> {
-    for artifact in artifacts {
-        if artifact.ends_with(".tar.gz") {
-            release
-                .add_file(
-                    client,
-                    Some("release tarball"),
-                    artifact.file_name().unwrap().to_str().unwrap(),
-                    None,
-                    "application/x-gzip",
-                    reqwest::multipart::Part::file(&artifact).await.unwrap(),
-                    None,
-                    Some(&launchpadlib::r#async::v1_0::FileType::CodeReleaseTarball),
-                )
-                .await
-                .map_err(|e| format!("Failed to add release file: {}", e))
-                .unwrap();
-        }
-    }
-    Ok(())
-}
