@@ -29,7 +29,8 @@ message Project {
 
     optional string github_branch = 11;
 
-    optional bool skip_twine_upload = 12 [ default = false ];
+    reserved 12;
+    reserved "skip_twine_upload";
 
     optional int32 ci_timeout = 13 [default=7200];
 

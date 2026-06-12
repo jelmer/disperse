@@ -649,15 +649,13 @@ fn check_release_age(
 }
 
 async fn publish_artifacts(
-    ws: &silver_platter::workspace::Workspace,
     tag_name: &str,
     dry_run: bool,
     gh: &octocrab::Octocrab,
     cfg: &ProjectConfig,
-    pypi_paths: &[&std::path::Path],
     gh_repo: Option<&octocrab::models::Repository>,
 ) -> Result<Vec<std::path::PathBuf>, ReleaseError> {
-    let mut artifacts = vec![];
+    let artifacts: Vec<std::path::PathBuf> = vec![];
     // Wait for CI to go green
     if let Some(gh_repo) = gh_repo {
         if dry_run {
@@ -669,38 +667,6 @@ async fn publish_artifacts(
         }
     }
 
-    if !pypi_paths.is_empty() {
-        artifacts.extend(pypi_paths.iter().map(|x| x.to_path_buf()));
-        if dry_run {
-            log::info!("skipping twine upload due to dry run mode")
-        } else if !cfg.twine_upload.unwrap_or(false) {
-            log::info!("skipping twine upload; disabled in config")
-        } else {
-            disperse::python::upload_python_artifacts(ws.local_tree(), pypi_paths).map_err(
-                |e| ReleaseError::UploadCommandFailed {
-                    command: "twine upload".to_string(),
-                    status: None,
-                    reason: Some(e.to_string()),
-                },
-            )?;
-        }
-    }
-    if ws
-        .local_tree()
-        .has_filename(std::path::Path::new("Cargo.toml"))
-    {
-        if dry_run {
-            log::info!("skipping cargo upload due to dry run mode");
-        } else {
-            disperse::cargo::publish(ws.local_tree(), std::path::Path::new(".")).map_err(|e| {
-                ReleaseError::UploadCommandFailed {
-                    command: "cargo publish".to_string(),
-                    status: None,
-                    reason: Some(e.to_string()),
-                }
-            })?;
-        }
-    }
     for loc in cfg.tarball_location.iter() {
         if dry_run {
             log::info!("skipping scp to {} due to dry run mode", loc);
@@ -1328,15 +1294,6 @@ pub async fn release_project(
             })?;
     }
 
-    log::info!("Creating Python artifacts");
-    let pypi_paths = if ws.local_tree().has_filename(Path::new("setup.py")) {
-        disperse::python::create_setup_py_artifacts(ws.local_tree()).unwrap()
-    } else if ws.local_tree().has_filename(Path::new("pyproject.toml")) {
-        disperse::python::create_python_artifacts(ws.local_tree()).unwrap()
-    } else {
-        vec![]
-    };
-
     if !dry_run {
         log::info!(
             "Pushing tag {} to {}",
@@ -1353,20 +1310,7 @@ pub async fn release_project(
         })?;
     }
 
-    let result = publish_artifacts(
-        &ws,
-        &tag_name,
-        dry_run,
-        &gh,
-        &cfg,
-        pypi_paths
-            .iter()
-            .map(|p| p.as_path())
-            .collect::<Vec<_>>()
-            .as_slice(),
-        gh_repo.as_ref(),
-    )
-    .await;
+    let result = publish_artifacts(&tag_name, dry_run, &gh, &cfg, gh_repo.as_ref()).await;
 
     let artifacts = match result {
         Ok(artifacts) => artifacts,

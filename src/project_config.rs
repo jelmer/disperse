@@ -32,9 +32,6 @@ pub struct ProjectConfig {
     #[serde(default, rename = "verify-command")]
     pub verify_command: Option<String>,
 
-    #[serde(default, rename = "twine-upload")]
-    pub twine_upload: Option<bool>,
-
     #[serde(
         default,
         rename = "tarball-location",
@@ -111,7 +108,6 @@ impl From<config::Project> for ProjectConfig {
             tag_name: p.tag_name.clone(),
             pre_dist_command: p.pre_dist_command.clone(),
             verify_command: p.verify_command.clone(),
-            twine_upload: p.skip_twine_upload.map(|t| !t),
             tarball_location: p.tarball_location.clone(),
             release_timeout: p.timeout_days.map(|t| t as u64),
             ci_timeout: p.ci_timeout.map(|t| t as u64),
