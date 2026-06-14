@@ -29,9 +29,6 @@ pub struct ProjectConfig {
     #[serde(default, rename = "pre-dist-command")]
     pub pre_dist_command: Option<String>,
 
-    #[serde(default, rename = "verify-command")]
-    pub verify_command: Option<String>,
-
     #[serde(default, rename = "release-timeout")]
     pub release_timeout: Option<u64>,
 
@@ -100,7 +97,6 @@ impl From<config::Project> for ProjectConfig {
             },
             tag_name: p.tag_name.clone(),
             pre_dist_command: p.pre_dist_command.clone(),
-            verify_command: p.verify_command.clone(),
             release_timeout: p.timeout_days.map(|t| t as u64),
             ci_timeout: p.ci_timeout.map(|t| t as u64),
         }

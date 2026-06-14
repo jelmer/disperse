@@ -13,7 +13,6 @@ It can do one or more of the following:
    version strings specified in project files
 * update NEWS files with the release date
 * make sure various files contain the correct version string
-* verify that the testsuite runs successfully
 * optionally only create a release if there were no changes to the repository
    in the last X days (useful for running in a cronjob)
 * create a git tag for the new release

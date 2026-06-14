@@ -18,7 +18,8 @@ message Project {
 
     optional int32 timeout_days = 5;
 
-    optional string verify_command = 6;
+    reserved 6;
+    reserved "verify_command";
 
     repeated UpdateVersion update_version = 7;
 
