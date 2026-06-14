@@ -1,8 +1,5 @@
 use std::str::FromStr;
 
-#[cfg(feature = "pyo3")]
-use pyo3::prelude::*;
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {
     pub major: i32,
@@ -337,39 +334,6 @@ mod tests {
         let err = Error("test error message".to_string());
         assert_eq!(err.to_string(), "test error message");
         assert_eq!(format!("{}", err), "test error message");
-    }
-}
-
-#[cfg(feature = "pyo3")]
-impl<'py> pyo3::IntoPyObject<'py> for Version {
-    type Target = pyo3::types::PyString;
-    type Output = pyo3::Bound<'py, Self::Target>;
-    type Error = std::convert::Infallible;
-
-    fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
-        Ok(pyo3::types::PyString::new(py, &self.to_string()))
-    }
-}
-
-#[cfg(feature = "pyo3")]
-impl<'py> pyo3::IntoPyObject<'py> for &Version {
-    type Target = pyo3::types::PyString;
-    type Output = pyo3::Bound<'py, Self::Target>;
-    type Error = std::convert::Infallible;
-
-    fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
-        Ok(pyo3::types::PyString::new(py, &self.to_string()))
-    }
-}
-
-#[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'_, 'py> for Version {
-    type Error = pyo3::PyErr;
-
-    fn extract(ob: pyo3::Borrowed<'_, 'py, pyo3::PyAny>) -> Result<Self, Self::Error> {
-        let s = ob.extract::<String>()?;
-        Version::from_str(s.as_str())
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Invalid version: {}", e)))
     }
 }
 

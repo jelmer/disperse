@@ -16,9 +16,6 @@ It can do one or more of the following:
 * verify that the testsuite runs successfully
 * optionally only create a release if there were no changes to the repository
    in the last X days (useful for running in a cronjob)
-* upload to a repository site:
-  * sources and universal wheels to pypi, if the project is a Python project
-  * crates.io, if the project is a rust project
 * create a git tag for the new release
 * create "release" entries (on supported platforms, like GitHub or Launchpad)
 

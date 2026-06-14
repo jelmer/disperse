@@ -55,18 +55,6 @@ pub fn get_owned_crates(user: &str) -> Result<Vec<url::Url>, Error> {
         .collect::<Vec<url::Url>>())
 }
 
-// Define a function to publish a Rust package using Cargo
-pub fn publish(tree: &dyn WorkingTree, subpath: &Path) -> Result<(), Error> {
-    Command::new("cargo")
-        .arg("publish")
-        .current_dir(tree.abspath(subpath)?)
-        .spawn()
-        .map_err(|e| Error::Other(format!("Unable to spawn cargo publish: {}", e)))?
-        .wait()
-        .map_err(|e| Error::Other(format!("Unable to wait for cargo publish: {}", e)))?;
-    Ok(())
-}
-
 pub fn update_version_in_toml(
     parsed_toml: &mut toml_edit::DocumentMut,
     new_version: &str,

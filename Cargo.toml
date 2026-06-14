@@ -45,11 +45,6 @@ schemars = "1.0"
 
 [build-dependencies]
 protobuf-codegen = "3"
-protoc-rust = "^2.0"
-
-[features]
-default = ["pyo3"]
-pyo3 = []
 
 [workspace.dependencies]
 pyo3 = { version = ">=0.27,<0.29", features = ["serde"] }

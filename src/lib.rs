@@ -24,39 +24,6 @@ pub enum Status {
     Dev,
 }
 
-#[cfg(feature = "pyo3")]
-impl<'py> pyo3::FromPyObject<'_, 'py> for Status {
-    type Error = pyo3::PyErr;
-
-    fn extract(ob: pyo3::Borrowed<'_, 'py, pyo3::PyAny>) -> Result<Self, Self::Error> {
-        let s = ob.extract::<String>()?;
-        s.parse()
-            .map_err(pyo3::PyErr::new::<pyo3::exceptions::PyValueError, _>)
-    }
-}
-
-#[cfg(feature = "pyo3")]
-impl<'py> pyo3::IntoPyObject<'py> for Status {
-    type Target = pyo3::types::PyString;
-    type Output = pyo3::Bound<'py, Self::Target>;
-    type Error = std::convert::Infallible;
-
-    fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
-        Ok(pyo3::types::PyString::new(py, &self.to_string()))
-    }
-}
-
-#[cfg(feature = "pyo3")]
-impl<'py> pyo3::IntoPyObject<'py> for &Status {
-    type Target = pyo3::types::PyString;
-    type Output = pyo3::Bound<'py, Self::Target>;
-    type Error = std::convert::Infallible;
-
-    fn into_pyobject(self, py: pyo3::Python<'py>) -> Result<Self::Output, Self::Error> {
-        Ok(pyo3::types::PyString::new(py, &self.to_string()))
-    }
-}
-
 impl std::fmt::Display for Status {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
