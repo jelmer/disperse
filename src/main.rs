@@ -49,12 +49,6 @@ lazy_static::lazy_static! {
         &["project"],
     ).unwrap();
 
-    static ref VERIFY_COMMAND_FAILED: IntCounterVec = register_int_counter_vec!(
-        "verify_command_failed",
-        "The verify command failed to run",
-        &["project"],
-    ).unwrap();
-
     static ref BRANCH_PROTECTED_COUNT: IntCounterVec = register_int_counter_vec!(
         "branch_protected",
         "The branch was protected",
@@ -123,9 +117,6 @@ enum Commands {
     /// Show information about a project
     Info(InfoArgs),
 
-    /// Run the verify command
-    Verify(VerifyArgs),
-
     /// Migrate configuration to a new version
     Migrate(MigrateArgs),
 
@@ -134,13 +125,6 @@ enum Commands {
 
     /// Run as an MCP (Model Context Protocol) server over stdio
     Mcp,
-}
-
-#[derive(clap::Args)]
-struct VerifyArgs {
-    /// Path or URL for project
-    #[clap(default_value = ".")]
-    path: std::path::PathBuf,
 }
 
 #[derive(clap::Args)]
@@ -155,10 +139,6 @@ struct ReleaseArgs {
     /// Release even if the CI is not passing
     #[clap(long)]
     ignore_ci: bool,
-
-    /// Release even if the verify_command fails
-    #[clap(long)]
-    ignore_verify_command: bool,
 
     #[clap(long)]
     discover: bool,
@@ -475,10 +455,6 @@ pub enum ReleaseError {
         command: String,
         status: Option<std::process::ExitStatus>,
     },
-    VerifyCommandFailed {
-        command: String,
-        status: Option<std::process::ExitStatus>,
-    },
     ReleaseTagExists {
         project: String,
         tag: String,
@@ -523,12 +499,6 @@ impl std::fmt::Display for ReleaseError {
             ReleaseError::PreDistCommandFailed { command, status } => write!(
                 f,
                 "Pre-dist command failed: {}: {}",
-                command,
-                status.map_or_else(|| "unknown".to_string(), |s| s.to_string())
-            ),
-            ReleaseError::VerifyCommandFailed { command, status } => write!(
-                f,
-                "Verify command failed: {}: {}",
                 command,
                 status.map_or_else(|| "unknown".to_string(), |s| s.to_string())
             ),
@@ -649,18 +619,6 @@ async fn wait_for_ci(
     Ok(())
 }
 
-fn determine_verify_command(cfg: &ProjectConfig, wt: &dyn WorkingTree) -> Option<String> {
-    if let Some(verify_command) = cfg.verify_command.as_ref() {
-        Some(verify_command.clone())
-    } else if wt.has_filename(Path::new("tox.ini")) {
-        Some("tox".to_string())
-    } else if wt.has_filename(Path::new("Cargo.toml")) {
-        Some("cargo test --all".to_string())
-    } else {
-        None
-    }
-}
-
 async fn launchpad_client() -> Result<&'static launchpadlib::r#async::client::Client, ReleaseError>
 {
     static LAUNCHPAD_CLIENT: tokio::sync::OnceCell<launchpadlib::r#async::client::Client> =
@@ -681,13 +639,11 @@ pub async fn release_project(
     new_version: Option<&Version>,
     dry_run: Option<bool>,
     ignore_ci: Option<bool>,
-    ignore_verify_command: Option<bool>,
     preserve_temp: bool,
 ) -> Result<(String, Version), ReleaseError> {
     let force = force.unwrap_or(false);
     let dry_run = dry_run.unwrap_or(false);
     let ignore_ci = ignore_ci.unwrap_or(false);
-    let ignore_verify_command = ignore_verify_command.unwrap_or(false);
     let now = chrono::Utc::now();
 
     let (local_wt, branch) = match breezyshim::controldir::open_tree_or_branch(repo_url, None, None)
@@ -1095,8 +1051,6 @@ pub async fn release_project(
         }
     }
 
-    let verify_command = determine_verify_command(&cfg, ws.local_tree());
-
     log::info!("releasing {}", new_version.to_string());
     let (news_file, release_changes) = if let Some(news_file_path) = cfg.news_file.as_ref() {
         let news_file =
@@ -1148,36 +1102,6 @@ pub async fn release_project(
         .message(format!("Release {}.", new_version.to_string()).as_str())
         .commit()
         .map_err(|e| ReleaseError::CommitFailed(e.to_string()))?;
-
-    if let Some(verify_command) = verify_command {
-        match std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&verify_command)
-            .current_dir(ws.local_tree().abspath(Path::new(".")).unwrap())
-            .status()
-        {
-            Ok(s) => {
-                if !s.success() {
-                    VERIFY_COMMAND_FAILED.with_label_values(&[&name]).inc();
-                    if !ignore_verify_command {
-                        return Err(ReleaseError::VerifyCommandFailed {
-                            command: verify_command.clone(),
-                            status: Some(s),
-                        });
-                    }
-                }
-            }
-            Err(_e) => {
-                VERIFY_COMMAND_FAILED.with_label_values(&[&name]).inc();
-                if !ignore_verify_command {
-                    return Err(ReleaseError::VerifyCommandFailed {
-                        command: verify_command.clone(),
-                        status: None,
-                    });
-                }
-            }
-        }
-    }
 
     let tag_name = disperse::version::expand_tag(cfg.tag_name.as_ref().unwrap(), &new_version);
     let tags = ws.local_tree().branch().tags().unwrap();
@@ -1401,7 +1325,6 @@ pub async fn release_project(
 struct ReleaseOptions {
     new_version: Option<String>,
     ignore_ci: Option<bool>,
-    ignore_verify_command: Option<bool>,
     dry_run: Option<bool>,
     discover: bool,
     force: Option<bool>,
@@ -1427,7 +1350,6 @@ async fn release_many(urls: &[String], options: ReleaseOptions) -> i32 {
                 .as_ref(),
             options.dry_run,
             options.ignore_ci,
-            options.ignore_verify_command,
             options.preserve_temp,
         )
         .await
@@ -1444,14 +1366,6 @@ async fn release_many(urls: &[String], options: ReleaseOptions) -> i32 {
                 if !options.discover {
                     ret = 1;
                 }
-            }
-            Err(ReleaseError::VerifyCommandFailed { command, .. }) => {
-                log::error!("Verify command ({}) failed to run.", command);
-                failed.push((
-                    url.to_string(),
-                    format!("Verify command ({}) failed to run.", command),
-                ));
-                ret = 1;
             }
             Err(ReleaseError::PreDistCommandFailed { command, .. }) => {
                 log::error!("Pre-Dist command ({}) failed to run.", command);
@@ -1628,42 +1542,6 @@ fn validate_config(path: &std::path::Path) -> i32 {
     0
 }
 
-fn verify(wt: &dyn WorkingTree) -> Result<(), i32> {
-    let cfg = match disperse::project_config::read_project_with_fallback(wt) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            log::info!("Error loading configuration: {}", e);
-            return Err(1);
-        }
-    };
-
-    let verify_command = determine_verify_command(&cfg, wt);
-
-    if verify_command.is_none() {
-        log::info!("No verify command configured or detected");
-        return Ok(());
-    }
-
-    let verify_command = verify_command.unwrap();
-
-    log::info!("Running verify command: {}", verify_command);
-
-    let mut cmd = std::process::Command::new("sh");
-    cmd.arg("-c").arg(verify_command);
-    cmd.current_dir(wt.abspath(std::path::Path::new(".")).unwrap());
-    cmd.stdin(std::process::Stdio::null());
-    cmd.stdout(std::process::Stdio::inherit());
-    cmd.stderr(std::process::Stdio::inherit());
-    let status = cmd.status().unwrap();
-
-    if !status.success() {
-        log::error!("Verify command failed");
-        return Err(1);
-    }
-
-    Ok(())
-}
-
 fn init(wt: &dyn WorkingTree) -> Result<(), i32> {
     if wt.has_filename(Path::new("disperse.toml")) {
         log::info!("Already initialized");
@@ -1798,7 +1676,6 @@ async fn main() {
                 ReleaseOptions {
                     new_version: release_args.new_version.clone(),
                     ignore_ci: Some(release_args.ignore_ci),
-                    ignore_verify_command: Some(release_args.ignore_verify_command),
                     dry_run: Some(args.dry_run),
                     discover: release_args.discover,
                     force: Some(true),
@@ -1875,7 +1752,6 @@ async fn main() {
                         ReleaseOptions {
                             new_version: None,
                             ignore_ci: Some(false),
-                            ignore_verify_command: Some(false),
                             dry_run: Some(false),
                             discover: true,
                             force: Some(false),
@@ -1898,13 +1774,6 @@ async fn main() {
         Commands::Info(args) => {
             let wt = workingtree::open(args.path.as_ref()).unwrap();
             info(&wt, &wt.branch())
-        }
-        Commands::Verify(args) => {
-            let wt = workingtree::open(args.path.as_ref()).unwrap();
-            match verify(&wt) {
-                Ok(_) => 0,
-                Err(e) => e,
-            }
         }
         Commands::Migrate(args) => {
             let wt = workingtree::open(args.path.as_ref()).unwrap();
